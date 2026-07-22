@@ -12,8 +12,12 @@ MQTT_USER=$(cfg '.mqtt_user')
 MQTT_PASSWORD=$(cfg '.mqtt_password')
 
 # Kein Broker konfiguriert -> Mosquitto-Add-on über die Supervisor services API beziehen
-if [ -z "${MQTT_HOST}" ]; then
-    SVC=$(curl -s -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" http://supervisor/services/mqtt || true)
+TOKEN="${SUPERVISOR_TOKEN:-${HASSIO_TOKEN:-}}"
+if [ -z "${MQTT_HOST}" ] && [ -z "${TOKEN}" ]; then
+    bashio::log.warning "No Supervisor token in the container environment - cannot auto-detect MQTT."
+fi
+if [ -z "${MQTT_HOST}" ] && [ -n "${TOKEN}" ]; then
+    SVC=$(curl -s -H "Authorization: Bearer ${TOKEN}" http://supervisor/services/mqtt || true)
     if [ "$(echo "${SVC}" | jq -r '.result // empty')" = "ok" ]; then
         bashio::log.info "Using MQTT broker from the Supervisor services API"
         MQTT_HOST=$(echo "${SVC}" | jq -r '.data.host')
