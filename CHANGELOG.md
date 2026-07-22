@@ -3,6 +3,15 @@
 All notable changes to FaceID. The Home Assistant add-on shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.2.3 — 2026-07-22
+
+- **Ignore anchors now learn**: when an ignored person reappears with a changed look,
+  the new appearance is added as an additional anchor automatically — so they stop
+  resurfacing in the unknown queue over time. Guardrails: only on unambiguous matches
+  (similarity ≥ ignore_threshold + 0.1 AND a clear margin over every enrolled person),
+  near-duplicate anchors are skipped, and auto-learned anchors are visibly marked
+  "auto" in the Ignored tab (delete anytime). Disable with ignore_learning: false.
+
 ## 0.2.2 — 2026-07-22
 
 - Ignored faces now live in their own **IGNORED tab** instead of a section at the

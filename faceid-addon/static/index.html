@@ -172,6 +172,7 @@ async function renderIgnored(){
     <div class="grid">${items.map(it=>`
       <div class="tile">
         <img src="data/ignored/${it.id}.jpg" loading="lazy">
+        <span class="score">${it.auto?'auto · ':''}${fmtTs(it.ts)}</span>
         <button class="u" title="back to review queue" onclick="restoreIgnored('${it.id}')">↩</button>
         <button class="x" title="delete permanently" onclick="deleteIgnored('${it.id}')">×</button>
       </div>`).join('')}

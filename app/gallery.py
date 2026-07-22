@@ -224,6 +224,21 @@ class Gallery:
             (self.persons_dir / slug).rmdir()
             return n
 
+    def add_ignore_anchor(self, crop_bgr: np.ndarray, embedding: np.ndarray, novelty_max: float = 0.8):
+        """Bestätigten Ignore-Match als zusätzlichen Anker lernen — aber nur, wenn er eine
+        neue Erscheinungsform abdeckt (nicht fast identisch zu einem bestehenden Anker)."""
+        with self._lock:
+            if len(self._ign_ids) and float(np.max(self._ign_emb @ embedding)) >= novelty_max:
+                return None
+            iid = f"i{int(time.time() * 1000)}_{len(self._ign_ids)}"
+            cv2.imwrite(str(self.ignored_dir / f"{iid}.jpg"), crop_bgr, [cv2.IMWRITE_JPEG_QUALITY, 92])
+            (self.ignored_dir / f"{iid}.json").write_text(json.dumps(
+                {"camera": "", "ts": time.time(), "auto": True,
+                 "embedding": [round(float(v), 6) for v in embedding]}, ensure_ascii=False))
+            self._ign_emb = np.vstack([self._ign_emb, embedding.astype(np.float32)[None, :]])
+            self._ign_ids.append(iid)
+            return iid
+
     def ignored(self):
         out = []
         for jf in sorted(self.ignored_dir.glob("*.json"), reverse=True):
@@ -231,7 +246,8 @@ class Gallery:
                 m = json.loads(jf.read_text())
             except (json.JSONDecodeError, OSError):
                 continue
-            out.append({"id": jf.stem, "camera": m.get("camera", ""), "ts": m.get("ts", 0)})
+            out.append({"id": jf.stem, "camera": m.get("camera", ""), "ts": m.get("ts", 0),
+                        "auto": bool(m.get("auto"))})
         return out
 
     def restore_ignored(self, iid: str) -> bool:

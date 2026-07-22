@@ -39,6 +39,7 @@ class EventProcessor:
         self.set_sub_label = bool(f.get("set_sub_label", True))
         self.presence_window = float(f.get("presence_window", 120))
         self.ignore_thr = float(f.get("ignore_threshold", f.get("match_threshold", 0.5)))
+        self.ignore_learning = bool(f.get("ignore_learning", True))
         self.prefix = str(f.get("mqtt_prefix", "faceid")).strip("/") or "faceid"
         self.present: dict[str, dict[str, float]] = {}  # camera -> {person: zuletzt gesehen}
         self._last_presence: dict[str, list] = {}  # zuletzt publizierter Stand je Kamera
@@ -125,6 +126,13 @@ class EventProcessor:
             # Gesicht steht auf der Ignore-Liste: nicht melden, nicht taggen, nicht vorlegen
             st["best_unknown"] = None
             st["done"] = True
+            # Anker-Lernen nur bei eindeutigen Fällen: klarer Ignore-Match UND deutlicher
+            # Abstand zum besten Personen-Match — so wird nie ein Familienmitglied still
+            # zum Negativ-Anker. Nur neue Erscheinungsformen werden gespeichert.
+            if self.ignore_learning and ig >= self.ignore_thr + 0.1 and ig - score >= 0.1:
+                iid = self.gallery.add_ignore_anchor(crop_face(img, face.bbox), emb)
+                if iid:
+                    log.info("Event %s: neuer Auto-Ignore-Anker %s (sim %.3f)", eid, iid, ig)
             log.info("Event %s (%s): ignoriertes Gesicht (sim %.3f)", eid, st["camera"], ig)
             return
         crop = crop_face(img, face.bbox)
