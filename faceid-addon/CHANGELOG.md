@@ -3,6 +3,11 @@
 All notable changes to FaceID. The Home Assistant add-on shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.2.2 — 2026-07-22
+
+- Ignored faces now live in their own **IGNORED tab** instead of a section at the
+  bottom of the Unknown tab.
+
 ## 0.2.1 — 2026-07-22
 
 - **"Ignore person" button** on person cards: stop tracking an enrolled person in one

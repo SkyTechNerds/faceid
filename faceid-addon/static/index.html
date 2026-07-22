@@ -73,6 +73,7 @@ td.p{color:var(--acc)} td.u{color:var(--warn)}
 <nav>
   <button data-t="unknowns" class="on">UNKNOWN</button>
   <button data-t="persons">PERSONS</button>
+  <button data-t="ignored">IGNORED</button>
   <button data-t="recent">RECOGNITIONS</button>
 </nav>
 <main id="main"></main>
@@ -102,6 +103,7 @@ async function render(){
   persons=await j('api/persons');
   if(tab==='unknowns')return renderUnknowns();
   if(tab==='persons')return renderPersons();
+  if(tab==='ignored')return renderIgnored();
   return renderRecent();
 }
 
@@ -133,10 +135,10 @@ async function startBackfill(){
   render();
 }
 async function renderUnknowns(){
-  const [clusters,bf,ignored]=await Promise.all([j('api/unknowns'),j('api/backfill'),j('api/ignored')]);
+  const [clusters,bf]=await Promise.all([j('api/unknowns'),j('api/backfill')]);
   if(bf.running&&tab==='unknowns')setTimeout(()=>{if(tab==='unknowns')render()},4000);
   if(!clusters.length){
-    main.innerHTML=backfillRow(bf)+'<div class="empty">No unknown faces in the queue.</div>'+ignoredSection(ignored);return}
+    main.innerHTML=backfillRow(bf)+'<div class="empty">No unknown faces in the queue.</div>';return}
   main.innerHTML=backfillRow(bf)+`<div class="row">
     <button class="act" onclick="autoAssign()">APPLY SUGGESTIONS ≥50%</button>
     <span class="stat">assigns every face whose best gallery match clears the recognition threshold</span>
@@ -160,12 +162,13 @@ async function renderUnknowns(){
           ${u.full_url?`<button class="z" title="full snapshot" onclick="event.stopPropagation();showFull('${u.full_url}','${esc(u.camera||'')} · ${fmtTs(u.ts)}')">⛶</button>`:''}
         </div>`).join('')}
       </div>
-    </div>`).join('')+ignoredSection(ignored);
+    </div>`).join('');
   window._clusters=clusters;
 }
-function ignoredSection(items){
-  if(!items.length)return'';
-  return `<h2>IGNORED (${items.length}) — never notified, matched or resurfaced</h2>
+async function renderIgnored(){
+  const items=await j('api/ignored');
+  if(!items.length){main.innerHTML='<div class="empty">Nobody on the ignore list. Use "ignore" on an unknown cluster or "ignore person" on a person card — ignored people are never notified, matched or resurfaced.</div>';return}
+  main.innerHTML=`<div class="row"><span class="stat">${items.length} ignored — never notified, never matched to a known person, never resurfaced. ↩ moves a face back to the review queue.</span></div>
     <div class="grid">${items.map(it=>`
       <div class="tile">
         <img src="data/ignored/${it.id}.jpg" loading="lazy">
