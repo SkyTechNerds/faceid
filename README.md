@@ -13,8 +13,14 @@ built because Frigate's built-in face recognition UX didn't cut it:
   failure mode is an image you can see and delete, not an opaque model update.
 - **Strangers are first-class.** Unknown faces are collected, **auto-clustered** (DBSCAN,
   the same trick photo apps use) and reviewed in a web UI: one click assigns a whole
-  cluster to a person — or creates "Mailman" as its own person so he stops being matched
-  to your family.
+  cluster to a person — or **ignores** it. People you enroll (the mailman you *want*
+  notifications for) get recognized; people you ignore go permanently silent.
+- **An ignore list that actually sticks.** Ignored faces stay as *negative anchors*:
+  never notified, never matched to your family, never resurfacing in review — and
+  FaceID learns their new looks over time (only on unambiguous matches with a clear
+  margin over every enrolled person, visibly marked "auto", deletable anytime).
+  Anchors are grouped per person; groups can be merged, curated, or released into a
+  real person with one click if you change your mind.
 - **Train from anywhere.** Assign faces from your cameras, upload photos from your photo
   library, or enroll whole folders via CLI.
 - **Home Assistant native.** MQTT discovery sensors per camera (presence-window state like
@@ -138,6 +144,30 @@ log with `journalctl -u faceid -f` until you see `MQTT verbunden (Success)`, the
 4. Optionally upload 5–10 clear photos per person (Persons tab) as clean anchors, or
    enroll a folder: `venv/bin/python -m app.enroll "Alice" /path/to/photos`.
 
+## Ignoring people
+
+Not everyone deserves a notification. FaceID distinguishes three actions on an unknown
+face, and the difference matters:
+
+| Action | Meaning |
+|---|---|
+| **Assign** | This is someone I track — recognize, notify, tag in Frigate |
+| **Ignore** | I know who this is and never want to hear about them — silent forever |
+| **Discard** | Garbage crop (blurry, not a face) — delete, no memory kept |
+
+Ignored faces become negative anchors, grouped by person in the **Ignored** tab:
+
+- Reappearances are silently dropped (a log line is all you get), and genuinely new
+  looks are **auto-learned** into the right group — guarded so a household member can
+  never silently become an anchor (requires high similarity *and* a clear margin over
+  every enrolled person; auto anchors are marked and deletable). Opt out with
+  `ignore_learning: false`.
+- **Curate groups**: merge two groups when they're the same person, move selected
+  anchors between groups, or send a face back to the review queue.
+- **Change your mind**: release a whole group into an existing or brand-new person —
+  the anchors become that person's reference gallery and tracking starts immediately.
+- You can also ignore an entire enrolled person via **"ignore person"** on their card.
+
 **Training tips:** camera snapshots beat photo-library images (same lens, angle and light
 as at recognition time). Diversity beats volume. Create dedicated persons for regular
 strangers (mailman, neighbors) instead of discarding them — that keeps them from being
@@ -185,6 +215,10 @@ that matter most:
 |---|---|
 | `match_threshold` (0.50) | raise if strangers get matched to known persons, lower if known persons end up in the review queue |
 | `cluster_eps` (0.55) | raise to merge unknown clusters more aggressively, lower if different people land in one cluster |
+| `match_top_k` (3) | a person's score is the mean of their top-k reference similarities — dampens photo-count bias (1 = raw max) |
+| `max_faces_per_person` (40) | soft cap; adding more drops the most redundant reference (0 = unlimited) |
+| `ignore_threshold` (= match_threshold) | similarity at which a face counts as ignored |
+| `ignore_learning` (true) | learn new looks of ignored people as additional anchors (guarded) |
 
 ## License
 
