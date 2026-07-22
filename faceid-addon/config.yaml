@@ -1,5 +1,5 @@
 name: FaceID
-version: "0.1.0"
+version: "0.1.1"
 slug: faceid
 description: Face recognition for Frigate — trainable gallery, clustered unknown review, HA sensors
 url: https://github.com/SkyTechNerds/faceid
@@ -7,6 +7,7 @@ arch:
   - amd64
   - aarch64
 startup: application
+hassio_api: true
 boot: auto
 init: false
 ingress: true
