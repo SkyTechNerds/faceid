@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .engine import FaceEngine, crop_face
+from .engine import FaceEngine, crop_face, find_face_padded
 
 log = logging.getLogger("faceid.web")
 
@@ -90,7 +90,7 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             if max(img.shape[:2]) > 2000:  # Foto-Library-Bilder einkürzen, Detection reicht so
                 s = 2000 / max(img.shape[:2])
                 img = cv2.resize(img, None, fx=s, fy=s)
-            face = FaceEngine.best_face(engine.faces(img), min_px=60)
+            face, img = find_face_padded(engine, img, min_px=60)
             if face is None:
                 skipped.append(f"{uf.filename}: no face found")
                 continue
@@ -146,6 +146,28 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
                     processor.frigate.set_sub_label(it["event_id"], name, score)
         gallery.refresh_guesses()
         return {"assigned": assigned, "total": sum(assigned.values())}
+
+    @app.post("/api/unknowns/ignore")
+    def ignore(body: AssignBody):
+        """Gesichter auf die Ignore-Liste: nie mehr melden, zuordnen oder vorlegen."""
+        n = sum(1 for uid in body.ids if gallery.ignore_unknown(uid))
+        return {"ignored": n}
+
+    @app.get("/api/ignored")
+    def list_ignored():
+        return gallery.ignored()
+
+    @app.post("/api/ignored/restore")
+    def restore_ignored(body: AssignBody):
+        n = sum(1 for iid in body.ids if gallery.restore_ignored(iid))
+        gallery.refresh_guesses()
+        return {"restored": n}
+
+    @app.post("/api/ignored/delete")
+    def delete_ignored(body: AssignBody):
+        for iid in body.ids:
+            gallery.delete_ignored(iid)
+        return {"ok": True}
 
     @app.post("/api/unknowns/discard")
     def discard(body: AssignBody):

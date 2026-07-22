@@ -22,13 +22,19 @@ def slugify(name: str) -> str:
 
 
 class Gallery:
-    def __init__(self, data_dir: Path):
+    def __init__(self, data_dir: Path, top_k: int = 3, max_per_person: int = 40):
         self.persons_dir = data_dir / "persons"
         self.unknown_dir = data_dir / "unknowns"
+        self.ignored_dir = data_dir / "ignored"
         self.persons_dir.mkdir(parents=True, exist_ok=True)
         self.unknown_dir.mkdir(parents=True, exist_ok=True)
+        self.ignored_dir.mkdir(parents=True, exist_ok=True)
+        self.top_k = max(1, int(top_k))
+        self.max_per_person = int(max_per_person)  # 0 = unbegrenzt
         self._lock = threading.Lock()
         self._cache = {}  # slug -> {"name":..., "emb": np.ndarray, "files": [...]}
+        self._ign_emb = np.zeros((0, 512), dtype=np.float32)
+        self._ign_ids: list[str] = []
         self.reload()
 
     # ---------- Laden / Speichern ----------
@@ -50,6 +56,16 @@ class Gallery:
                     "emb": emb,
                     "files": meta.get("files", []),
                 }
+            embs, ids = [], []
+            for jf in sorted(self.ignored_dir.glob("*.json")):
+                try:
+                    m = json.loads(jf.read_text())
+                except (json.JSONDecodeError, OSError):
+                    continue
+                embs.append(m["embedding"])
+                ids.append(jf.stem)
+            self._ign_emb = np.array(embs, dtype=np.float32) if embs else np.zeros((0, 512), dtype=np.float32)
+            self._ign_ids = ids
 
     def _persist(self, slug: str):
         pdir = self.persons_dir / slug
@@ -88,6 +104,14 @@ class Gallery:
             cv2.imwrite(str(self.persons_dir / slug / fname), crop_bgr, [cv2.IMWRITE_JPEG_QUALITY, 92])
             entry["emb"] = np.vstack([entry["emb"], embedding.astype(np.float32)[None, :]])
             entry["files"].append(fname)
+            if self.max_per_person and len(entry["files"]) > self.max_per_person:
+                # redundanteste Referenz entfernen (höchste mittlere Ähnlichkeit zu den übrigen)
+                sims = entry["emb"] @ entry["emb"].T
+                np.fill_diagonal(sims, 0.0)
+                drop = int(np.argmax(sims.mean(axis=1)))
+                (self.persons_dir / slug / entry["files"][drop]).unlink(missing_ok=True)
+                entry["files"].pop(drop)
+                entry["emb"] = np.delete(entry["emb"], drop, axis=0)
             self._persist(slug)
             return fname
 
@@ -133,16 +157,86 @@ class Gallery:
     # ---------- Matching ----------
 
     def match(self, embedding: np.ndarray):
-        """-> (slug, name, score) der besten Person oder (None, None, best_score)."""
+        """-> (slug, name, score) der besten Person oder (None, None, best_score).
+        Score = Mittel der Top-k Ähnlichkeiten pro Person (statt Max) — eine Person
+        mit vielen Referenzbildern gewinnt Grenzfälle nicht mehr per Einzel-Ausreißer."""
         with self._lock:
             best = (None, None, 0.0)
             for slug, e in self._cache.items():
                 if len(e["files"]) == 0:
                     continue
-                score = float(np.max(e["emb"] @ embedding))
+                sims = e["emb"] @ embedding
+                k = min(self.top_k, len(sims))
+                score = float(np.sort(sims)[-k:].mean())
                 if score > best[2]:
                     best = (slug, e["name"], score)
             return best
+
+    # ---------- Ignore-Liste (Negativ-Anker) ----------
+
+    def match_ignored(self, embedding: np.ndarray) -> float:
+        """Höchste Ähnlichkeit zu einem ignorierten Gesicht (0.0 wenn Liste leer)."""
+        with self._lock:
+            if len(self._ign_ids) == 0:
+                return 0.0
+            return float(np.max(self._ign_emb @ embedding))
+
+    def ignore_unknown(self, uid: str) -> bool:
+        """Unknown in die Ignore-Liste verschieben: nie mehr melden/zuordnen/vorlegen."""
+        with self._lock:
+            jf = self.unknown_dir / f"{uid}.json"
+            img = self.unknown_dir / f"{uid}.jpg"
+            if not jf.exists() or not img.exists():
+                return False
+            meta = json.loads(jf.read_text())
+            iid = f"i{uid.lstrip('ui')}"
+            img.rename(self.ignored_dir / f"{iid}.jpg")
+            (self.ignored_dir / f"{iid}.json").write_text(json.dumps(
+                {k: v for k, v in meta.items() if k in ("camera", "ts", "embedding")},
+                ensure_ascii=False))
+            jf.unlink()
+            (self.unknown_dir / f"{uid}_full.jpg").unlink(missing_ok=True)
+            self._ign_emb = np.vstack([self._ign_emb, np.array(meta["embedding"], dtype=np.float32)[None, :]])
+            self._ign_ids.append(iid)
+            return True
+
+    def ignored(self):
+        out = []
+        for jf in sorted(self.ignored_dir.glob("*.json"), reverse=True):
+            try:
+                m = json.loads(jf.read_text())
+            except (json.JSONDecodeError, OSError):
+                continue
+            out.append({"id": jf.stem, "camera": m.get("camera", ""), "ts": m.get("ts", 0)})
+        return out
+
+    def restore_ignored(self, iid: str) -> bool:
+        """Ignoriertes Gesicht zurück in die Review-Queue."""
+        with self._lock:
+            jf = self.ignored_dir / f"{iid}.json"
+            img = self.ignored_dir / f"{iid}.jpg"
+            if not jf.exists() or not img.exists():
+                return False
+            meta = json.loads(jf.read_text())
+            uid = f"u{int(time.time() * 1000)}"
+            img.rename(self.unknown_dir / f"{uid}.jpg")
+            meta.update(ts=time.time(), event_id="", restored=True)
+            (self.unknown_dir / f"{uid}.json").write_text(json.dumps(meta, ensure_ascii=False))
+            jf.unlink()
+            self._drop_ignored(iid)
+            return True
+
+    def delete_ignored(self, iid: str):
+        with self._lock:
+            (self.ignored_dir / f"{iid}.json").unlink(missing_ok=True)
+            (self.ignored_dir / f"{iid}.jpg").unlink(missing_ok=True)
+            self._drop_ignored(iid)
+
+    def _drop_ignored(self, iid: str):
+        if iid in self._ign_ids:
+            idx = self._ign_ids.index(iid)
+            self._ign_ids.pop(idx)
+            self._ign_emb = np.delete(self._ign_emb, idx, axis=0)
 
     # ---------- Unbekannte ----------
 

@@ -3,6 +3,22 @@
 All notable changes to FaceID. The Home Assistant add-on shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.2.0 — 2026-07-22
+
+- **Ignore list**: the "ignore" action on unknown faces now keeps the face as a
+  negative anchor — an ignored person is never notified, never matched to a known
+  person and never resurfaces in the review queue. No more dummy persons for people
+  you simply don't want to track. Manage them in the new "Ignored" section
+  (restore to review or delete). "Discard" remains for garbage crops.
+- **Fairer matching**: person score is now the mean of the top-k (default 3) most
+  similar reference images instead of the single best one — a person with many
+  photos no longer wins borderline matches on a lucky outlier. Note: absolute
+  scores drop slightly; if known people start landing in review, lower
+  `match_threshold` a notch.
+- **Per-person photo cap** (default 40): adding more drops the most redundant
+  reference, keeping galleries balanced.
+- New config options: `match_top_k`, `max_faces_per_person`, `ignore_threshold`.
+
 ## 0.1.6 — 2026-07-22
 
 Initial public release.

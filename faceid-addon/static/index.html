@@ -133,10 +133,10 @@ async function startBackfill(){
   render();
 }
 async function renderUnknowns(){
-  const [clusters,bf]=await Promise.all([j('api/unknowns'),j('api/backfill')]);
+  const [clusters,bf,ignored]=await Promise.all([j('api/unknowns'),j('api/backfill'),j('api/ignored')]);
   if(bf.running&&tab==='unknowns')setTimeout(()=>{if(tab==='unknowns')render()},4000);
   if(!clusters.length){
-    main.innerHTML=backfillRow(bf)+'<div class="empty">No unknown faces in the queue.</div>';return}
+    main.innerHTML=backfillRow(bf)+'<div class="empty">No unknown faces in the queue.</div>'+ignoredSection(ignored);return}
   main.innerHTML=backfillRow(bf)+`<div class="row">
     <button class="act" onclick="autoAssign()">APPLY SUGGESTIONS ≥50%</button>
     <span class="stat">assigns every face whose best gallery match clears the recognition threshold</span>
@@ -150,6 +150,7 @@ async function renderUnknowns(){
         <select id="sel${i}"><option value="">— pick person —</option>${personOptions()}</select>
         <input id="new${i}" placeholder="…or new name" size="14">
         <button class="act" onclick="assignCluster(${i})">ASSIGN</button>
+        <button class="ghost" style="color:var(--warn);border-color:var(--warn)" onclick="ignoreCluster(${i})" title="never notify, match or resurface these faces">ignore</button>
         <button class="ghost" onclick="discardCluster(${i})">discard</button>
       </div>
       <div class="grid">${c.map(u=>`
@@ -159,8 +160,37 @@ async function renderUnknowns(){
           ${u.full_url?`<button class="z" title="full snapshot" onclick="event.stopPropagation();showFull('${u.full_url}','${esc(u.camera||'')} · ${fmtTs(u.ts)}')">⛶</button>`:''}
         </div>`).join('')}
       </div>
-    </div>`).join('');
+    </div>`).join('')+ignoredSection(ignored);
   window._clusters=clusters;
+}
+function ignoredSection(items){
+  if(!items.length)return'';
+  return `<h2>IGNORED (${items.length}) — never notified, matched or resurfaced</h2>
+    <div class="grid">${items.map(it=>`
+      <div class="tile">
+        <img src="data/ignored/${it.id}.jpg" loading="lazy">
+        <button class="u" title="back to review queue" onclick="restoreIgnored('${it.id}')">↩</button>
+        <button class="x" title="delete permanently" onclick="deleteIgnored('${it.id}')">×</button>
+      </div>`).join('')}
+    </div>`;
+}
+async function ignoreCluster(i){
+  const box=document.querySelector(`.cluster[data-i="${i}"]`);
+  const sel=[...box.querySelectorAll('.tile.sel')].map(t=>t.dataset.id);
+  const ids=sel.length?sel:window._clusters[i].map(u=>u.id);
+  const r=await j('api/unknowns/ignore',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ids,person:'-'})});
+  toast(`${r.ignored} face(s) ignored — they will not be matched or shown again`);render();
+}
+async function restoreIgnored(id){
+  await j('api/ignored/restore',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ids:[id],person:'-'})});
+  toast('Face moved back to the review queue');render();
+}
+async function deleteIgnored(id){
+  await j('api/ignored/delete',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ids:[id],person:'-'})});
+  render();
 }
 async function assignCluster(i){
   const person=$(`#new${i}`).value.trim()||$(`#sel${i}`).value;

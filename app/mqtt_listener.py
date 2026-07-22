@@ -38,6 +38,7 @@ class EventProcessor:
         self.cameras = set(f.get("cameras") or [])
         self.set_sub_label = bool(f.get("set_sub_label", True))
         self.presence_window = float(f.get("presence_window", 120))
+        self.ignore_thr = float(f.get("ignore_threshold", f.get("match_threshold", 0.5)))
         self.prefix = str(f.get("mqtt_prefix", "faceid")).strip("/") or "faceid"
         self.present: dict[str, dict[str, float]] = {}  # camera -> {person: zuletzt gesehen}
         self._last_presence: dict[str, list] = {}  # zuletzt publizierter Stand je Kamera
@@ -119,6 +120,13 @@ class EventProcessor:
             return
         emb = face.normed_embedding
         slug, name, score = self.gallery.match(emb)
+        ig = self.gallery.match_ignored(emb)
+        if ig >= self.ignore_thr and ig >= score:
+            # Gesicht steht auf der Ignore-Liste: nicht melden, nicht taggen, nicht vorlegen
+            st["best_unknown"] = None
+            st["done"] = True
+            log.info("Event %s (%s): ignoriertes Gesicht (sim %.3f)", eid, st["camera"], ig)
+            return
         crop = crop_face(img, face.bbox)
         log.info("Event %s (%s): Versuch %d, Match %s (%.3f)", eid, st["camera"], st["attempts"], name, score)
 

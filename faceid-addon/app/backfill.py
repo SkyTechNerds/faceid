@@ -36,7 +36,7 @@ def run_backfill(engine, gallery, frigate, frigate_url: str, days: int = 14,
         if len(batch) < 100:
             break
 
-    stats = {"events": len(events), "faces": 0, "no_face": 0, "dupe": 0, "known": 0}
+    stats = {"events": len(events), "faces": 0, "no_face": 0, "dupe": 0, "known": 0, "ignored": 0}
     for i, ev in enumerate(events):
         if progress:
             progress(i + 1, len(events))
@@ -50,6 +50,9 @@ def run_backfill(engine, gallery, frigate, frigate_url: str, days: int = 14,
             continue
         emb = face.normed_embedding
         slug, name, score = gallery.match(emb)
+        if gallery.match_ignored(emb) >= max(match_thr, score):
+            stats["ignored"] += 1
+            continue
         if slug and score >= match_thr:
             stats["known"] += 1  # schon eingelernte Person -> kein Review nötig
             if tag:

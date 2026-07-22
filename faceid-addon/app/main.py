@@ -22,7 +22,9 @@ def main():
     data_dir = BASE / "data"
     log.info("Lade InsightFace (buffalo_l) …")
     engine = FaceEngine(det_size=int(cfg["faceid"].get("det_size", 640)))
-    gallery = Gallery(data_dir)
+    gallery = Gallery(data_dir,
+                      top_k=int(cfg["faceid"].get("match_top_k", 3)),
+                      max_per_person=int(cfg["faceid"].get("max_faces_per_person", 40)))
     frigate = FrigateAPI(cfg["frigate"]["url"])
     processor = EventProcessor(cfg, engine, gallery, frigate)
     processor.start()
