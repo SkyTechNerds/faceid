@@ -61,7 +61,7 @@ The add-on is built locally on your machine (amd64/aarch64). See
 apt install python3-venv python3-dev build-essential libglib2.0-0 libgl1 libxcb1 libgomp1
 git clone https://github.com/SkyTechNerds/faceid /opt/faceid && cd /opt/faceid
 python3 -m venv venv && venv/bin/pip install -r requirements.txt
-cp config.example.yaml config.yaml   # then edit: Frigate URL, MQTT credentials, cameras
+cp docs/config.example.yaml config.yaml   # then edit: Frigate URL, MQTT credentials, cameras
 cp faceid.service /etc/systemd/system/ && systemctl daemon-reload
 systemctl enable --now faceid
 ```
@@ -114,7 +114,7 @@ for a phone-notification automation with the Frigate snapshot attached.
 
 ## Configuration reference
 
-See [config.example.yaml](config.example.yaml) — every option is commented. The two knobs
+See [docs/config.example.yaml](docs/config.example.yaml) — every option is commented. The two knobs
 that matter most:
 
 | Option | Meaning |
