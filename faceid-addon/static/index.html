@@ -71,10 +71,10 @@ td.p{color:var(--acc)} td.u{color:var(--warn)}
   <span class="stat" id="health">—</span>
 </header>
 <nav>
-  <button data-t="unknowns" class="on">UNKNOWN</button>
-  <button data-t="persons">PERSONS</button>
-  <button data-t="ignored">IGNORED</button>
-  <button data-t="recent">RECOGNITIONS</button>
+  <button data-t="unknowns" class="on" title="review queue: unrecognized faces, grouped by person">UNKNOWN</button>
+  <button data-t="persons" title="your gallery: enrolled people and their reference faces">PERSONS</button>
+  <button data-t="ignored" title="people you don't track: never notified, matched or resurfaced">IGNORED</button>
+  <button data-t="recent" title="latest recognitions since service start">RECOGNITIONS</button>
 </nav>
 <main id="main"></main>
 <div id="toast"></div>
@@ -116,12 +116,12 @@ function backfillRow(bf){
         : `last scan: ${bf.result.faces} new faces, ${bf.result.known} already known, ${bf.result.no_face} without a face`
       : 'pulls faces from past camera events into the review queue';
   return `<div class="row">
-    <select id="bfdays" ${bf.running?'disabled':''}>
+    <select id="bfdays" title="how far back to scan" ${bf.running?'disabled':''}>
       <option value="7">last 7 days</option>
       <option value="14" selected>last 14 days</option>
       <option value="28">last 28 days</option>
     </select>
-    <button class="act" onclick="startBackfill()" ${bf.running?'disabled':''}>
+    <button class="act" title="pull faces from past Frigate events into this queue; known people get tagged retroactively" onclick="startBackfill()" ${bf.running?'disabled':''}>
       ${bf.running?'SCANNING…':'SCAN CAMERA HISTORY'}</button>
     <span class="stat">${status}</span>
   </div>`;
@@ -140,7 +140,7 @@ async function renderUnknowns(){
   if(!clusters.length){
     main.innerHTML=backfillRow(bf)+'<div class="empty">No unknown faces in the queue.</div>';return}
   main.innerHTML=backfillRow(bf)+`<div class="row">
-    <button class="act" onclick="autoAssign()">APPLY SUGGESTIONS ≥50%</button>
+    <button class="act" title="assign every face whose best gallery match clears the recognition threshold" onclick="autoAssign()">APPLY SUGGESTIONS ≥50%</button>
     <span class="stat">assigns every face whose best gallery match clears the recognition threshold</span>
   </div>`+clusters.map((c,i)=>`
     <div class="cluster" data-i="${i}">
@@ -149,14 +149,14 @@ async function renderUnknowns(){
         <span class="stat">${c.length} capture${c.length>1?'s':''} · ${esc(c[0].camera||'')}</span>
         ${c[0].guess?`<span class="guess">looks like ${esc(c[0].guess)} (${(c[0].guess_score*100|0)}%)</span>`:''}
         <span style="flex:1"></span>
-        <select id="sel${i}"><option value="">— pick person —</option>${personOptions()}</select>
-        <input id="new${i}" placeholder="…or new name" size="14">
-        <button class="act" onclick="assignCluster(${i})">ASSIGN</button>
+        <select id="sel${i}" title="assign to an existing person"><option value="">— pick person —</option>${personOptions()}</select>
+        <input id="new${i}" placeholder="…or new name" size="14" title="or create a new person with this name">
+        <button class="act" title="assign selected tiles (or the whole cluster) to the chosen person" onclick="assignCluster(${i})">ASSIGN</button>
         <button class="ghost" style="color:var(--warn);border-color:var(--warn)" onclick="ignoreCluster(${i})" title="never notify, match or resurface these faces">ignore</button>
-        <button class="ghost" onclick="discardCluster(${i})">discard</button>
+        <button class="ghost" title="delete garbage crops permanently — does NOT stop future matching; use ignore for people" onclick="discardCluster(${i})">discard</button>
       </div>
       <div class="grid">${c.map(u=>`
-        <div class="tile" data-id="${u.id}" onclick="this.classList.toggle('sel')">
+        <div class="tile" data-id="${u.id}" title="click to select — actions then apply to the selection only" onclick="this.classList.toggle('sel')">
           <img src="data/unknowns/${u.id}.jpg" loading="lazy">
           <span class="score">${fmtTs(u.ts)}</span>
           ${u.full_url?`<button class="z" title="full snapshot" onclick="event.stopPropagation();showFull('${u.full_url}','${esc(u.camera||'')} · ${fmtTs(u.ts)}','data/unknowns/${u.id}.jpg')">⛶</button>`:''}
@@ -176,17 +176,17 @@ async function renderIgnored(){
         <b>IGNORED ${String(i+1).padStart(2,'0')}</b>
         <span class="stat">${c.length} anchor${c.length>1?'s':''}${c.filter(x=>x.auto).length?` · ${c.filter(x=>x.auto).length} auto-learned`:''}${c[0].from_person?` · was "${esc(c[0].from_person)}"`:''}</span>
         <span style="flex:1"></span>
-        <select id="igmv${i}">
+        <select id="igmv${i}" title="declare this group (or selected tiles) the same person as another group">
           <option value="">— merge into —</option>
           ${clusters.map((o,k)=>k===i?'':`<option value="${o[0].group}">group ${String(k+1).padStart(2,'0')}${o[0].from_person?` (${esc(o[0].from_person)})`:''}</option>`).join('')}
         </select>
-        <select id="igas${i}"><option value="">— assign to person —</option>${personOptions()}</select>
-        <button class="act" onclick="applyIgnored(${i})">APPLY</button>
+        <select id="igas${i}" title="wrongly ignored? move faces to a real person as reference images"><option value="">— assign to person —</option>${personOptions()}</select>
+        <button class="act" title="apply the chosen merge or person assignment to selected tiles (or the whole group)" onclick="applyIgnored(${i})">APPLY</button>
         <button class="ghost" onclick="restoreIgnoredMany(${i})" title="move back to the review queue">↩</button>
-        <button class="ghost" onclick="deleteIgnoredMany(${i})">delete</button>
+        <button class="ghost" title="delete selected/all anchors permanently — this person may resurface as unknown" onclick="deleteIgnoredMany(${i})">delete</button>
       </div>
       <div class="grid">${c.map(it=>`
-        <div class="tile" data-id="${it.id}" onclick="this.classList.toggle('sel')">
+        <div class="tile" data-id="${it.id}" title="click to select — group actions then apply to the selection only" onclick="this.classList.toggle('sel')">
           <img src="data/ignored/${it.id}.jpg" loading="lazy">
           <span class="score">${it.auto?'auto · ':''}${fmtTs(it.ts)}</span>
           <button class="u" title="back to review queue" onclick="event.stopPropagation();restoreIgnored('${it.id}')">↩</button>
@@ -280,7 +280,7 @@ async function renderPersons(){
   const entries=Object.entries(persons);
   main.innerHTML=`
     <div class="row">
-      <input id="pname" placeholder="New person…" size="18">
+      <input id="pname" placeholder="New person…" size="18" title="create an empty person, then upload photos or assign faces from the unknown queue">
       <button class="act" onclick="createPerson()">CREATE</button>
     </div>`+
     (entries.length?entries.map(([slug,p])=>`
@@ -288,11 +288,11 @@ async function renderPersons(){
       <div class="head">
         <b>${esc(p.name)}</b><span class="n">${p.count} faces</span>
         <span style="flex:1"></span>
-        <label class="ghost" style="cursor:pointer">Upload photos
+        <label class="ghost" style="cursor:pointer" title="enroll photos (e.g. from your photo library) — faces are extracted automatically">Upload photos
           <input type="file" multiple accept="image/*" style="display:none" onchange="upload('${slug}',this)">
         </label>
         <button class="ghost" style="color:var(--warn);border-color:var(--warn)" title="stop tracking: never notify, match or resurface this person" onclick="ignorePerson('${slug}','${esc(p.name)}')">ignore person</button>
-        <button class="ghost" onclick="delPerson('${slug}','${esc(p.name)}')">delete</button>
+        <button class="ghost" title="delete this person and all their reference faces permanently" onclick="delPerson('${slug}','${esc(p.name)}')">delete</button>
       </div>
       <div class="grid">${p.files.map(f=>`
         <div class="tile"><img src="data/persons/${slug}/${f}" loading="lazy" style="cursor:zoom-in"

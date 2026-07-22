@@ -3,6 +3,12 @@
 All notable changes to FaceID. The Home Assistant add-on shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.2.6 — 2026-07-22
+
+- Tooltips on every button, icon and control — tab navigation, cluster actions,
+  ignore-group curation, backfill and person management all explain themselves
+  on hover now.
+
 ## 0.2.5 — 2026-07-22
 
 - **Curatable ignore groups**: anchors now carry a persistent group (existing anchors
