@@ -11,9 +11,9 @@ mqtt:
   password: "mqtt-password"
 
 faceid:
-  port: 8600
+  port: 8600                           # web UI / API port
   # MQTT topic prefix + client id — change only when running multiple instances
-  mqtt_prefix: faceid                           # web UI / API port
+  mqtt_prefix: faceid
   # Cosine-similarity thresholds (ArcFace embeddings):
   #   >= match_threshold  -> recognized (published + Frigate sub_label)
   #   <  unknown_threshold -> definitely a stranger
