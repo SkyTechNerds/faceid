@@ -5,9 +5,12 @@ on top of [Frigate](https://frigate.video). It uses the same model family as Imm
 CompreFace (**InsightFace `buffalo_l`**: SCRFD detection + ArcFace embeddings) and was
 built because Frigate's built-in face recognition UX didn't cut it:
 
-- **No train-tab treadmill.** Faces are matched by embedding similarity — every image you
-  assign is a permanent reference point. No retraining, no overfitting, no queue that
-  fills up with already-known faces.
+- **No train-tab treadmill.** Matching is nearest-neighbor over face embeddings — every
+  image you assign is a visible reference point, with no training cycles and no queue
+  that refills with already-known faces. To be clear: this is not immune to bad data —
+  an imbalanced or mislabeled gallery still degrades matching (a person with many
+  reference images wins borderline matches more often). The difference is that the
+  failure mode is an image you can see and delete, not an opaque model update.
 - **Strangers are first-class.** Unknown faces are collected, **auto-clustered** (DBSCAN,
   the same trick photo apps use) and reviewed in a web UI: one click assigns a whole
   cluster to a person — or creates "Mailman" as its own person so he stops being matched
