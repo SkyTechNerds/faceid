@@ -5,5 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 rm -rf faceid-addon/app faceid-addon/static
-cp -r app static requirements.txt faceid-addon/
-echo "faceid-addon/ synced. Remember to bump 'version' in faceid-addon/config.yaml."
+cp -r app static requirements.txt CHANGELOG.md faceid-addon/
+echo "faceid-addon/ synced (incl. CHANGELOG.md)."
+echo "Release checklist: bump version in faceid-addon/config.yaml, add a CHANGELOG entry,"
+echo "commit, push, then: gh release create v<version> --title v<version> --notes-file <(latest changelog section)"

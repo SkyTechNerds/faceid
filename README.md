@@ -151,6 +151,16 @@ For automations, trigger on the `faceid/event` topic — one JSON message per
 (Frigate event, person): see [docs/ha-automation-example.yaml](docs/ha-automation-example.yaml)
 for a phone-notification automation with the Frigate snapshot attached.
 
+## Updates
+
+- **Add-on:** Home Assistant notifies you automatically when a new version is available
+  (Settings → Add-ons → FaceID → Update). The changelog is shown right in the update
+  dialog.
+- **Standalone:** `cd /opt/faceid && git pull && systemctl restart faceid`. Watch the
+  GitHub releases to get notified.
+
+See [CHANGELOG.md](CHANGELOG.md) for the full history.
+
 ## Security & privacy notes
 
 - The web UI supports optional **HTTP Basic Auth** (`faceid.auth` in config.yaml) —
