@@ -166,17 +166,42 @@ async function renderUnknowns(){
   window._clusters=clusters;
 }
 async function renderIgnored(){
-  const items=await j('api/ignored');
-  if(!items.length){main.innerHTML='<div class="empty">Nobody on the ignore list. Use "ignore" on an unknown cluster or "ignore person" on a person card — ignored people are never notified, matched or resurfaced.</div>';return}
-  main.innerHTML=`<div class="row"><span class="stat">${items.length} ignored — never notified, never matched to a known person, never resurfaced. ↩ moves a face back to the review queue.</span></div>
-    <div class="grid">${items.map(it=>`
-      <div class="tile">
-        <img src="data/ignored/${it.id}.jpg" loading="lazy">
-        <span class="score">${it.auto?'auto · ':''}${fmtTs(it.ts)}</span>
-        <button class="u" title="back to review queue" onclick="restoreIgnored('${it.id}')">↩</button>
-        <button class="x" title="delete permanently" onclick="deleteIgnored('${it.id}')">×</button>
-      </div>`).join('')}
-    </div>`;
+  const clusters=await j('api/ignored');
+  if(!clusters.length){main.innerHTML='<div class="empty">Nobody on the ignore list. Use "ignore" on an unknown cluster or "ignore person" on a person card — ignored people are never notified, matched or resurfaced.</div>';return}
+  const total=clusters.reduce((a,c)=>a+c.length,0);
+  main.innerHTML=`<div class="row"><span class="stat">${total} anchor face(s) in ${clusters.length} group(s) — never notified, never matched to a known person, never resurfaced.</span></div>`
+    +clusters.map((c,i)=>`
+    <div class="cluster">
+      <div class="head">
+        <b>IGNORED ${String(i+1).padStart(2,'0')}</b>
+        <span class="stat">${c.length} anchor${c.length>1?'s':''}${c.filter(x=>x.auto).length?` · ${c.filter(x=>x.auto).length} auto-learned`:''}${c[0].from_person?` · was "${esc(c[0].from_person)}"`:''}</span>
+        <span style="flex:1"></span>
+        <button class="ghost" onclick="restoreIgnoredMany(${i})" title="move this whole group back to the review queue">↩ restore group</button>
+        <button class="ghost" onclick="deleteIgnoredMany(${i})">delete group</button>
+      </div>
+      <div class="grid">${c.map(it=>`
+        <div class="tile">
+          <img src="data/ignored/${it.id}.jpg" loading="lazy">
+          <span class="score">${it.auto?'auto · ':''}${fmtTs(it.ts)}</span>
+          <button class="u" title="back to review queue" onclick="restoreIgnored('${it.id}')">↩</button>
+          <button class="x" title="delete permanently" onclick="deleteIgnored('${it.id}')">×</button>
+        </div>`).join('')}
+      </div>
+    </div>`).join('');
+  window._ignClusters=clusters;
+}
+async function restoreIgnoredMany(i){
+  const ids=window._ignClusters[i].map(it=>it.id);
+  await j('api/ignored/restore',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ids,person:'-'})});
+  toast(`${ids.length} face(s) moved back to the review queue`);render();
+}
+async function deleteIgnoredMany(i){
+  const ids=window._ignClusters[i].map(it=>it.id);
+  if(!confirm(`Permanently delete ${ids.length} ignore anchor(s)? This person may resurface as unknown.`))return;
+  await j('api/ignored/delete',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ids,person:'-'})});
+  render();
 }
 async function ignoreCluster(i){
   const box=document.querySelector(`.cluster[data-i="${i}"]`);

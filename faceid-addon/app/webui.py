@@ -163,7 +163,7 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
 
     @app.get("/api/ignored")
     def list_ignored():
-        return gallery.ignored()
+        return JSONResponse(gallery.ignored_clusters(eps=float(cfg["faceid"].get("cluster_eps", 0.45))))
 
     @app.post("/api/ignored/restore")
     def restore_ignored(body: AssignBody):

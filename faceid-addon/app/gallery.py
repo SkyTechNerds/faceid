@@ -250,6 +250,29 @@ class Gallery:
                         "auto": bool(m.get("auto"))})
         return out
 
+    def ignored_clusters(self, eps: float = 0.45):
+        """Ignore-Anker per DBSCAN nach mutmaßlicher Identität gruppieren (nur Anzeige —
+        das Matching selbst ist identitäts-agnostisch)."""
+        items = []
+        for jf in sorted(self.ignored_dir.glob("*.json"), reverse=True):
+            try:
+                m = json.loads(jf.read_text())
+            except (json.JSONDecodeError, OSError):
+                continue
+            items.append({"id": jf.stem, "ts": m.get("ts", 0), "auto": bool(m.get("auto")),
+                          "from_person": m.get("from_person", ""),
+                          "embedding": np.array(m["embedding"], dtype=np.float32)})
+        if not items:
+            return []
+        from sklearn.cluster import DBSCAN
+        X = np.stack([it["embedding"] for it in items])
+        labels = DBSCAN(eps=eps, min_samples=1, metric="cosine").fit(X).labels_
+        clusters = {}
+        for it, lb in zip(items, labels):
+            it.pop("embedding")
+            clusters.setdefault(int(lb), []).append(it)
+        return sorted(clusters.values(), key=len, reverse=True)
+
     def restore_ignored(self, iid: str) -> bool:
         """Ignoriertes Gesicht zurück in die Review-Queue."""
         with self._lock:

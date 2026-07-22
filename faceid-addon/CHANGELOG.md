@@ -3,6 +3,12 @@
 All notable changes to FaceID. The Home Assistant add-on shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.2.4 — 2026-07-22
+
+- **Ignored tab groups anchors by person** (same clustering as the unknown queue),
+  with per-group actions: restore a whole group to review or delete it. Groups show
+  auto-learned counts and the original person name for "ignore person" entries.
+
 ## 0.2.3 — 2026-07-22
 
 - **Ignore anchors now learn**: when an ignored person reappears with a changed look,
