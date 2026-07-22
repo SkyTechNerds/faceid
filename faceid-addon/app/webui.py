@@ -79,20 +79,20 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     async def upload_photos(slug: str, files: list[UploadFile]):
         """Fotos (z. B. aus der Foto-Library) hochladen: Gesicht extrahieren + einlernen."""
         if slug not in gallery.persons():
-            raise HTTPException(404, "Person unbekannt")
+            raise HTTPException(404, "Unknown person")
         added, skipped = 0, []
         for uf in files:
             raw = await uf.read()
             img = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
             if img is None:
-                skipped.append(f"{uf.filename}: kein Bild")
+                skipped.append(f"{uf.filename}: not an image")
                 continue
             if max(img.shape[:2]) > 2000:  # Foto-Library-Bilder einkürzen, Detection reicht so
                 s = 2000 / max(img.shape[:2])
                 img = cv2.resize(img, None, fx=s, fy=s)
             face = FaceEngine.best_face(engine.faces(img), min_px=60)
             if face is None:
-                skipped.append(f"{uf.filename}: kein Gesicht gefunden")
+                skipped.append(f"{uf.filename}: no face found")
                 continue
             gallery.add_face(slug, crop_face(img, face.bbox), face.normed_embedding)
             added += 1
@@ -161,7 +161,7 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     @app.post("/api/backfill")
     def start_backfill(body: BackfillBody):
         if backfill_state["running"]:
-            raise HTTPException(409, "Verlaufs-Scan läuft bereits")
+            raise HTTPException(409, "History scan already running")
         days = max(1, min(int(body.days), 60))
         backfill_state.update(running=True, processed=0, total=0, result=None, days=days)
 

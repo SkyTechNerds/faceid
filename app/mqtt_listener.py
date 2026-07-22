@@ -159,7 +159,7 @@ class EventProcessor:
                          "guess": u["guess"], "guess_score": round(u["guess_score"], 3)},
                         full_bgr=u.get("full"),
                     )
-                    self._publish_recognition(eid, st, "unbekannt", u["guess_score"])
+                    self._publish_recognition(eid, st, "unknown", u["guess_score"])
                     log.info("Event %s: unbekanntes Gesicht abgelegt (%s)", eid, uid)
                 self.events.pop(eid, None)
 
@@ -194,7 +194,7 @@ class EventProcessor:
             attrs = {"persons": names, "window_s": self.presence_window, "ts": now}
             if last:
                 attrs["last"] = last
-            self.client.publish(f"{self.prefix}/{cam}/person", ", ".join(names) or "niemand", retain=True)
+            self.client.publish(f"{self.prefix}/{cam}/person", ", ".join(names) or "nobody", retain=True)
             self.client.publish(f"{self.prefix}/{cam}/attributes", json.dumps(attrs, ensure_ascii=False), retain=True)
 
     def _publish_discovery(self):
