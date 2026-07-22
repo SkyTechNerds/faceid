@@ -1,0 +1,51 @@
+name: FaceID
+version: "0.1.0"
+slug: faceid
+description: Face recognition for Frigate — trainable gallery, clustered unknown review, HA sensors
+url: https://github.com/SkyTechNerds/faceid
+arch:
+  - amd64
+  - aarch64
+startup: application
+boot: auto
+init: false
+ingress: true
+ingress_port: 8600
+panel_icon: mdi:face-recognition
+panel_title: FaceID
+ports:
+  8600/tcp: null
+ports_description:
+  8600/tcp: Web UI without ingress (optional)
+services:
+  - mqtt:want
+options:
+  mqtt_prefix: faceid
+  frigate_url: http://192.168.1.10:5000
+  mqtt_host: ""
+  mqtt_port: 1883
+  mqtt_user: ""
+  mqtt_password: ""
+  match_threshold: 0.5
+  unknown_threshold: 0.35
+  cluster_eps: 0.55
+  presence_window: 120
+  set_sub_label: true
+  cameras: []
+  discovery_cameras: []
+schema:
+  mqtt_prefix: str
+  frigate_url: url
+  mqtt_host: str?
+  mqtt_port: port
+  mqtt_user: str?
+  mqtt_password: password?
+  match_threshold: float(0.2,0.9)
+  unknown_threshold: float(0.1,0.8)
+  cluster_eps: float(0.3,0.8)
+  presence_window: int(10,3600)
+  set_sub_label: bool
+  cameras:
+    - str
+  discovery_cameras:
+    - str

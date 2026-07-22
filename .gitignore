@@ -1,5 +1,5 @@
 # local configuration (contains MQTT credentials)
-config.yaml
+/config.yaml
 
 # runtime data: face gallery, unknown queue
 data/
