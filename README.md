@@ -41,8 +41,10 @@ downloaded once on first start).
 
 - Frigate 0.16+ (snapshot + sub_label APIs), reachable over HTTP
 - An MQTT broker (the one Frigate already uses is fine)
-- Python 3.10+ on a CPU with AVX (the ~600 MB RAM footprint and ~0.5–1 s per face on a
-  modern CPU are fine for event-driven recognition; no GPU needed)
+- A CPU with AVX (any Intel/AMD from the last decade; ~1.5 GB RAM; no GPU needed).
+  **Running HAOS/your host in a VM?** The default virtual CPU model (e.g. Proxmox `kvm64`)
+  hides AVX — set the VM CPU type to `host` and cold-restart the VM, or the recognition
+  runtime will refuse to start.
 
 ## Install as Home Assistant add-on (recommended for HAOS)
 

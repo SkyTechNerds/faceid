@@ -3,6 +3,13 @@ set -e
 
 # Optionen direkt aus /data/options.json lesen — robust gegenüber
 # bashio/Supervisor-API-Versionsunterschieden.
+# onnxruntime/NumPy brauchen mind. x86-64-v2 — in VMs oft vom CPU-Modell maskiert
+if [ "$(uname -m)" = "x86_64" ] && ! grep -qm1 avx /proc/cpuinfo; then
+    bashio::log.fatal "This CPU (or VM CPU model) lacks AVX, required by the recognition runtime."
+    bashio::log.fatal "Running HAOS in a VM? Set the CPU type to 'host' (Proxmox: qm set <vmid> --cpu host, then cold-restart the VM)."
+    exit 1
+fi
+
 OPT=/data/options.json
 cfg() { jq -r "$1 // empty" "${OPT}"; }
 
