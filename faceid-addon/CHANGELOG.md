@@ -3,6 +3,11 @@
 All notable changes to FaceID. The Home Assistant add-on shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.2.7 — 2026-07-22
+
+- Release an ignored group directly into a **new** person: the Ignored tab got the
+  same "…or new name" field the unknown queue has.
+
 ## 0.2.6 — 2026-07-22
 
 - Tooltips on every button, icon and control — tab navigation, cluster actions,

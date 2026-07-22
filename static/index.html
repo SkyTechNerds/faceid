@@ -181,6 +181,7 @@ async function renderIgnored(){
           ${clusters.map((o,k)=>k===i?'':`<option value="${o[0].group}">group ${String(k+1).padStart(2,'0')}${o[0].from_person?` (${esc(o[0].from_person)})`:''}</option>`).join('')}
         </select>
         <select id="igas${i}" title="wrongly ignored? move faces to a real person as reference images"><option value="">— assign to person —</option>${personOptions()}</select>
+        <input id="igan${i}" placeholder="…or new name" size="12" title="or release this group as a brand-new person">
         <button class="act" title="apply the chosen merge or person assignment to selected tiles (or the whole group)" onclick="applyIgnored(${i})">APPLY</button>
         <button class="ghost" onclick="restoreIgnoredMany(${i})" title="move back to the review queue">↩</button>
         <button class="ghost" title="delete selected/all anchors permanently — this person may resurface as unknown" onclick="deleteIgnoredMany(${i})">delete</button>
@@ -202,7 +203,7 @@ function ignSelection(i){
   return sel.length?sel:window._ignClusters[i].map(it=>it.id);
 }
 async function applyIgnored(i){
-  const grp=$(`#igmv${i}`).value, person=$(`#igas${i}`).value, ids=ignSelection(i);
+  const grp=$(`#igmv${i}`).value, person=$(`#igan${i}`).value.trim()||$(`#igas${i}`).value, ids=ignSelection(i);
   if(grp&&person)return toast('Pick either a group or a person, not both');
   if(!grp&&!person)return toast('Pick a target group or person first');
   if(grp){
