@@ -73,11 +73,10 @@ Open `http://<host>:8600`. First start downloads the model pack (~300 MB) — wa
 
 ## Getting started
 
-1. **Backfill your history** (optional but recommended): extracts faces from past Frigate
-   events into the review queue, pre-clustered per person:
-   ```bash
-   venv/bin/python -m app.backfill --days 14
-   ```
+1. **Scan your camera history** (optional but recommended): in the Unknown tab, click
+   **"Scan camera history"** — faces from past Frigate events land in the review queue,
+   pre-clustered per person, and already-known people are tagged in Frigate retroactively.
+   (CLI alternative: `venv/bin/python -m app.backfill --days 14`)
 2. **Assign clusters** in the UI (Unknown tab): pick a name per cluster — select individual
    tiles first if a cluster contains a stray face. The ⛶ button shows the full snapshot
    for context.

@@ -3,6 +3,7 @@ import base64
 import json
 import logging
 import secrets
+import threading
 from pathlib import Path
 
 import cv2
@@ -151,6 +152,43 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         for uid in body.ids:
             gallery.discard_unknown(uid)
         return {"ok": True}
+
+    backfill_state = {"running": False, "processed": 0, "total": 0, "result": None, "days": 0}
+
+    class BackfillBody(BaseModel):
+        days: int = 14
+
+    @app.post("/api/backfill")
+    def start_backfill(body: BackfillBody):
+        if backfill_state["running"]:
+            raise HTTPException(409, "Verlaufs-Scan läuft bereits")
+        days = max(1, min(int(body.days), 60))
+        backfill_state.update(running=True, processed=0, total=0, result=None, days=days)
+
+        def progress(i, total):
+            backfill_state.update(processed=i, total=total)
+
+        def worker():
+            from .backfill import run_backfill
+            try:
+                stats = run_backfill(
+                    engine, gallery, processor.frigate, cfg["frigate"]["url"], days=days,
+                    tag=bool(cfg["faceid"].get("set_sub_label", True)),
+                    match_thr=float(cfg["faceid"].get("match_threshold", 0.5)),
+                    progress=progress)
+                backfill_state["result"] = stats
+            except Exception as e:
+                log.exception("Verlaufs-Scan fehlgeschlagen")
+                backfill_state["result"] = {"error": str(e)}
+            finally:
+                backfill_state["running"] = False
+
+        threading.Thread(target=worker, daemon=True, name="faceid-backfill").start()
+        return {"started": True, "days": days}
+
+    @app.get("/api/backfill")
+    def backfill_status():
+        return backfill_state
 
     @app.get("/api/recent")
     def recent():

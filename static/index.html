@@ -105,10 +105,39 @@ async function render(){
   return renderRecent();
 }
 
+function backfillRow(bf){
+  const status = bf.running
+    ? `durchsuche Verlauf… ${bf.processed}/${bf.total||'?'} Events`
+    : bf.result
+      ? bf.result.error
+        ? `Scan fehlgeschlagen: ${esc(bf.result.error)}`
+        : `letzter Scan: ${bf.result.faces} neue Gesichter, ${bf.result.known} bereits bekannt, ${bf.result.no_face} ohne Gesicht`
+      : 'holt Gesichter aus vergangenen Kamera-Aufnahmen in die Sichtung';
+  return `<div class="row">
+    <select id="bfdays" ${bf.running?'disabled':''}>
+      <option value="7">letzte 7 Tage</option>
+      <option value="14" selected>letzte 14 Tage</option>
+      <option value="28">letzte 28 Tage</option>
+    </select>
+    <button class="act" onclick="startBackfill()" ${bf.running?'disabled':''}>
+      ${bf.running?'SCAN LÄUFT…':'KAMERA-VERLAUF DURCHSUCHEN'}</button>
+    <span class="stat">${status}</span>
+  </div>`;
+}
+async function startBackfill(){
+  try{
+    await j('api/backfill',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({days:+$('#bfdays').value})});
+    toast('Verlaufs-Scan gestartet');
+  }catch(e){toast('Scan läuft bereits')}
+  render();
+}
 async function renderUnknowns(){
-  const clusters=await j('api/unknowns');
-  if(!clusters.length){main.innerHTML='<div class="empty">Keine unbekannten Gesichter in der Queue.</div>';return}
-  main.innerHTML=`<div class="row">
+  const [clusters,bf]=await Promise.all([j('api/unknowns'),j('api/backfill')]);
+  if(bf.running&&tab==='unknowns')setTimeout(()=>{if(tab==='unknowns')render()},4000);
+  if(!clusters.length){
+    main.innerHTML=backfillRow(bf)+'<div class="empty">Keine unbekannten Gesichter in der Queue.</div>';return}
+  main.innerHTML=backfillRow(bf)+`<div class="row">
     <button class="act" onclick="autoAssign()">VORSCHLÄGE ÜBERNEHMEN ≥50%</button>
     <span class="stat">ordnet alle Gesichter zu, deren bester Galerie-Match über der Erkennungsschwelle liegt</span>
   </div>`+clusters.map((c,i)=>`
