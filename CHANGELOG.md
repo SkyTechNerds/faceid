@@ -3,6 +3,14 @@
 All notable changes to FaceID. The Home Assistant add-on shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.2.5 — 2026-07-22
+
+- **Curatable ignore groups**: anchors now carry a persistent group (existing anchors
+  are migrated automatically). You can merge groups, move selected anchors between
+  groups, and assign wrongly ignored faces directly to a real person — auto-learned
+  anchors join the group of their best-matching anchor, so groups converge on real
+  identities over time. Select tiles for partial actions, or apply to a whole group.
+
 ## 0.2.4 — 2026-07-22
 
 - **Ignored tab groups anchors by person** (same clustering as the unknown queue),

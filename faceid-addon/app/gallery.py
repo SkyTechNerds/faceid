@@ -35,6 +35,7 @@ class Gallery:
         self._cache = {}  # slug -> {"name":..., "emb": np.ndarray, "files": [...]}
         self._ign_emb = np.zeros((0, 512), dtype=np.float32)
         self._ign_ids: list[str] = []
+        self._ign_groups: list[str] = []
         self.reload()
 
     # ---------- Laden / Speichern ----------
@@ -56,7 +57,7 @@ class Gallery:
                     "emb": emb,
                     "files": meta.get("files", []),
                 }
-            embs, ids = [], []
+            embs, ids, groups = [], [], []
             for jf in sorted(self.ignored_dir.glob("*.json")):
                 try:
                     m = json.loads(jf.read_text())
@@ -64,8 +65,19 @@ class Gallery:
                     continue
                 embs.append(m["embedding"])
                 ids.append(jf.stem)
+                groups.append(m.get("group"))
             self._ign_emb = np.array(embs, dtype=np.float32) if embs else np.zeros((0, 512), dtype=np.float32)
             self._ign_ids = ids
+            # Migration: Anker ohne Gruppe greedy zuordnen (ähnlich -> selbe Gruppe)
+            for i, grp in enumerate(groups):
+                if grp:
+                    continue
+                sims = self._ign_emb @ self._ign_emb[i]
+                cand = [(float(sims[j]), groups[j]) for j in range(len(ids)) if j != i and groups[j]]
+                best = max(cand, default=(0.0, None))
+                groups[i] = best[1] if best[0] >= 0.5 else f"g{ids[i]}"
+                self._rewrite_ignored_meta(ids[i], {"group": groups[i]})
+            self._ign_groups = groups
 
     def _persist(self, slug: str):
         pdir = self.persons_dir / slug
@@ -174,6 +186,43 @@ class Gallery:
 
     # ---------- Ignore-Liste (Negativ-Anker) ----------
 
+    def _rewrite_ignored_meta(self, iid: str, updates: dict):
+        jf = self.ignored_dir / f"{iid}.json"
+        try:
+            m = json.loads(jf.read_text())
+        except (json.JSONDecodeError, OSError):
+            return
+        m.update(updates)
+        jf.write_text(json.dumps(m, ensure_ascii=False))
+
+    def set_ignored_group(self, ids: list, group: str) -> int:
+        """Anker in eine andere Gruppe verschieben / Gruppen zusammenlegen."""
+        with self._lock:
+            n = 0
+            for iid in ids:
+                if iid in self._ign_ids:
+                    self._ign_groups[self._ign_ids.index(iid)] = group
+                    self._rewrite_ignored_meta(iid, {"group": group})
+                    n += 1
+            return n
+
+    def assign_ignored(self, ids: list, slug: str) -> int:
+        """Anker als Referenzbilder einer echten Person übernehmen (z. B. falsch Ignorierte)."""
+        n = 0
+        for iid in ids:
+            jf = self.ignored_dir / f"{iid}.json"
+            img_f = self.ignored_dir / f"{iid}.jpg"
+            if not jf.exists() or not img_f.exists():
+                continue
+            meta = json.loads(jf.read_text())
+            crop = cv2.imread(str(img_f))
+            if crop is None:
+                continue
+            self.add_face(slug, crop, np.array(meta["embedding"], dtype=np.float32))
+            self.delete_ignored(iid)
+            n += 1
+        return n
+
     def match_ignored(self, embedding: np.ndarray) -> float:
         """Höchste Ähnlichkeit zu einem ignorierten Gesicht (0.0 wenn Liste leer)."""
         with self._lock:
@@ -181,7 +230,7 @@ class Gallery:
                 return 0.0
             return float(np.max(self._ign_emb @ embedding))
 
-    def ignore_unknown(self, uid: str) -> bool:
+    def ignore_unknown(self, uid: str, group: str | None = None) -> bool:
         """Unknown in die Ignore-Liste verschieben: nie mehr melden/zuordnen/vorlegen."""
         with self._lock:
             jf = self.unknown_dir / f"{uid}.json"
@@ -191,13 +240,15 @@ class Gallery:
             meta = json.loads(jf.read_text())
             iid = f"i{uid.lstrip('ui')}"
             img.rename(self.ignored_dir / f"{iid}.jpg")
-            (self.ignored_dir / f"{iid}.json").write_text(json.dumps(
-                {k: v for k, v in meta.items() if k in ("camera", "ts", "embedding")},
-                ensure_ascii=False))
+            grp = group or f"g{iid}"
+            payload = {k: v for k, v in meta.items() if k in ("camera", "ts", "embedding")}
+            payload["group"] = grp
+            (self.ignored_dir / f"{iid}.json").write_text(json.dumps(payload, ensure_ascii=False))
             jf.unlink()
             (self.unknown_dir / f"{uid}_full.jpg").unlink(missing_ok=True)
             self._ign_emb = np.vstack([self._ign_emb, np.array(meta["embedding"], dtype=np.float32)[None, :]])
             self._ign_ids.append(iid)
+            self._ign_groups.append(grp)
             return True
 
     def ignore_person(self, slug: str) -> int:
@@ -207,6 +258,7 @@ class Gallery:
             if entry is None:
                 return 0
             n = 0
+            grp = f"g{int(time.time() * 1000)}"
             for fname, emb in zip(list(entry["files"]), entry["emb"]):
                 iid = f"i{int(time.time() * 1000)}_{n}"
                 src = self.persons_dir / slug / fname
@@ -214,10 +266,11 @@ class Gallery:
                     continue
                 src.rename(self.ignored_dir / f"{iid}.jpg")
                 (self.ignored_dir / f"{iid}.json").write_text(json.dumps(
-                    {"camera": "", "ts": time.time(), "from_person": entry["name"],
+                    {"camera": "", "ts": time.time(), "from_person": entry["name"], "group": grp,
                      "embedding": [round(float(v), 6) for v in emb]}, ensure_ascii=False))
                 self._ign_emb = np.vstack([self._ign_emb, np.array(emb, dtype=np.float32)[None, :]])
                 self._ign_ids.append(iid)
+                self._ign_groups.append(grp)
                 n += 1
             for f in (self.persons_dir / slug).iterdir():
                 f.unlink()
@@ -228,15 +281,20 @@ class Gallery:
         """Bestätigten Ignore-Match als zusätzlichen Anker lernen — aber nur, wenn er eine
         neue Erscheinungsform abdeckt (nicht fast identisch zu einem bestehenden Anker)."""
         with self._lock:
-            if len(self._ign_ids) and float(np.max(self._ign_emb @ embedding)) >= novelty_max:
+            if len(self._ign_ids) == 0:
                 return None
+            sims = self._ign_emb @ embedding
+            if float(np.max(sims)) >= novelty_max:
+                return None
+            grp = self._ign_groups[int(np.argmax(sims))]  # lernt in die Gruppe des besten Ankers
             iid = f"i{int(time.time() * 1000)}_{len(self._ign_ids)}"
             cv2.imwrite(str(self.ignored_dir / f"{iid}.jpg"), crop_bgr, [cv2.IMWRITE_JPEG_QUALITY, 92])
             (self.ignored_dir / f"{iid}.json").write_text(json.dumps(
-                {"camera": "", "ts": time.time(), "auto": True,
+                {"camera": "", "ts": time.time(), "auto": True, "group": grp,
                  "embedding": [round(float(v), 6) for v in embedding]}, ensure_ascii=False))
             self._ign_emb = np.vstack([self._ign_emb, embedding.astype(np.float32)[None, :]])
             self._ign_ids.append(iid)
+            self._ign_groups.append(grp)
             return iid
 
     def ignored(self):
@@ -251,26 +309,18 @@ class Gallery:
         return out
 
     def ignored_clusters(self, eps: float = 0.45):
-        """Ignore-Anker per DBSCAN nach mutmaßlicher Identität gruppieren (nur Anzeige —
-        das Matching selbst ist identitäts-agnostisch)."""
-        items = []
+        """Ignore-Anker nach ihrer persistenten Gruppe bündeln (vom User kuratierbar;
+        Auto-Anker lernen in die Gruppe ihres besten Matches)."""
+        clusters: dict[str, list] = {}
         for jf in sorted(self.ignored_dir.glob("*.json"), reverse=True):
             try:
                 m = json.loads(jf.read_text())
             except (json.JSONDecodeError, OSError):
                 continue
-            items.append({"id": jf.stem, "ts": m.get("ts", 0), "auto": bool(m.get("auto")),
-                          "from_person": m.get("from_person", ""),
-                          "embedding": np.array(m["embedding"], dtype=np.float32)})
-        if not items:
-            return []
-        from sklearn.cluster import DBSCAN
-        X = np.stack([it["embedding"] for it in items])
-        labels = DBSCAN(eps=eps, min_samples=1, metric="cosine").fit(X).labels_
-        clusters = {}
-        for it, lb in zip(items, labels):
-            it.pop("embedding")
-            clusters.setdefault(int(lb), []).append(it)
+            grp = m.get("group") or f"g{jf.stem}"
+            clusters.setdefault(grp, []).append(
+                {"id": jf.stem, "ts": m.get("ts", 0), "auto": bool(m.get("auto")),
+                 "from_person": m.get("from_person", ""), "group": grp})
         return sorted(clusters.values(), key=len, reverse=True)
 
     def restore_ignored(self, iid: str) -> bool:
@@ -299,6 +349,7 @@ class Gallery:
         if iid in self._ign_ids:
             idx = self._ign_ids.index(iid)
             self._ign_ids.pop(idx)
+            self._ign_groups.pop(idx)
             self._ign_emb = np.delete(self._ign_emb, idx, axis=0)
 
     # ---------- Unbekannte ----------

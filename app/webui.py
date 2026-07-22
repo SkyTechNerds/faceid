@@ -157,9 +157,31 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
 
     @app.post("/api/unknowns/ignore")
     def ignore(body: AssignBody):
-        """Gesichter auf die Ignore-Liste: nie mehr melden, zuordnen oder vorlegen."""
-        n = sum(1 for uid in body.ids if gallery.ignore_unknown(uid))
+        """Gesichter auf die Ignore-Liste: nie mehr melden, zuordnen oder vorlegen.
+        Alle Gesichter einer Aktion landen in derselben Gruppe."""
+        import time as _t
+        gid = f"g{int(_t.time() * 1000)}"
+        n = sum(1 for uid in body.ids if gallery.ignore_unknown(uid, group=gid))
         return {"ignored": n}
+
+    class MoveBody(BaseModel):
+        ids: list[str]
+        group: str
+
+    @app.post("/api/ignored/move")
+    def move_ignored(body: MoveBody):
+        """Anker in eine andere Gruppe verschieben (auch: Gruppen zusammenlegen)."""
+        return {"moved": gallery.set_ignored_group(body.ids, body.group)}
+
+    @app.post("/api/ignored/assign")
+    def assign_ignored(body: AssignBody):
+        """Falsch ignorierte Gesichter direkt einer echten Person zuordnen."""
+        persons_now = gallery.persons()
+        slug = body.person if body.person in persons_now else gallery.create_person(body.person)
+        n = gallery.assign_ignored(body.ids, slug)
+        if n:
+            gallery.refresh_guesses()
+        return {"assigned": n, "slug": slug}
 
     @app.get("/api/ignored")
     def list_ignored():
