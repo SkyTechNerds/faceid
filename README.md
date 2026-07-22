@@ -20,6 +20,19 @@ built because Frigate's built-in face recognition UX didn't cut it:
   filter clips by person in Frigate's Explore view — including retroactively for past
   events via the backfill tool.
 
+## Screenshots
+
+*All faces below are AI-generated (StyleGAN) — no real persons.*
+
+**Unknown review** — new faces arrive auto-clustered; assign a whole cluster with one
+click, or scan your camera history to bootstrap the gallery:
+
+![Unknown review with auto-clustered faces](docs/screenshot-unknowns.png)
+
+**Persons** — your gallery; upload photos or send faces back to review:
+
+![Person gallery](docs/screenshot-persons.png)
+
 ## How it works
 
 ```
