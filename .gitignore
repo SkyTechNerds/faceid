@@ -1,0 +1,13 @@
+# local configuration (contains MQTT credentials)
+config.yaml
+
+# runtime data: face gallery, unknown queue
+data/
+
+# python
+venv/
+__pycache__/
+*.pyc
+
+# insightface model cache
+.insightface/

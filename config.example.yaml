@@ -1,0 +1,36 @@
+# FaceID configuration — copy to config.yaml and adjust.
+# config.yaml is gitignored: it contains your MQTT credentials.
+
+frigate:
+  url: http://192.168.1.10:5000        # your Frigate base URL
+
+mqtt:
+  host: 192.168.1.2                    # your MQTT broker (same one Frigate uses)
+  port: 1883
+  user: mqtt-user
+  password: "mqtt-password"
+
+faceid:
+  port: 8600                           # web UI / API port
+  # Cosine-similarity thresholds (ArcFace embeddings):
+  #   >= match_threshold  -> recognized (published + Frigate sub_label)
+  #   <  unknown_threshold -> definitely a stranger
+  #   in between           -> uncertain; goes to the review queue only
+  match_threshold: 0.50
+  unknown_threshold: 0.35
+  min_face_px: 48                      # minimum face size in the snapshot (pixels)
+  det_size: 640                        # detection input size (higher = better far faces, slower)
+  max_attempts: 6                      # recognition attempts per Frigate event
+  retry_seconds: 2.5                   # min. seconds between attempts on the same event
+  cluster_eps: 0.55                    # DBSCAN cosine distance for grouping unknowns in the UI
+  set_sub_label: true                  # write recognized names back to Frigate events
+  presence_window: 120                 # camera sensor shows everyone seen within this window (s)
+  # process events only from these cameras (empty = all cameras)
+  cameras: []
+  # cameras that get a Home Assistant discovery sensor (sensor.faceid_<camera>)
+  discovery_cameras: [front_door, garden]
+  # optional HTTP Basic Auth for the web UI + API (recommended for standalone
+  # installs; leave empty to disable — the HA add-on is protected by ingress)
+  auth:
+    user: ""
+    password: ""

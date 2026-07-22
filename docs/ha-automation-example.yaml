@@ -1,0 +1,37 @@
+# Example: phone notification when a family member is recognized.
+#
+# One faceid/event message is published per (Frigate event, person), so this
+# will not spam you with repeats of the same sighting. mode: queued makes sure
+# two people recognized at the same time both produce a notification; the
+# per-person notification tag replaces a still-visible message instead of
+# stacking. faceid/event is published without the MQTT retain flag, so a
+# Home Assistant restart cannot re-fire these triggers on a stale message.
+
+- alias: 'FaceID: family member recognized'
+  id: faceid_family_recognized
+  mode: queued
+  triggers:
+  - trigger: mqtt
+    topic: faceid/event
+    value_template: '{{ value_json.person }}'
+    payload: Alice
+  - trigger: mqtt
+    topic: faceid/event
+    value_template: '{{ value_json.person }}'
+    payload: Bob
+  variables:
+    frigate_url: http://192.168.1.10:5000
+    camera_name: >-
+      {{ {'front_door': 'front door', 'garden': 'garden'}
+         .get(trigger.payload_json.camera, trigger.payload_json.camera) }}
+  actions:
+  - action: notify.mobile_app_your_phone
+    data:
+      title: '{{ trigger.payload_json.person }} is here'
+      message: >-
+        {{ trigger.payload_json.person }} recognized at the {{ camera_name }}
+        ({{ ((trigger.payload_json.score | default(0)) * 100) | round(0) | int }} %).
+      data:
+        channel: FaceID
+        tag: faceid-{{ trigger.payload_json.person | lower }}
+        image: '{{ frigate_url }}/api/events/{{ trigger.payload_json.event_id }}/snapshot.jpg'

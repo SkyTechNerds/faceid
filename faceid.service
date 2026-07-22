@@ -1,0 +1,16 @@
+[Unit]
+Description=FaceID - Gesichtserkennung fuer Frigate/HA
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/faceid
+ExecStart=/opt/faceid/venv/bin/python -m app.main
+Restart=on-failure
+RestartSec=10
+# InsightFace laedt Modelle nach ~/.insightface
+Environment=HOME=/opt/faceid
+
+[Install]
+WantedBy=multi-user.target

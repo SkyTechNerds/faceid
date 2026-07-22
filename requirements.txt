@@ -1,0 +1,12 @@
+numpy
+opencv-python-headless
+onnxruntime
+insightface
+fastapi
+uvicorn[standard]
+paho-mqtt>=2.0
+pyyaml
+scikit-learn
+pillow
+requests
+python-multipart
