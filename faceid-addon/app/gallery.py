@@ -100,7 +100,7 @@ class Gallery:
             if slug not in self._cache:
                 raise KeyError(slug)
             entry = self._cache[slug]
-            fname = f"{int(time.time() * 1000)}.jpg"
+            fname = f"{int(time.time() * 1000)}_{len(entry['files'])}.jpg"  # Suffix gegen ms-Kollisionen
             cv2.imwrite(str(self.persons_dir / slug / fname), crop_bgr, [cv2.IMWRITE_JPEG_QUALITY, 92])
             entry["emb"] = np.vstack([entry["emb"], embedding.astype(np.float32)[None, :]])
             entry["files"].append(fname)
@@ -199,6 +199,30 @@ class Gallery:
             self._ign_emb = np.vstack([self._ign_emb, np.array(meta["embedding"], dtype=np.float32)[None, :]])
             self._ign_ids.append(iid)
             return True
+
+    def ignore_person(self, slug: str) -> int:
+        """Ganze Person in die Ignore-Liste überführen (alle Bilder werden Negativ-Anker)."""
+        with self._lock:
+            entry = self._cache.pop(slug, None)
+            if entry is None:
+                return 0
+            n = 0
+            for fname, emb in zip(list(entry["files"]), entry["emb"]):
+                iid = f"i{int(time.time() * 1000)}_{n}"
+                src = self.persons_dir / slug / fname
+                if not src.exists():
+                    continue
+                src.rename(self.ignored_dir / f"{iid}.jpg")
+                (self.ignored_dir / f"{iid}.json").write_text(json.dumps(
+                    {"camera": "", "ts": time.time(), "from_person": entry["name"],
+                     "embedding": [round(float(v), 6) for v in emb]}, ensure_ascii=False))
+                self._ign_emb = np.vstack([self._ign_emb, np.array(emb, dtype=np.float32)[None, :]])
+                self._ign_ids.append(iid)
+                n += 1
+            for f in (self.persons_dir / slug).iterdir():
+                f.unlink()
+            (self.persons_dir / slug).rmdir()
+            return n
 
     def ignored(self):
         out = []

@@ -75,6 +75,14 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             gallery.refresh_guesses()
         return {"ok": ok}
 
+    @app.post("/api/persons/{slug}/ignore")
+    def ignore_person(slug: str):
+        """Person komplett auf die Ignore-Liste setzen (alle Bilder werden Negativ-Anker)."""
+        n = gallery.ignore_person(slug)
+        if n:
+            gallery.refresh_guesses()
+        return {"ignored_faces": n}
+
     @app.post("/api/persons/{slug}/photos")
     async def upload_photos(slug: str, files: list[UploadFile]):
         """Fotos (z. B. aus der Foto-Library) hochladen: Gesicht extrahieren + einlernen."""

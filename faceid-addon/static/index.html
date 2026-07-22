@@ -235,6 +235,7 @@ async function renderPersons(){
         <label class="ghost" style="cursor:pointer">Upload photos
           <input type="file" multiple accept="image/*" style="display:none" onchange="upload('${slug}',this)">
         </label>
+        <button class="ghost" style="color:var(--warn);border-color:var(--warn)" title="stop tracking: never notify, match or resurface this person" onclick="ignorePerson('${slug}','${esc(p.name)}')">ignore person</button>
         <button class="ghost" onclick="delPerson('${slug}','${esc(p.name)}')">delete</button>
       </div>
       <div class="grid">${p.files.map(f=>`
@@ -256,6 +257,11 @@ async function upload(slug,inp){
 async function delFace(slug,f){await j(`api/persons/${slug}/faces/${f}`,{method:'DELETE'});render()}
 async function unassignFace(slug,f){await j(`api/persons/${slug}/faces/${f}/unassign`,{method:'POST'});
   toast('Face moved back to the unknown queue');render()}
+async function ignorePerson(slug,name){
+  if(!confirm(`Stop tracking "${name}"? All their faces become ignore anchors — they will never be notified, matched or shown again. (Reversible via the Ignored section.)`))return;
+  const r=await j(`api/persons/${slug}/ignore`,{method:'POST'});
+  toast(`"${name}" ignored (${r.ignored_faces} anchor faces)`);render();
+}
 async function delPerson(slug,name){if(!confirm(`Delete "${name}" and all their faces?`))return;
   await j(`api/persons/${slug}`,{method:'DELETE'});render()}
 
