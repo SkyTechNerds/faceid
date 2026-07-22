@@ -17,8 +17,8 @@ built because Frigate's built-in face recognition UX didn't cut it:
 - **Home Assistant native.** MQTT discovery sensors per camera (presence-window state like
   `Alice, Bob` → `nobody`), plus a per-recognition event topic for automations.
 - **Tags flow back to Frigate.** Recognized names are written as `sub_label`, so you can
-  filter clips by person in Frigate's Explore view — including retroactively for past
-  events via the backfill tool.
+  filter clips by person in Frigate's Explore view — including retroactively: the history
+  scan tags past events, and assigning a face in the review UI tags its original event too.
 
 ## Screenshots
 
