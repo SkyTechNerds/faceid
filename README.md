@@ -34,8 +34,19 @@ Frigate --MQTT frigate/events--> FaceID
 MQTT -> Home Assistant:  sensor.faceid_<camera>  +  faceid/event (JSON)
 ```
 
-Everything runs locally. No cloud, no external calls (the InsightFace model pack is
-downloaded once on first start).
+## Local-only, and what gets downloaded
+
+FaceID performs **all recognition locally on your hardware** — no cloud APIs, no
+accounts, no telemetry. The only thing ever fetched from the internet is the open-source
+recognition model itself, once, on first start:
+
+- **What:** InsightFace `buffalo_l` model pack (SCRFD face detection + ArcFace
+  recognition, the same open models Immich and CompreFace use)
+- **From where:** the official [InsightFace GitHub release](https://github.com/deepinsight/insightface/releases/tag/v0.7)
+- **Size:** ~300 MB, cached on disk afterwards (survives restarts and add-on updates)
+
+After that download, FaceID works completely offline. Your camera images and face data
+never leave your machine.
 
 ## Requirements
 
@@ -59,17 +70,43 @@ The add-on is built locally on your machine (amd64/aarch64). See
 
 ## Install standalone (LXC, VM, bare metal)
 
+Tested on Debian 12/13 and Ubuntu 22.04+; any Linux with Python 3.10+ works.
+
+**1. System packages**
+
 ```bash
 apt install python3-venv python3-dev build-essential libglib2.0-0 libgl1 libxcb1 libgomp1
-git clone https://github.com/SkyTechNerds/faceid /opt/faceid && cd /opt/faceid
-python3 -m venv venv && venv/bin/pip install -r requirements.txt
-cp docs/example-config.yaml config.yaml   # then edit: Frigate URL, MQTT credentials, cameras
-cp faceid.service /etc/systemd/system/ && systemctl daemon-reload
+```
+
+**2. Get the code and install the Python environment**
+
+```bash
+git clone https://github.com/SkyTechNerds/faceid /opt/faceid
+cd /opt/faceid
+python3 -m venv venv
+venv/bin/pip install -r requirements.txt
+```
+
+**3. Configure**
+
+```bash
+cp docs/example-config.yaml config.yaml
+nano config.yaml   # set: Frigate URL, MQTT host + credentials, your camera names
+```
+
+**4. Run as a service**
+
+```bash
+cp faceid.service /etc/systemd/system/
+systemctl daemon-reload
 systemctl enable --now faceid
 ```
 
-Open `http://<host>:8600`. First start downloads the model pack (~300 MB) — watch
-`journalctl -u faceid -f` until you see `MQTT verbunden`.
+**5. Verify**
+
+The first start downloads the model pack (~300 MB, one time — see above). Follow the
+log with `journalctl -u faceid -f` until you see `MQTT verbunden (Success)`, then open
+`http://<host>:8600` and check that the header shows your person/queue counters.
 
 ## Getting started
 
