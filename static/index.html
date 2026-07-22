@@ -159,7 +159,7 @@ async function renderUnknowns(){
         <div class="tile" data-id="${u.id}" onclick="this.classList.toggle('sel')">
           <img src="data/unknowns/${u.id}.jpg" loading="lazy">
           <span class="score">${fmtTs(u.ts)}</span>
-          ${u.full_url?`<button class="z" title="full snapshot" onclick="event.stopPropagation();showFull('${u.full_url}','${esc(u.camera||'')} · ${fmtTs(u.ts)}')">⛶</button>`:''}
+          ${u.full_url?`<button class="z" title="full snapshot" onclick="event.stopPropagation();showFull('${u.full_url}','${esc(u.camera||'')} · ${fmtTs(u.ts)}','data/unknowns/${u.id}.jpg')">⛶</button>`:''}
         </div>`).join('')}
       </div>
     </div>`).join('');
@@ -231,8 +231,9 @@ async function assignCluster(i){
     body:JSON.stringify({ids,person})});
   toast(`${r.assigned} face(s) → ${person}`);render();
 }
-function showFull(url,cap){$('#lbimg').src=url;$('#lbcap').textContent=cap||'';
-  $('#lightbox').style.display='flex'}
+function showFull(url,cap,fallback){const im=$('#lbimg');
+  im.onerror=fallback?()=>{im.onerror=null;im.src=fallback;$('#lbcap').textContent=(cap||'')+' · full snapshot expired, showing face crop'}:null;
+  im.src=url;$('#lbcap').textContent=cap||'';$('#lightbox').style.display='flex'}
 async function autoAssign(){
   const r=await j('api/unknowns/auto_assign',{method:'POST'});
   toast(r.total
