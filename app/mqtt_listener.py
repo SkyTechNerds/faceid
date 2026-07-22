@@ -38,6 +38,7 @@ class EventProcessor:
         self.cameras = set(f.get("cameras") or [])
         self.set_sub_label = bool(f.get("set_sub_label", True))
         self.presence_window = float(f.get("presence_window", 120))
+        self.prefix = str(f.get("mqtt_prefix", "faceid")).strip("/") or "faceid"
         self.present: dict[str, dict[str, float]] = {}  # camera -> {person: zuletzt gesehen}
         self._last_presence: dict[str, list] = {}  # zuletzt publizierter Stand je Kamera
 
@@ -45,10 +46,10 @@ class EventProcessor:
 
     def start(self):
         m = self.cfg["mqtt"]
-        c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="faceid")
+        c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=self.prefix)
         if m.get("user"):
             c.username_pw_set(m["user"], m.get("password", ""))
-        c.will_set("faceid/status", "offline", retain=True)
+        c.will_set(f"{self.prefix}/status", "offline", retain=True)
         c.on_connect = self._on_connect
         c.on_message = self._on_message
         c.connect(m["host"], int(m.get("port", 1883)), keepalive=60)
@@ -60,7 +61,7 @@ class EventProcessor:
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         log.info("MQTT verbunden (%s)", reason_code)
         client.subscribe("frigate/events")
-        client.publish("faceid/status", "online", retain=True)
+        client.publish(f"{self.prefix}/status", "online", retain=True)
         self._publish_discovery()
 
     def _on_message(self, client, userdata, msg):
@@ -174,7 +175,7 @@ class EventProcessor:
         # erneute Meldung aus (sonst mehrere Notifications für dieselbe Sichtung)
         if self.client and st.get("announced") != name:
             st["announced"] = name
-            self.client.publish("faceid/event", json.dumps(payload, ensure_ascii=False))
+            self.client.publish(f"{self.prefix}/event", json.dumps(payload, ensure_ascii=False))
         self.present.setdefault(st["camera"], {})[name] = time.time()
         self._publish_presence(st["camera"], last=payload)
 
@@ -193,26 +194,26 @@ class EventProcessor:
             attrs = {"persons": names, "window_s": self.presence_window, "ts": now}
             if last:
                 attrs["last"] = last
-            self.client.publish(f"faceid/{cam}/person", ", ".join(names) or "niemand", retain=True)
-            self.client.publish(f"faceid/{cam}/attributes", json.dumps(attrs, ensure_ascii=False), retain=True)
+            self.client.publish(f"{self.prefix}/{cam}/person", ", ".join(names) or "niemand", retain=True)
+            self.client.publish(f"{self.prefix}/{cam}/attributes", json.dumps(attrs, ensure_ascii=False), retain=True)
 
     def _publish_discovery(self):
         """HA MQTT-Discovery: ein Sensor je Kamera (zuletzt erkannte Person)."""
         cams = self.cameras or set(self.cfg["faceid"].get("discovery_cameras") or [])
-        device = {"identifiers": ["faceid"], "name": "FaceID",
+        device = {"identifiers": [self.prefix], "name": self.prefix.replace("-", " ").title() if self.prefix != "faceid" else "FaceID",
                   "manufacturer": "Eigenbau", "model": "InsightFace/ArcFace"}
         for cam in cams:
             conf = {
                 "name": cam,  # HA stellt den Gerätenamen "FaceID" voran
-                "unique_id": f"faceid_{cam}",
-                "object_id": f"faceid_{cam}",
-                "state_topic": f"faceid/{cam}/person",
-                "json_attributes_topic": f"faceid/{cam}/attributes",
-                "availability_topic": "faceid/status",
+                "unique_id": f"{self.prefix}_{cam}",
+                "object_id": f"{self.prefix}_{cam}",
+                "state_topic": f"{self.prefix}/{cam}/person",
+                "json_attributes_topic": f"{self.prefix}/{cam}/attributes",
+                "availability_topic": f"{self.prefix}/status",
                 "icon": "mdi:face-recognition",
                 "device": device,
             }
-            self.client.publish(f"homeassistant/sensor/faceid_{cam}/config",
+            self.client.publish(f"homeassistant/sensor/{self.prefix}_{cam}/config",
                                 json.dumps(conf, ensure_ascii=False), retain=True)
             # frischen Anwesenheits-Stand publizieren (räumt auch stale retained States nach Neustart auf)
             self._last_presence.pop(cam, None)

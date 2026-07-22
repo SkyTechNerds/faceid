@@ -35,6 +35,7 @@ mqtt:
   password: "${MQTT_PASSWORD}"
 faceid:
   port: 8600
+  mqtt_prefix: $(bashio::config 'mqtt_prefix')
   match_threshold: $(bashio::config 'match_threshold')
   unknown_threshold: $(bashio::config 'unknown_threshold')
   cluster_eps: $(bashio::config 'cluster_eps')
