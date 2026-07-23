@@ -81,7 +81,7 @@ never leave your machine.
 
 ## Install as a Home Assistant app (recommended for HAOS)
 
-*(Apps are what Home Assistant used to call add-ons.)*
+*(Apps were formerly known as add-ons.)*
 
 1. Add this repository to your app store — one click:
 
