@@ -4,7 +4,7 @@ from pathlib import Path
 
 import cv2
 
-from .engine import FaceEngine, crop_face
+from .engine import FaceEngine, crop_face, find_face_padded
 from .gallery import Gallery
 
 BASE = Path(__file__).resolve().parent.parent
@@ -32,7 +32,7 @@ def main():
         if max(img.shape[:2]) > 2000:
             s = 2000 / max(img.shape[:2])
             img = cv2.resize(img, None, fx=s, fy=s)
-        face = FaceEngine.best_face(engine.faces(img), min_px=60)
+        face, img = find_face_padded(engine, img, min_px=60)
         if face is None:
             print(f"  übersprungen (kein Gesicht): {p.name}")
             continue

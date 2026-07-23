@@ -3,6 +3,14 @@
 All notable changes to FaceID. The Home Assistant add-on shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.2.8 — 2026-07-22
+
+- **Fix: fresh installs and updates crashed on start** (`ImportError:
+  find_face_padded`) — a helper in `engine.py` (padded retry for close-up portrait
+  detection, used by photo upload and CLI enrollment) was missing from the published
+  sources. Thanks @KoenvanH for the report (#1). The release process now runs an
+  import-consistency check so this class of error can't ship again.
+
 ## 0.2.7 — 2026-07-22
 
 - Release an ignored group directly into a **new** person: the Ignored tab got the

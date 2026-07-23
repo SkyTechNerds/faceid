@@ -1,6 +1,7 @@
 """InsightFace-Wrapper: SCRFD-Detection + ArcFace-Embeddings (buffalo_l — dieselben Modelle wie Immich)."""
 import threading
 
+import cv2
 import numpy as np
 
 
@@ -33,6 +34,19 @@ class FaceEngine:
             if w * h > best_area:
                 best, best_area = f, w * h
         return best
+
+
+def find_face_padded(engine: "FaceEngine", bgr: np.ndarray, min_px: int = 60):
+    """Detection mit Fallback für formatfüllende Porträts (SCRFD übersieht extreme
+    Close-ups) — bei Bedarf mit Rand gepolstert erneut suchen.
+    -> (face, bild) — bild ist ggf. die gepolsterte Variante, zu der die bbox passt."""
+    face = FaceEngine.best_face(engine.faces(bgr), min_px=min_px)
+    if face is not None:
+        return face, bgr
+    pad = int(0.3 * max(bgr.shape[:2]))
+    padded = cv2.copyMakeBorder(bgr, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=(40, 40, 40))
+    face = FaceEngine.best_face(engine.faces(padded), min_px=min_px)
+    return face, padded
 
 
 def crop_face(bgr: np.ndarray, bbox, margin: float = 0.35) -> np.ndarray:
