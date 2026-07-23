@@ -186,9 +186,8 @@ for a phone-notification automation with the Frigate snapshot attached.
 
 ## Updates
 
-- **Add-on:** Home Assistant notifies you automatically when a new version is available
-  (Settings → Add-ons → FaceID → Update). The changelog is shown right in the update
-  dialog.
+- **Home Assistant app:** you get notified automatically when a new version is available
+  (Settings → Apps → FaceID → Update). The changelog is shown right in the update dialog.
 - **Standalone:** `cd /opt/faceid && git pull && systemctl restart faceid`. Watch the
   GitHub releases to get notified.
 
@@ -197,7 +196,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history.
 ## Security & privacy notes
 
 - The web UI supports optional **HTTP Basic Auth** (`faceid.auth` in config.yaml) —
-  strongly recommended for standalone installs; the HA add-on is protected by ingress
+  strongly recommended for standalone installs; the HA app is protected by ingress
   and your Home Assistant login instead. Either way: it manages biometric data — keep
   it on a trusted LAN and don't expose port 8600 to the internet (Basic Auth without
   TLS is not internet-grade protection).
