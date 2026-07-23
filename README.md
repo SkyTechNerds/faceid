@@ -65,7 +65,7 @@ recognition model itself, once, on first start:
 - **What:** InsightFace `buffalo_l` model pack (SCRFD face detection + ArcFace
   recognition, the same open models Immich and CompreFace use)
 - **From where:** the official [InsightFace GitHub release](https://github.com/deepinsight/insightface/releases/tag/v0.7)
-- **Size:** ~300 MB, cached on disk afterwards (survives restarts and add-on updates)
+- **Size:** ~300 MB, cached on disk afterwards (survives restarts and app updates)
 
 After that download, FaceID works completely offline. Your camera images and face data
 never leave your machine.
@@ -79,15 +79,21 @@ never leave your machine.
   hides AVX — set the VM CPU type to `host` and cold-restart the VM, or the recognition
   runtime will refuse to start.
 
-## Install as Home Assistant add-on (recommended for HAOS)
+## Install as a Home Assistant app (recommended for HAOS)
 
-1. Settings → Add-ons → Add-on Store → ⋮ → **Repositories** → add
-   `https://github.com/SkyTechNerds/faceid`
-2. Install **FaceID**, set your Frigate URL in the options (MQTT is picked up
-   automatically from the Mosquitto add-on) and start it.
+*(Apps are what Home Assistant used to call add-ons.)*
+
+1. Add this repository to your app store — one click:
+
+   [![Add repository to my Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FSkyTechNerds%2Ffaceid)
+
+   (or manually: **Settings → Apps → App Store → ⋮ → Repositories** → add
+   `https://github.com/SkyTechNerds/faceid`)
+2. Install the **FaceID** app, set your Frigate URL in the options (MQTT is picked up
+   automatically from the Mosquitto app) and start it.
 3. Open the **FaceID** panel in the sidebar. First start downloads the model (~300 MB).
 
-The add-on is built locally on your machine (amd64/aarch64). See
+The app is built locally on your machine (amd64/aarch64). See
 [faceid-addon/DOCS.md](faceid-addon/DOCS.md) for all options.
 
 ## Install standalone (LXC, VM, bare metal)
