@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Import smoke test (would have caught issue #1)
+        run: python -c "import app.main; import app.backfill; import app.enroll"
+
+      - name: Byte-compile all sources
+        run: python -m compileall -q app
+
+      - name: Import-consistency check (local imports must exist in their module)
+        run: |
+          python - << 'EOF'
+          import ast, sys
+          from pathlib import Path
+          defined = {}
+          for f in Path("app").glob("*.py"):
+              tree = ast.parse(f.read_text())
+              defined[f.stem] = {n.name for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.ClassDef))} | \
+                                {t.id for n in ast.walk(tree) if isinstance(n, ast.Assign) for t in n.targets if isinstance(t, ast.Name)}
+          errors = []
+          for f in Path("app").glob("*.py"):
+              for n in ast.walk(ast.parse(f.read_text())):
+                  if isinstance(n, ast.ImportFrom) and n.level == 1 and n.module in defined:
+                      errors += [f"{f.name}: imports {a.name} from {n.module} — not defined there"
+                                 for a in n.names if a.name not in defined[n.module]]
+          if errors:
+              print("IMPORT CHECK FAILED:")
+              [print(" ", e) for e in errors]
+              sys.exit(1)
+          print("import consistency OK")
+          EOF
+
+      - name: App build context in sync (faceid-addon/ mirrors app/, static/, requirements)
+        run: |
+          python - << 'EOF'
+          import filecmp, sys
+          from pathlib import Path
+
+          def assert_synced(src, dst):
+              dc = filecmp.dircmp(src, dst, ignore=["__pycache__"])
+              problems = dc.diff_files + dc.left_only + dc.right_only
+              for sub in dc.subdirs.values():
+                  problems += sub.diff_files + sub.left_only + sub.right_only
+              if problems:
+                  print(f"{dst} out of sync with {src}: {problems}")
+                  print("Run scripts/sync-addon.sh and commit the result.")
+                  sys.exit(1)
+
+          assert_synced("app", "faceid-addon/app")
+          assert_synced("static", "faceid-addon/static")
+          if Path("requirements.txt").read_text() != Path("faceid-addon/requirements.txt").read_text():
+              print("faceid-addon/requirements.txt out of sync"); sys.exit(1)
+          print("app build context in sync")
+          EOF
+
+      - name: Version consistency (manifest version has a changelog entry)
+        run: |
+          python - << 'EOF'
+          import sys, yaml
+          version = yaml.safe_load(open("faceid-addon/config.yaml"))["version"]
+          changelog = open("CHANGELOG.md").read()
+          if f"## {version}" not in changelog:
+              print(f"version {version} has no CHANGELOG.md entry"); sys.exit(1)
+          print(f"version {version} OK")
+          EOF
