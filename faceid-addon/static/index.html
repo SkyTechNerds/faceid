@@ -100,7 +100,9 @@ async function health(){try{const h=await j('api/health');
 function personOptions(){return Object.entries(persons).map(([s,p])=>`<option value="${s}">${esc(p.name)}</option>`).join('')}
 
 async function render(){
+  const t=tab;
   persons=await j('api/persons');
+  if(t!==tab)return;
   if(tab==='unknowns')return renderUnknowns();
   if(tab==='persons')return renderPersons();
   if(tab==='ignored')return renderIgnored();
@@ -136,6 +138,7 @@ async function startBackfill(){
 }
 async function renderUnknowns(){
   const [clusters,bf]=await Promise.all([j('api/unknowns'),j('api/backfill')]);
+  if(tab!=='unknowns')return;
   if(bf.running&&tab==='unknowns')setTimeout(()=>{if(tab==='unknowns')render()},4000);
   if(!clusters.length){
     main.innerHTML=backfillRow(bf)+'<div class="empty">No unknown faces in the queue.</div>';return}
@@ -167,6 +170,7 @@ async function renderUnknowns(){
 }
 async function renderIgnored(){
   const clusters=await j('api/ignored');
+  if(tab!=='ignored')return;
   if(!clusters.length){main.innerHTML='<div class="empty">Nobody on the ignore list. Use "ignore" on an unknown cluster or "ignore person" on a person card — ignored people are never notified, matched or resurfaced.</div>';return}
   const total=clusters.reduce((a,c)=>a+c.length,0);
   main.innerHTML=`<div class="row"><span class="stat">${total} anchor face(s) in ${clusters.length} group(s) — never notified, never matched to a known person, never resurfaced.</span></div>`
@@ -278,6 +282,7 @@ async function discardCluster(i){
 }
 
 async function renderPersons(){
+  if(tab!=='persons')return;
   const entries=Object.entries(persons);
   main.innerHTML=`
     <div class="row">
@@ -324,6 +329,7 @@ async function delPerson(slug,name){if(!confirm(`Delete "${name}" and all their 
 
 async function renderRecent(){
   const rows=await j('api/recent');
+  if(tab!=='recent')return;
   main.innerHTML=rows.length?`<table>
     <tr><th>Time</th><th>Camera</th><th>Person</th><th>Score</th><th>Event</th></tr>
     ${rows.map(r=>`<tr><td>${fmtTs(r.ts)}</td><td>${esc(r.camera)}</td>

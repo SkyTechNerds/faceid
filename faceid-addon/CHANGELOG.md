@@ -3,6 +3,13 @@
 All notable changes to FaceID. The Home Assistant add-on shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.2.9 — 2026-07-23
+
+- **Fix: tab content race** — switching tabs while a fetch was still in flight
+  could let the finishing request overwrite the newly opened tab (e.g. freshly
+  detected unknown faces appeared under the Ignored tab). Each view now only
+  renders if its tab is still active.
+
 ## 0.2.8 — 2026-07-22
 
 - **Fix: fresh installs and updates crashed on start** (`ImportError:
