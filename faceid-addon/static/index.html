@@ -67,6 +67,8 @@ td.p{color:var(--acc)} td.u{color:var(--warn)}
 .trimgrid .tile img{filter:grayscale(1) brightness(.55);transition:filter .15s}
 .trimgrid .tile:hover img{filter:none}
 .tile.simhi{outline:3px solid var(--acc);outline-offset:-3px}
+.tile.simlow{outline:2px solid var(--dim);outline-offset:-2px}
+.tile .simscore{position:absolute;top:0;left:0;background:var(--bg);color:var(--fg);font:10px var(--mono);padding:1px 4px;z-index:2}
 .tile.simhi img{filter:none;opacity:1}
 .trimlabel{display:inline-block;font:600 10px var(--mono);letter-spacing:.1em;color:var(--warn);border:1px solid var(--warn);border-radius:3px;padding:1px 6px;margin-bottom:4px}
 #lightbox{position:fixed;inset:0;background:color-mix(in oklab,var(--bg) 88%,transparent);
@@ -249,11 +251,18 @@ async function ignoreSuggestion(gi){
   const r=await j('api/unknowns/ignore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids,person:'-'})});
   toast(`${r.ignored} ignored`);render();
 }
-function hiliteSimilar(slug,files){
+function hiliteSimilar(slug,items){
   const card=document.getElementById('p-'+slug); if(!card)return;
-  const set=new Set(files);
+  const map=new Map((items||[]).map(x=>[x.file,x]));
   card.querySelectorAll('.grid:not(.trimgrid) .tile[data-file]').forEach(t=>{
-    t.classList.toggle('simhi',set.has(t.dataset.file));
+    const it=map.get(t.dataset.file);
+    t.classList.toggle('simhi',!!it&&it.partner);
+    t.classList.toggle('simlow',!!it&&!it.partner);
+    let b=t.querySelector('.simscore');
+    if(it){
+      if(!b){b=document.createElement('span');b.className='simscore';t.appendChild(b);}
+      b.textContent=Math.round(it.score*100)+'%';
+    }else if(b){b.remove();}
   });
 }
 function rejectSuggestion(id){(window._excludedIds||(window._excludedIds=new Set())).add(id);render();}
@@ -524,9 +533,9 @@ function personCard(slug,p){
       ${(p.trimmed&&p.trimmed.length)?`
       <div style="margin-top:10px;border-top:1px dashed var(--line);padding-top:10px">
         <span class="trimlabel">✂︎ SET ASIDE · ${p.trimmed.length}</span> <button class="ghost" style="font-size:10px;padding:1px 8px" title="delete all set-aside photos for this person" onclick="clearTrimmed('${slug}','${esc(p.name)}')">clear all</button>
-        <div class="stat">Trimmed to stay under the photo limit — these were the most similar to the rest, so diverse angles were kept. Hover to preview; ↩ restore or × delete. <a href="https://github.com/SkyTechNerds/faceid/blob/main/docs/trimming.md" target="_blank" rel="noopener" style="color:var(--acc)">Learn more ↗</a></div>
+        <div class="stat">Set aside as duplicates or over the photo limit. <b>Hover a photo</b> to mark its closest matches above — <span style="color:var(--acc)">bright green</span> = the photo it duplicates, <span style="color:var(--dim)">grey outline + %</span> = merely its closest matches (same person, different angle — these are kept on purpose). ↩ restore or × delete. <a href="https://github.com/SkyTechNerds/faceid/blob/main/docs/trimming.md" target="_blank" rel="noopener" style="color:var(--acc)">Learn more ↗</a></div>
         <div class="grid trimgrid" style="margin-top:6px">${p.trimmed.map(t=>`
-          <div class="tile" onmouseenter="hiliteSimilar('${slug}',${JSON.stringify(t.similar||[]).replace(/"/g,'&quot;')})" onmouseleave="hiliteSimilar('${slug}',[])"><img src="data/persons/${slug}/_trimmed/${t.file}" loading="lazy" title="${esc(t.reason||'')} · set aside ${fmtTs(t.ts)} — hover highlights the photo(s) above it duplicates">
+          <div class="tile" onmouseenter="hiliteSimilar('${slug}',${JSON.stringify(t.similar||[]).replace(/"/g,'&quot;')})" onmouseleave="hiliteSimilar('${slug}',[])"><img src="data/persons/${slug}/_trimmed/${t.file}" loading="lazy" title="${t.kind==='same_image'?'Same image as the photo highlighted above.':t.kind==='near_dup'?'Near-duplicate of the photo highlighted above.':'Set aside because of the photo limit — highlighted above are its closest matches with their similarity. They are the same person from other angles, not duplicates.'} · ${fmtTs(t.ts)}">
             <button class="u" title="restore this photo" onclick="restoreTrimmed('${slug}','${t.file}')">↩</button>
             <button class="x" title="delete permanently" onclick="deleteTrimmed('${slug}','${t.file}')">×</button></div>`).join('')}
         </div>

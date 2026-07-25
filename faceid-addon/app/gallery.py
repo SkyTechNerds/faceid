@@ -165,19 +165,27 @@ class Gallery:
                 continue
             similar = []
             partner = e.get("partner") or ""
-            if partner and partner in act_files:
-                similar.append(partner)
             emb = e.get("embedding")
-            if emb and len(act_files):
-                sims = act_emb @ np.array(emb, dtype=np.float32)
-                # immer die ähnlichsten aktiven Fotos zeigen (keine feste Schwelle — auf
-                # verrauschten Kamera-Crops liegen selbst Dubletten nur bei ~0.6)
+            sims = act_emb @ np.array(emb, dtype=np.float32) if (emb and len(act_files)) else None
+            seen = set()
+            if partner and partner in act_files:
+                sc = float(sims[act_files.index(partner)]) if sims is not None else 0.0
+                similar.append({"file": partner, "score": round(sc, 2), "partner": True})
+                seen.add(partner)
+            if sims is not None:
+                # die ähnlichsten aktiven Fotos — mit Wert, damit sichtbar ist, ob es sich
+                # um echte Dubletten (hoch) oder nur dieselbe Person (mittel) handelt
                 for i in np.argsort(-sims)[:3]:
-                    if act_files[i] not in similar:
-                        similar.append(act_files[i])
+                    f = act_files[i]
+                    if f not in seen:
+                        similar.append({"file": f, "score": round(float(sims[i]), 2), "partner": False})
+                        seen.add(f)
             out.append({"file": e["file"], "ts": e.get("ts", 0), "mean_sim": e.get("mean_sim"),
                         "reason": e.get("reason", ""), "similar": similar,
-                        "partner": partner})
+                        "partner": partner,
+                        "kind": ("same_image" if "same image" in e.get("reason", "")
+                                 else "near_dup" if "near-duplicate" in e.get("reason", "")
+                                 else "limit")})
         return out
 
     def restore_trimmed(self, slug: str, fname: str) -> bool:

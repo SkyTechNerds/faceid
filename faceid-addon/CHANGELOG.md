@@ -3,6 +3,15 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.5.6 — 2026-07-23
+
+- **Honest hover highlight.** Hovering a set-aside photo used to outline its three closest
+  matches in green and claim they were duplicates — misleading, since a photo removed for
+  the photo limit is merely similar (same person, other angle), not a duplicate. Now the
+  photo it actually duplicates is outlined bright green, merely-similar photos get a grey
+  outline, and **every marked photo shows its similarity %** so you can tell the two
+  apart. The tooltip text matches the real reason it was set aside.
+
 ## 0.5.5 — 2026-07-23
 
 - Hotfix: a broken code path made /api/persons return 500 right after 0.5.4 (the
