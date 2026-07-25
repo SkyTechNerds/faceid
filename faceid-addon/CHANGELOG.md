@@ -3,6 +3,13 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.5.3 — 2026-07-23
+
+- Hover-highlight on set-aside photos now uses the same sensitivity as duplicate removal,
+  so hovering a trimmed photo highlights only its genuine near-duplicates — not every
+  same-person photo. Previously the 0.45 highlight lit up most of a person's gallery on
+  noisy camera crops, making everything look like a duplicate.
+
 ## 0.5.2 — 2026-07-23
 
 - **Duplicate removal now works on camera data**: small low-res crops make even

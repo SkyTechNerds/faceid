@@ -33,6 +33,7 @@ class Gallery:
         self.top_k = max(1, int(top_k))
         self.max_per_person = int(max_per_person)  # 0 = unbegrenzt
         self.trimmed_keep = 10  # wie viele beiseitegelegte Fotos je Person aufgehoben werden
+        self.dedupe_threshold = 0.65  # ab hier gilt ein Foto als Duplikat (Hover-Highlight + Dedup)
         self._lock = threading.Lock()
         self._cache = {}  # slug -> {"name":..., "emb": np.ndarray, "files": [...]}
         self._ign_emb = np.zeros((0, 512), dtype=np.float32)
@@ -167,7 +168,7 @@ class Gallery:
             if emb and len(act_files):
                 sims = act_emb @ np.array(emb, dtype=np.float32)
                 # aktive Fotos, die diesem getrimmten ähneln (Cosine >= 0.45), stärkste zuerst
-                idx = [i for i in np.argsort(-sims) if sims[i] >= 0.45][:12]
+                idx = [i for i in np.argsort(-sims) if sims[i] >= self.dedupe_threshold][:12]
                 similar = [act_files[i] for i in idx]
             out.append({"file": e["file"], "ts": e.get("ts", 0), "mean_sim": e.get("mean_sim"),
                         "reason": e.get("reason", ""), "similar": similar})
@@ -298,10 +299,12 @@ class Gallery:
                 self._persist(slug)
         return total
 
-    def deduplicate_person(self, slug: str, threshold: float = 0.65, dry_run: bool = False) -> int:
+    def deduplicate_person(self, slug: str, threshold: float = None, dry_run: bool = False) -> int:
         """Nahezu identische Fotos (Cosine >= threshold) beiseitelegen — sie bringen der
         Erkennung nichts. Von jedem zu ähnlichen Paar geht das redundantere. dry_run zählt
         nur (verschiebt nichts). Läuft, bis kein Paar mehr über der Schwelle liegt."""
+        if threshold is None:
+            threshold = self.dedupe_threshold
         with self._lock:
             entry = self._cache.get(slug)
             if entry is None:
@@ -343,7 +346,7 @@ class Gallery:
                 self._persist(slug)
             return moved
 
-    def deduplicate_all(self, threshold: float = 0.65, dry_run: bool = False) -> int:
+    def deduplicate_all(self, threshold: float = None, dry_run: bool = False) -> int:
         return sum(self.deduplicate_person(s, threshold, dry_run) for s in list(self._cache.keys()))
 
     def delete_face(self, slug: str, fname: str):

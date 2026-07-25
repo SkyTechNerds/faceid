@@ -301,6 +301,8 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             trimmed = gallery.enforce_cap_all()
         if "trimmed_keep" in updates:
             gallery.trimmed_keep = int(updates["trimmed_keep"])
+        if "dedupe_threshold" in updates:
+            gallery.dedupe_threshold = float(updates["dedupe_threshold"])
         # settings.json (nur die editierbaren Keys) persistieren
         keys = set(SETTINGS_SPEC) | set(BACKUP_SPEC) | set(INT_SPEC)
         overlay = {}
