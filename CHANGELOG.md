@@ -3,6 +3,12 @@
 All notable changes to FaceID. The Home Assistant add-on shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.4.5 — 2026-07-23
+
+- **Adjustable photo cap in Settings** (`max_faces_per_person`): lowering it trims every
+  person down to the new limit immediately (most-redundant photos set aside, restorable),
+  so the trimming behaviour is easy to see and control. Documented in the README.
+
 ## 0.4.4 — 2026-07-23
 
 - **Transparent photo trimming**: when a person exceeds the photo limit, the removed

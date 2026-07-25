@@ -272,6 +272,7 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         "ignore_threshold": (0.1, 0.9),
     }
     BACKUP_SPEC = {"backup_enabled": bool, "backup_hour": (0, 23), "backup_keep": (1, 90), "backup_dir": str}
+    INT_SPEC = {"max_faces_per_person": (5, 100)}
     settings_file = data_dir / "settings.json"
 
     def _apply_settings(updates: dict):
@@ -281,14 +282,19 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         if "match_threshold" in updates: processor.match_thr = float(updates["match_threshold"])
         if "unknown_threshold" in updates: processor.unknown_thr = float(updates["unknown_threshold"])
         if "ignore_threshold" in updates: processor.ignore_thr = float(updates["ignore_threshold"])
+        trimmed = 0
+        if "max_faces_per_person" in updates:
+            gallery.max_per_person = int(updates["max_faces_per_person"])
+            trimmed = gallery.enforce_cap_all()
         # settings.json (nur die editierbaren Keys) persistieren
-        keys = set(SETTINGS_SPEC) | set(BACKUP_SPEC)
+        keys = set(SETTINGS_SPEC) | set(BACKUP_SPEC) | set(INT_SPEC)
         overlay = {}
         if settings_file.exists():
             try: overlay = json.loads(settings_file.read_text())
             except (json.JSONDecodeError, OSError): overlay = {}
         overlay.update({k: v for k, v in updates.items() if k in keys})
         settings_file.write_text(json.dumps(overlay, ensure_ascii=False, indent=1))
+        return trimmed
 
     @app.get("/api/settings")
     def get_settings():
@@ -302,6 +308,7 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
                        "hour": int(f.get("backup_hour", 3)),
                        "keep": int(f.get("backup_keep", 7)),
                        "dir": str(f.get("backup_dir") or "")},
+            "max_faces_per_person": int(f.get("max_faces_per_person", 40)),
         }
 
     @app.post("/api/settings")
@@ -319,8 +326,12 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
                 else:
                     lo, hi = spec
                     updates[k] = min(max(int(body[k]), lo), hi)
-        _apply_settings(updates)
-        return {"ok": True, "applied": updates}
+        for k, (lo, hi) in INT_SPEC.items():
+            if k in body:
+                try: updates[k] = min(max(int(body[k]), lo), hi)
+                except (TypeError, ValueError): raise HTTPException(400, f"{k} not an int")
+        trimmed = _apply_settings(updates)
+        return {"ok": True, "applied": updates, "trimmed": trimmed}
 
     @app.post("/api/backup/now")
     def backup_now():

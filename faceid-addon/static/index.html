@@ -385,6 +385,11 @@ async function renderSettings(){
   main.innerHTML=`
     <h2>Matching thresholds</h2>
     ${rows}
+    <div class="row" style="margin-top:6px">
+      <b style="min-width:230px;font:600 13px var(--sans)">Max photos per person</b>
+      <input id="set-maxfaces" type="number" min="5" max="100" value="${cfg.max_faces_per_person}" style="width:70px">
+      <span class="stat">when a person exceeds this, the photo most similar to the rest is set aside (kept diverse angles). Lowering it trims everyone now.</span>
+    </div>
     <div class="row"><button class="act" onclick="saveThresholds()">SAVE THRESHOLDS</button>
       <span class="stat">applies live; changes here override the config / add-on options and persist</span></div>
 
@@ -413,8 +418,10 @@ async function saveThresholds(){
   const body={};
   ['match_threshold','unknown_threshold','suggest_threshold','cluster_eps','ignore_threshold'].forEach(k=>{
     const el=document.getElementById('set-'+k); if(el)body[k]=+el.value;});
-  await j('api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  toast('Thresholds saved');
+  const mf=document.getElementById('set-maxfaces'); if(mf)body.max_faces_per_person=+mf.value;
+  const r=await j('api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  toast(r.trimmed?`Saved — ${r.trimmed} photo(s) trimmed`:'Settings saved');
+  persons=await j('api/persons');
 }
 async function saveBackupCfg(){
   const body={backup_enabled:document.getElementById('bkEnabled').checked,

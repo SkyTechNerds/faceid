@@ -60,6 +60,7 @@ faceid:
   unknown_threshold: $(cfg '.unknown_threshold')
   cluster_eps: $(cfg '.cluster_eps')
   suggest_threshold: $(cfg '.suggest_threshold')
+  max_faces_per_person: $(cfg '.max_faces_per_person')
   backup_enabled: $(cfg '.backup_enabled')
   backup_hour: $(cfg '.backup_hour')
   backup_keep: $(cfg '.backup_keep')

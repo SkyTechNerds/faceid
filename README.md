@@ -21,8 +21,11 @@ built because Frigate's built-in face recognition UX didn't cut it:
   margin over every enrolled person, visibly marked "auto", deletable anytime).
   Anchors are grouped per person; groups can be merged, curated, or released into a
   real person with one click if you change your mind.
-- **Train from anywhere.** Assign faces from your cameras, upload photos from your photo
-  library, or enroll whole folders via CLI.
+- **Train from anywhere, without bloat.** Assign faces from your cameras, upload photos
+  from your photo library, or enroll whole folders via CLI. A per-person photo cap keeps
+  galleries lean: when it's exceeded, the reference **most similar to the rest** is set
+  aside (so unusual angles are kept, not lost) — visibly, on the person card, where you
+  can restore it. The cap is adjustable in the Settings tab.
 - **Home Assistant native.** MQTT discovery sensors per camera (presence-window state like
   `Alice, Bob` → `nobody`), plus a per-recognition event topic for automations.
 - **Tags flow back to Frigate.** Recognized names are written as `sub_label`, so you can
@@ -182,6 +185,24 @@ Ignored faces become negative anchors, grouped by person in the **Ignored** tab:
 as at recognition time). Diversity beats volume. Create dedicated persons for regular
 strangers (mailman, neighbors) instead of discarding them — that keeps them from being
 force-matched to your family.
+
+## How training stays healthy
+
+Recognition is only as good as the reference photos, so FaceID keeps galleries diverse
+rather than large:
+
+- **New photos are only kept if they add something** — a near-duplicate of one you
+  already have is skipped.
+- **A per-person cap** (default 40, adjustable in Settings) bounds how many references a
+  person keeps. When exceeded, FaceID sets aside the photo that is **most similar to all
+  the others** — i.e. the most redundant one — so a rare side/angle shot is preserved
+  while a 30th near-identical front shot is the first to go.
+- **Nothing vanishes silently**: trimmed photos appear on the person card with a short
+  reason and a one-click **restore** (or delete). Lowering the cap in Settings trims
+  everyone down immediately, so you can see exactly what happened.
+
+If someone is recognized poorly from a certain angle, just add a photo from *that* angle —
+being unusual, it's automatically kept.
 
 ## Backup & restore
 

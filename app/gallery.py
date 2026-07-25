@@ -248,6 +248,26 @@ class Gallery:
             self._persist(slug)
             return fname
 
+    def enforce_cap_all(self) -> int:
+        """Alle Personen sofort auf max_per_person trimmen (z. B. nach Cap-Senkung im
+        Settings-Tab). Ausgemusterte Fotos wandern nach _trimmed. Gibt Anzahl zurück."""
+        if not self.max_per_person:
+            return 0
+        total = 0
+        with self._lock:
+            for slug, entry in self._cache.items():
+                while len(entry["files"]) > self.max_per_person:
+                    sims = entry["emb"] @ entry["emb"].T
+                    np.fill_diagonal(sims, 0.0)
+                    ms = sims.mean(axis=1)
+                    drop = int(np.argmax(ms))
+                    self._trim_face(slug, entry["files"][drop], entry["emb"][drop], float(ms[drop]))
+                    entry["files"].pop(drop)
+                    entry["emb"] = np.delete(entry["emb"], drop, axis=0)
+                    total += 1
+                self._persist(slug)
+        return total
+
     def delete_face(self, slug: str, fname: str):
         with self._lock:
             entry = self._cache[slug]
