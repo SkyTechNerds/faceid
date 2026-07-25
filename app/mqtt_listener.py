@@ -193,6 +193,7 @@ class EventProcessor:
                     uid = self.gallery.save_unknown(
                         crop, emb,
                         {"camera": st["camera"], "event_id": eid,
+                         "event_ts": st.get("start_time"),
                          "guess": u["guess"], "guess_score": round(u["guess_score"], 3)},
                         full_bgr=full,
                     )

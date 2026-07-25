@@ -3,6 +3,14 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.6.3 — 2026-07-25
+
+- **Fixed: review cards showed the wrong date.** A face was stamped with the moment
+  FaceID processed it, not the moment it happened — so a history scan over four weeks
+  labelled every card with today's date. Cards now carry the Frigate event time and the
+  UI prefers it. Existing cards can be repaired with
+  `python scripts/backfill-event-ts.py` (pulls the real time via the stored event ID).
+
 ## 0.6.2 — 2026-07-25
 
 - **History scan can recover missed events** (`python -m app.backfill --rescue`). When the

@@ -100,6 +100,9 @@ async function j(url,opt){const r=await fetch(url,opt);if(!r.ok)throw new Error(
 function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';setTimeout(()=>t.style.display='none',2500)}
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function fmtTs(ts){return new Date(ts*1000).toLocaleString(undefined,{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}
+// Wann das Ereignis passierte, nicht wann wir es verarbeitet haben — beim Verlaufs-Scan
+// liegen die Wochen auseinander.
+function fmtWhen(u){return fmtTs(u.event_ts||u.ts)}
 
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
   tab=b.dataset.t;selected.clear();
@@ -204,8 +207,8 @@ async function renderUnknowns(){
       <div class="grid">${g.items.map(u=>`
         <div class="tile">
           <img src="data/unknowns/${u.id}.jpg" loading="lazy">
-          <span class="score">${(u.guess_score*100|0)}% · ${fmtTs(u.ts)}</span>
-          ${u.full_url?`<button class="z" title="full snapshot" onclick="showFull('${u.full_url}','${esc(u.camera||'')} · ${fmtTs(u.ts)}','data/unknowns/${u.id}.jpg')">⛶</button>`:''}
+          <span class="score">${(u.guess_score*100|0)}% · ${fmtWhen(u)}</span>
+          ${u.full_url?`<button class="z" title="full snapshot" onclick="showFull('${u.full_url}','${esc(u.camera||'')} · ${fmtWhen(u)}','data/unknowns/${u.id}.jpg')">⛶</button>`:''}
           <button class="x" title="not ${esc(g.name)} — pull this face out" onclick="rejectSuggestion('${u.id}')">×</button>
         </div>`).join('')}
       </div>
@@ -230,8 +233,8 @@ async function renderUnknowns(){
       <div class="grid">${c.map(u=>`
         <div class="tile" data-id="${u.id}" title="click to select — actions then apply to the selection only" onclick="this.classList.toggle('sel')">
           <img src="data/unknowns/${u.id}.jpg" loading="lazy">
-          <span class="score">${fmtTs(u.ts)}</span>
-          ${u.full_url?`<button class="z" title="full snapshot" onclick="event.stopPropagation();showFull('${u.full_url}','${esc(u.camera||'')} · ${fmtTs(u.ts)}','data/unknowns/${u.id}.jpg')">⛶</button>`:''}
+          <span class="score">${fmtWhen(u)}</span>
+          ${u.full_url?`<button class="z" title="full snapshot" onclick="event.stopPropagation();showFull('${u.full_url}','${esc(u.camera||'')} · ${fmtWhen(u)}','data/unknowns/${u.id}.jpg')">⛶</button>`:''}
         </div>`).join('')}
       </div>
     </div>`;}).join('');
