@@ -66,6 +66,8 @@ td.p{color:var(--acc)} td.u{color:var(--warn)}
 .tile:hover button.z{display:block}
 .trimgrid .tile img{filter:grayscale(1) brightness(.55);transition:filter .15s}
 .trimgrid .tile:hover img{filter:none}
+.tile.simhi{outline:3px solid var(--acc);outline-offset:-3px}
+.tile.simhi img{filter:none;opacity:1}
 .trimlabel{display:inline-block;font:600 10px var(--mono);letter-spacing:.1em;color:var(--warn);border:1px solid var(--warn);border-radius:3px;padding:1px 6px;margin-bottom:4px}
 #lightbox{position:fixed;inset:0;background:color-mix(in oklab,var(--bg) 88%,transparent);
   display:none;align-items:center;justify-content:center;z-index:10;cursor:zoom-out;flex-direction:column;gap:8px}
@@ -246,6 +248,13 @@ async function ignoreSuggestion(gi){
   const ids=g.items.map(it=>it.id).filter(id=>!window._excludedIds.has(id));
   const r=await j('api/unknowns/ignore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids,person:'-'})});
   toast(`${r.ignored} ignored`);render();
+}
+function hiliteSimilar(slug,files){
+  const card=document.getElementById('p-'+slug); if(!card)return;
+  const set=new Set(files);
+  card.querySelectorAll('.grid:not(.trimgrid) .tile[data-file]').forEach(t=>{
+    t.classList.toggle('simhi',set.has(t.dataset.file));
+  });
 }
 function rejectSuggestion(id){(window._excludedIds||(window._excludedIds=new Set())).add(id);render();}
 async function renderIgnored(){
@@ -463,7 +472,7 @@ function personCard(slug,p){
         <button class="ghost" title="delete this person and all their reference faces permanently" onclick="delPerson('${slug}','${esc(p.name)}')">delete</button>
       </div>
       <div class="grid">${p.files.map(f=>`
-        <div class="tile"><img src="data/persons/${slug}/${f}" loading="lazy" style="cursor:zoom-in"
+        <div class="tile" data-file="${f}"><img src="data/persons/${slug}/${f}" loading="lazy" style="cursor:zoom-in"
             onclick="showFull('data/persons/${slug}/${f}','${esc(p.name)}')">
           <button class="u" title="back to unknown queue" onclick="unassignFace('${slug}','${f}')">↩</button>
           <button class="x" title="delete permanently" onclick="delFace('${slug}','${f}')">×</button></div>`).join('')}
@@ -473,7 +482,7 @@ function personCard(slug,p){
         <span class="trimlabel">✂︎ SET ASIDE · ${p.trimmed.length}</span>
         <div class="stat">Trimmed to stay under the photo limit — these were the most similar to the rest, so diverse angles were kept. Hover to preview; ↩ restore or × delete. <a href="https://github.com/SkyTechNerds/faceid/blob/main/docs/trimming.md" target="_blank" rel="noopener" style="color:var(--acc)">Learn more ↗</a></div>
         <div class="grid trimgrid" style="margin-top:6px">${p.trimmed.map(t=>`
-          <div class="tile"><img src="data/persons/${slug}/_trimmed/${t.file}" loading="lazy" title="set aside ${fmtTs(t.ts)} · similarity ${t.mean_sim} (higher = more redundant)">
+          <div class="tile" onmouseenter="hiliteSimilar('${slug}',${JSON.stringify(t.similar||[]).replace(/"/g,'&quot;')})" onmouseleave="hiliteSimilar('${slug}',[])"><img src="data/persons/${slug}/_trimmed/${t.file}" loading="lazy" title="set aside ${fmtTs(t.ts)} · similarity ${t.mean_sim} (higher = more redundant) — hover to see the similar photos above">
             <button class="u" title="restore this photo" onclick="restoreTrimmed('${slug}','${t.file}')">↩</button>
             <button class="x" title="delete permanently" onclick="deleteTrimmed('${slug}','${t.file}')">×</button></div>`).join('')}
         </div>

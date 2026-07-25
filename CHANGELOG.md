@@ -3,6 +3,12 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.4.9 — 2026-07-23
+
+- Hovering a set-aside (trimmed) photo now highlights the active reference photos it is
+  most similar to — so you can see at a glance which photos it was considered a duplicate
+  of.
+
 ## 0.4.8 — 2026-07-23
 
 - Added a dedicated **docs/trimming.md** explaining the photo-limit behaviour in depth

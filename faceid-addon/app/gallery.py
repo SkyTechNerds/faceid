@@ -149,9 +149,23 @@ class Gallery:
             log = json.loads(log_f.read_text())
         except (json.JSONDecodeError, OSError):
             return []
-        return [{"file": e["file"], "ts": e.get("ts", 0), "mean_sim": e.get("mean_sim"),
-                 "reason": e.get("reason", "")}
-                for e in log if (td / e["file"]).exists()]
+        entry = self._cache.get(slug)
+        act_emb = entry["emb"] if entry else np.zeros((0, 512), dtype=np.float32)
+        act_files = entry["files"] if entry else []
+        out = []
+        for e in log:
+            if not (td / e["file"]).exists():
+                continue
+            similar = []
+            emb = e.get("embedding")
+            if emb and len(act_files):
+                sims = act_emb @ np.array(emb, dtype=np.float32)
+                # aktive Fotos, die diesem getrimmten ähneln (Cosine >= 0.45), stärkste zuerst
+                idx = [i for i in np.argsort(-sims) if sims[i] >= 0.45][:12]
+                similar = [act_files[i] for i in idx]
+            out.append({"file": e["file"], "ts": e.get("ts", 0), "mean_sim": e.get("mean_sim"),
+                        "reason": e.get("reason", ""), "similar": similar})
+        return out
 
     def restore_trimmed(self, slug: str, fname: str) -> bool:
         """Getrimmtes Foto zurück in die Galerie holen (Cap wird dabei NICHT erzwungen)."""
