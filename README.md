@@ -198,7 +198,8 @@ rather than large:
   the others** — i.e. the most redundant one — so a rare side/angle shot is preserved
   while a 30th near-identical front shot is the first to go.
 - **Remove duplicates on demand**: even under the cap, near-identical photos add nothing.
-  **Settings → Remove duplicates** sets those aside (sensitivity slider with a live preview),
+  **Settings → Remove duplicates** finds both truly identical *images* (perceptual hash) and
+  near-identical *faces* (embedding similarity) and sets them aside (live preview),
   keeping the gallery diverse — as a button, so you stay in control. (Camera crops score
   lower than phone photos, so useful sensitivity is ~0.60–0.70.)
 - **Nothing vanishes silently**: trimmed photos appear on the person card with a short

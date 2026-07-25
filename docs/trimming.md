@@ -68,6 +68,18 @@ does *not* auto-restore — bring photos back yourself, so nothing reappears une
   the cap only acts on *new* additions, so a gallery you've hand-tuned stays as you left it
   until you add more.
 
+## Two kinds of duplicate
+
+**Remove duplicates** looks for two different things, because they need different tools:
+
+1. **The same image twice** — detected by a perceptual hash of the picture itself. This
+   catches cases face-similarity *cannot* see: if the identical crop is stored twice, the
+   two entries may carry embeddings of different faces, so the recognizer sees no
+   similarity at all while your eyes see an obvious duplicate. Such a reference can't be
+   judged on its own and is set aside.
+2. **Near-identical faces** — detected by embedding similarity, with the sensitivity
+   slider (see below).
+
 ## Removing duplicates on demand
 
 The per-person cap only acts when you go *over* it. But even under the limit, several
