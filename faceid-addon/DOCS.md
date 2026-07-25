@@ -37,11 +37,14 @@ Full documentation: https://github.com/SkyTechNerds/faceid
 | `dedupe_threshold` | default sensitivity for the Settings "Remove duplicates" action |
 | `hires_enroll` | fetch new review-queue faces from the recording instead of the detect snapshot (sharper references) |
 | `poll_interval` | seconds; >0 also polls Frigate's event API for events MQTT never announces (e.g. events created by an automation from a camera's own detection). 0 = off |
-| `match_top_k` | a match score is the mean of this many best-fitting reference photos. Higher resists a single lucky photo; lower helps people whose references cover many angles |
 | `backup_enabled` / `backup_hour` / `backup_keep` | optional built-in daily gallery backup |
 
 Thresholds and backup can also be changed live on the app's **Settings** tab; those
-edits are stored in the app's data volume and override these options.
+edits are stored in the app's data volume and override these options. The Settings tab
+additionally holds **"photos averaged per match"** (`match_top_k`) — a match score is the
+mean of that many best-fitting reference photos. Higher resists a single lucky photo;
+lower helps people whose references cover many different angles, since their own less
+similar photos otherwise drag the mean down.
 
 Face data (gallery, review queue) is stored in the app's data volume and survives
 updates. Uninstalling the app deletes it.
