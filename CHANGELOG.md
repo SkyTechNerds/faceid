@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to FaceID. The Home Assistant add-on shows this file in the
+All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
 ## 0.4.8 — 2026-07-23
@@ -50,10 +50,10 @@ update dialog; standalone users can watch GitHub releases.
 
 - **New Settings tab** — matching thresholds (recognition, unknown, suggestion, cluster,
   ignore) are now live-editable sliders, and backup/restore lives here instead of on the
-  Persons tab. Edits are stored in `data/settings.json` and override config / add-on
+  Persons tab. Edits are stored in `data/settings.json` and override config / app
   options, so they persist across restarts and updates.
 - **Built-in daily auto-backup** (optional): enable it, choose the hour and how many to
-  keep — runs inside FaceID, no external cron needed. Add-on options and a documented
+  keep — runs inside FaceID, no external cron needed. App options and a documented
   host-cron / HA-automation alternative included.
 
 ## 0.4.0 — 2026-07-23
@@ -70,7 +70,7 @@ update dialog; standalone users can watch GitHub releases.
 
 - **Configurable suggestion threshold** (`suggest_threshold`, default 0.40): controls
   when an unknown face is grouped into a "Looks like <person>" suggestion. Available as
-  an add-on option too.
+  an app option too.
 - **Jump-to-person dropdown** on the Persons tab (shown once you have more than a few
   people) — pick a name to scroll straight to that person.
 
@@ -185,5 +185,5 @@ Initial public release.
   (`Alice, Bob` → `nobody`), `faceid/event` topic for automations
   (exactly one message per Frigate event and person)
 - Configurable MQTT topic prefix/client id for multi-instance setups
-- Optional HTTP Basic Auth for standalone installs (add-on uses HA ingress)
-- Home Assistant add-on (amd64/aarch64, ingress, AVX pre-flight check)
+- Optional HTTP Basic Auth for standalone installs (app uses HA ingress)
+- Home Assistant app (amd64/aarch64, ingress, AVX pre-flight check)

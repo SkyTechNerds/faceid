@@ -88,7 +88,7 @@ never leave your machine.
 
 ## Install as a Home Assistant app (recommended for HAOS)
 
-*(Apps were formerly known as add-ons.)*
+*(Apps were formerly known as apps.)*
 
 1. Add this repository to your app store — one click:
 
@@ -217,7 +217,7 @@ so FaceID makes it easy to keep. Everything is on the **Settings** tab:
   people between instances).
 - **Automatic daily backup** — enable it, pick an hour and how many to keep. It runs
   inside FaceID (no external cron needed); the folder defaults to `data/backups`, which
-  survives add-on updates. Point it at a mounted share to get backups off the box.
+  survives app updates. Point it at a mounted share to get backups off the box.
 
 **Automate it yourself** if you prefer: the download is a plain endpoint, so any host
 cron or Home Assistant automation can pull it:
@@ -229,7 +229,7 @@ find /backups -name 'faceid-*.tar.gz' -mtime +14 -delete
 ```
 
 Settings changed here (thresholds + backup) are stored in `data/settings.json` and
-**override `config.yaml` / add-on options**, persisting across restarts and updates.
+**override `config.yaml` / app options**, persisting across restarts and updates.
 
 ## Home Assistant
 
