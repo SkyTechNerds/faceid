@@ -3,6 +3,18 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.6.1 — 2026-07-25
+
+- **Sharper reference photos now actually land.** 0.6.0 sampled a handful of timestamps
+  from the recording and hoped one of them held the face — on real events that worked
+  only about one time in six, because Frigate picks its snapshot from a moment we cannot
+  know. FaceID now pulls the event clip once and scans frames across it instead: same
+  ~2x larger faces, but four times as often (measured 4/6 vs 1/6 on the same events).
+- **Fixed: the wrong face could veto a good frame.** With several people in view, only
+  the *largest* face in a frame was compared against the original — if that was somebody
+  else, the whole frame was discarded even though the right person was in it. All faces
+  in a frame are now checked and the best identity match wins.
+
 ## 0.6.0 — 2026-07-23
 
 - **Sharper reference photos (new default)**: faces entering the review queue — live and

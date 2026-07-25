@@ -40,6 +40,32 @@ class FrigateAPI:
             log.debug("Recording-Frame %s@%s fehlgeschlagen: %s", camera, ts, e)
             return None
 
+    def download_clip(self, event_id: str, dest: str, max_bytes: int = 80_000_000) -> bool:
+        """Ereignis-Clip (volle Aufnahme-Auflösung) nach ``dest`` streamen.
+
+        Nur fürs Enrollment: ein Download deckt das ganze Ereignis ab, statt einzelne
+        Zeitpunkte zu raten. ``max_bytes`` bricht überlange Clips ab.
+        """
+        url = f"{self.base}/api/events/{event_id}/clip.mp4"
+        try:
+            with self.session.get(url, timeout=self.timeout * 6, stream=True) as r:
+                if r.status_code != 200:
+                    return False
+                written = 0
+                with open(dest, "wb") as fh:
+                    for chunk in r.iter_content(chunk_size=1 << 18):
+                        if not chunk:
+                            continue
+                        written += len(chunk)
+                        if written > max_bytes:
+                            log.debug("Clip %s abgebrochen (> %d Bytes)", event_id, max_bytes)
+                            return False
+                        fh.write(chunk)
+                return written > 1000
+        except (requests.RequestException, OSError) as e:
+            log.debug("Clip %s fehlgeschlagen: %s", event_id, e)
+            return False
+
     def set_sub_label(self, event_id: str, label: str, score: float):
         try:
             r = self.session.post(

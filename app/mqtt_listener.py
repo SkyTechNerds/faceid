@@ -178,7 +178,8 @@ class EventProcessor:
                         # schärferes Gesicht aus der Aufnahme holen (bessere Referenz)
                         try:
                             hi = upgrade_face(self.engine, self.frigate, st["camera"],
-                                              st.get("start_time"), st.get("end_time"), emb)
+                                              st.get("start_time"), st.get("end_time"), emb,
+                                              event_id=eid)
                         except Exception:
                             hi = None
                         if hi is not None:

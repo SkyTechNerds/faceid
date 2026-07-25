@@ -64,7 +64,7 @@ def run_backfill(engine, gallery, frigate, frigate_url: str, days: int = 14,
         if hires:
             try:
                 hi = upgrade_face(engine, frigate, ev["camera"], ev.get("start_time"),
-                                  ev.get("end_time"), emb)
+                                  ev.get("end_time"), emb, event_id=ev["id"])
             except Exception:
                 hi = None
             if hi is not None:
