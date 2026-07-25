@@ -24,6 +24,7 @@ import yaml
 
 BASE = Path(__file__).resolve().parent.parent
 TOP_K = 3
+FAVORITES = set()   # wird aus meta.json gefuellt
 
 
 def load_gallery(persons_dir: Path):
@@ -40,6 +41,11 @@ def load_gallery(persons_dir: Path):
             continue
         if emb.ndim == 2 and len(emb):
             out[d.name] = (name, emb)
+            try:
+                if json.loads(meta_f.read_text()).get("favorite"):
+                    FAVORITES.add(name)
+            except (OSError, json.JSONDecodeError):
+                pass
     return out
 
 
@@ -90,6 +96,7 @@ def leave_one_out(test_gal, gal, thr):
 
 
 def live_probe(gal_old, gal_new, days, thr, cfg):
+    sys.path.insert(0, str(BASE))   # app/ liegt eine Ebene ueber scripts/
     from app.engine import FaceEngine
     from app.frigate_api import FrigateAPI
 
@@ -112,6 +119,7 @@ def live_probe(gal_old, gal_new, days, thr, cfg):
 
     faces = hit_old = hit_new = disagree = 0
     gained = Counter()
+    per_person = {}   # Name -> Liste der Scores, zeigt den Abstand zur Schwelle
     for ev in events:
         img = api.snapshot(ev["id"], crop=True)
         if img is None:
@@ -124,6 +132,8 @@ def live_probe(gal_old, gal_new, days, thr, cfg):
         _, n_new, s_new = match(gal_new, e)
         ok_new = s_new >= thr
         hit_new += ok_new
+        if ok_new:
+            per_person.setdefault(n_new, []).append(s_new)
         if gal_old:
             _, n_old, s_old = match(gal_old, e)
             ok_old = s_old >= thr
@@ -133,7 +143,7 @@ def live_probe(gal_old, gal_new, days, thr, cfg):
             if ok_new and not ok_old:
                 gained[n_new] += 1
     return {"events": len(events), "faces": faces, "old": hit_old, "new": hit_new,
-            "disagree": disagree, "gained": gained}
+            "disagree": disagree, "gained": gained, "per_person": per_person}
 
 
 def main():
@@ -194,6 +204,21 @@ def main():
                 print(f"  neu erkannt: {dict(lp['gained'])}")
         else:
             print(f"  erkannt: {lp['new']} ({100*lp['new']//f}%)")
+
+        if lp["per_person"]:
+            # Ein Treffer knapp ueber der Schwelle faellt bei schlechterem Licht weg —
+            # deshalb zaehlt der Abstand, nicht nur das Ja/Nein.
+            print("\n  Sicherheitsabstand je erkannter Person:")
+            print(f"    {'Person':24s} {'Treffer':>7s} {'Median':>7s} {'min':>6s} {'knapp':>6s}")
+            for name, scores in sorted(lp["per_person"].items(),
+                                       key=lambda kv: -len(kv[1])):
+                sc = sorted(scores)
+                knapp = sum(1 for v in sc if v < thr + 0.05)
+                mark = " *" if name in FAVORITES else ""
+                print(f"    {(name + mark)[:24]:24s} {len(sc):>7d} "
+                      f"{sc[len(sc)//2]:>7.2f} {sc[0]:>6.2f} {knapp:>6d}")
+            if FAVORITES:
+                print("    * = Favorit")
     return 0
 
 

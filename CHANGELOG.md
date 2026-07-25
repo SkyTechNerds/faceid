@@ -3,6 +3,20 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.6.6 — 2026-07-25
+
+- **`match_top_k` is now adjustable in Settings** ("Photos averaged per match"). It was
+  config-file only, yet it turns out to be the single biggest lever on recognition — and
+  the sensible value depends on your gallery.
+- Measured on a real 128-photo gallery (leave-one-out, so with ground truth), lowering it
+  from 3 to 1 nearly doubled correct recognitions (36 → 65) with **zero** misassignments,
+  and *widened* the margin to the runner-up. The reason: the score averages the k best
+  matching photos, so a person whose references cover many different angles gets dragged
+  down by her own less similar photos — punishing exactly the well-covered people.
+- The imbalance concern behind top-k was checked, not assumed: strangers (ignore anchors)
+  peaked at 0.19 against a 0.50 threshold at every k, and no wrong person ever crossed
+  the threshold. Measure your own with `scripts/measure-recognition.py` before changing.
+
 ## 0.6.5 — 2026-07-25
 
 - **Reference photos now remember where they came from.** Assigning a face used to keep
