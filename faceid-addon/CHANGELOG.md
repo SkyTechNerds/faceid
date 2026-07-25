@@ -3,6 +3,21 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.6.4 — 2026-07-25
+
+- **New: `scripts/coverage.py`** — per person, how well is she actually covered and what
+  is missing? Reports photo count, diversity (mean pairwise similarity), viewing angles
+  estimated from the landmarks (frontal / half / profile), day vs night/IR shots, and a
+  leave-one-out self test — then names the concrete gap ("no frontal shot", "no night
+  shot", "too few photos").
+- **New: `scripts/measure-recognition.py`** — did enrolling actually help? Compares the
+  current gallery against an older one (an unpacked backup) via leave-one-out, plus a
+  practical probe against recent Frigate events.
+- The self test is deliberately harsh and pessimistic on small galleries — with five
+  varied photos, each has to hold up against four entirely different situations. It is
+  only reported as a defect from eight photos up, and a low value means "these photos
+  reinforce each other weakly", not "this person is not recognised in practice".
+
 ## 0.6.3 — 2026-07-25
 
 - **Fixed: review cards showed the wrong date.** A face was stamped with the moment
