@@ -227,6 +227,10 @@ adds usable references.
 Expect a clip download (8–32 MB) and several seconds per affected event, so this is a
 manual run, not something the live pipeline does.
 
+**Keep `--days` within your recording retention.** Rescue needs the clip, so events older
+than `record.retain` yield nothing and only cost time — a 28-day run against a 10-day
+retention spends most of its hour on events it cannot help.
+
 ## How training stays healthy
 
 Recognition is only as good as the reference photos, so FaceID keeps galleries diverse
