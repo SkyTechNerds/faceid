@@ -231,6 +231,35 @@ manual run, not something the live pipeline does.
 than `record.retain` yield nothing and only cost time — a 28-day run against a 10-day
 retention spends most of its hour on events it cannot help.
 
+## Calibrating the threshold
+
+The defaults are deliberately cautious, and on a real gallery that caution turned out to
+be expensive. Measure yours rather than guessing — `scripts/measure-recognition.py` and
+`scripts/coverage.py` produce the numbers.
+
+On a 128-photo household gallery the separation was far wider than the defaults assume:
+
+| | correct person | different person |
+|---|---|---|
+| best match score | median 0.50 | median 0.18, **max 0.31** |
+
+With a default threshold of 0.50 sitting exactly on the median of correct matches, half
+of all genuine recognitions were discarded to keep a distance nothing ever came close to.
+Two changes followed, both measured:
+
+* **`match_top_k` 3 → 1.** Averaging the best k photos punishes people whose references
+  cover many angles — their own less similar photos drag the score down, so the
+  best-covered people scored worst.
+* **`match_threshold` 0.50 → 0.45**, still 0.14 above the highest score any stranger
+  ever reached.
+
+Together these lifted recognition on a held-out set of real events from 90% to 100%, and
+moved the weakest favourite's worst match from 0.01 above the cut-off to 0.09 above it —
+without a single misassignment.
+
+Do not copy these numbers. Run the scripts on your own gallery: how far strangers get is
+the number that decides how low you can safely go.
+
 ## How training stays healthy
 
 Recognition is only as good as the reference photos, so FaceID keeps galleries diverse
