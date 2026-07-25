@@ -3,6 +3,16 @@
 All notable changes to FaceID. The Home Assistant add-on shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.4.1 — 2026-07-23
+
+- **New Settings tab** — matching thresholds (recognition, unknown, suggestion, cluster,
+  ignore) are now live-editable sliders, and backup/restore lives here instead of on the
+  Persons tab. Edits are stored in `data/settings.json` and override config / add-on
+  options, so they persist across restarts and updates.
+- **Built-in daily auto-backup** (optional): enable it, choose the hour and how many to
+  keep — runs inside FaceID, no external cron needed. Add-on options and a documented
+  host-cron / HA-automation alternative included.
+
 ## 0.4.0 — 2026-07-23
 
 - **Backup & restore**: download your whole gallery (persons + ignore anchors) as a

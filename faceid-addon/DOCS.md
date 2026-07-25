@@ -31,6 +31,11 @@ Full documentation: https://github.com/SkyTechNerds/faceid
 | `set_sub_label` | write recognized names back to Frigate events |
 | `cameras` | process only these cameras (empty = all) |
 | `discovery_cameras` | cameras that get a Home Assistant sensor |
+| `suggest_threshold` | score at which unknown faces are grouped into a "looks like <person>" suggestion |
+| `backup_enabled` / `backup_hour` / `backup_keep` | optional built-in daily gallery backup |
+
+Thresholds and backup can also be changed live on the app's **Settings** tab; those
+edits are stored in the app's data volume and override these options.
 
 Face data (gallery, review queue) is stored in the app's data volume and survives
 updates. Uninstalling the app deletes it.

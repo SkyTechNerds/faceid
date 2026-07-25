@@ -17,6 +17,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .engine import FaceEngine, crop_face, find_face_padded
+from .backup_util import build_backup_gz, write_backup_file, prune_backups
+from pathlib import Path as _P
 
 log = logging.getLogger("faceid.web")
 
@@ -252,19 +254,79 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     def backfill_status():
         return backfill_state
 
+    # Live-editierbare Einstellungen (Settings-Tab). Overlay in data/settings.json.
+    SETTINGS_SPEC = {
+        "match_threshold": (0.2, 0.9),
+        "unknown_threshold": (0.1, 0.8),
+        "suggest_threshold": (0.1, 0.9),
+        "cluster_eps": (0.3, 0.8),
+        "ignore_threshold": (0.1, 0.9),
+    }
+    BACKUP_SPEC = {"backup_enabled": bool, "backup_hour": (0, 23), "backup_keep": (1, 90), "backup_dir": str}
+    settings_file = data_dir / "settings.json"
+
+    def _apply_settings(updates: dict):
+        f = cfg["faceid"]
+        f.update(updates)
+        # in processor/gallery gecachte Werte live nachziehen
+        if "match_threshold" in updates: processor.match_thr = float(updates["match_threshold"])
+        if "unknown_threshold" in updates: processor.unknown_thr = float(updates["unknown_threshold"])
+        if "ignore_threshold" in updates: processor.ignore_thr = float(updates["ignore_threshold"])
+        # settings.json (nur die editierbaren Keys) persistieren
+        keys = set(SETTINGS_SPEC) | set(BACKUP_SPEC)
+        overlay = {}
+        if settings_file.exists():
+            try: overlay = json.loads(settings_file.read_text())
+            except (json.JSONDecodeError, OSError): overlay = {}
+        overlay.update({k: v for k, v in updates.items() if k in keys})
+        settings_file.write_text(json.dumps(overlay, ensure_ascii=False, indent=1))
+
+    @app.get("/api/settings")
+    def get_settings():
+        f = cfg["faceid"]
+        return {
+            "thresholds": {k: float(f.get(k, {"match_threshold":0.5,"unknown_threshold":0.35,
+                "suggest_threshold":0.40,"cluster_eps":0.55,"ignore_threshold":0.5}[k]))
+                for k in SETTINGS_SPEC},
+            "ranges": {k: v for k, v in SETTINGS_SPEC.items()},
+            "backup": {"enabled": bool(f.get("backup_enabled", False)),
+                       "hour": int(f.get("backup_hour", 3)),
+                       "keep": int(f.get("backup_keep", 7)),
+                       "dir": str(f.get("backup_dir") or "")},
+        }
+
+    @app.post("/api/settings")
+    def post_settings(body: dict):
+        updates = {}
+        for k, (lo, hi) in SETTINGS_SPEC.items():
+            if k in body:
+                try: v = float(body[k])
+                except (TypeError, ValueError): raise HTTPException(400, f"{k} not a number")
+                updates[k] = min(max(v, lo), hi)
+        for k, spec in BACKUP_SPEC.items():
+            if k in body:
+                if spec is bool: updates[k] = bool(body[k])
+                elif spec is str: updates[k] = str(body[k] or "")
+                else:
+                    lo, hi = spec
+                    updates[k] = min(max(int(body[k]), lo), hi)
+        _apply_settings(updates)
+        return {"ok": True, "applied": updates}
+
+    @app.post("/api/backup/now")
+    def backup_now():
+        f = cfg["faceid"]
+        bdir = _P(f.get("backup_dir") or (data_dir / "backups"))
+        p = write_backup_file(data_dir, bdir)
+        prune_backups(bdir, int(f.get("backup_keep", 7)))
+        return {"ok": True, "file": str(p)}
+
     @app.get("/api/backup")
     def backup():
         """Komplette Galerie (persons + ignored) als tar.gz — die einzige unersetzliche
         Datenquelle. Unknown-Queue und Frigate-Vollbilder werden bewusst ausgelassen."""
-        buf = io.BytesIO()
-        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
-            for sub in ("persons", "ignored"):
-                d = data_dir / sub
-                if d.exists():
-                    tar.add(d, arcname=sub)
-        buf.seek(0)
         ts = time.strftime("%Y%m%d-%H%M%S")
-        return Response(buf.getvalue(), media_type="application/gzip",
+        return Response(build_backup_gz(data_dir), media_type="application/gzip",
                         headers={"Content-Disposition": f'attachment; filename="faceid-backup-{ts}.tar.gz"'})
 
     @app.post("/api/restore")

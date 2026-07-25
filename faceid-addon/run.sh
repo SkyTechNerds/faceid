@@ -60,6 +60,9 @@ faceid:
   unknown_threshold: $(cfg '.unknown_threshold')
   cluster_eps: $(cfg '.cluster_eps')
   suggest_threshold: $(cfg '.suggest_threshold')
+  backup_enabled: $(cfg '.backup_enabled')
+  backup_hour: $(cfg '.backup_hour')
+  backup_keep: $(cfg '.backup_keep')
   presence_window: $(cfg '.presence_window')
   set_sub_label: $(cfg '.set_sub_label')
   min_face_px: 48

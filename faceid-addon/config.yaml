@@ -1,5 +1,5 @@
 name: FaceID
-version: "0.4.0"
+version: "0.4.1"
 slug: faceid
 description: Face recognition for Frigate — trainable gallery, clustered unknown review, HA sensors
 url: https://github.com/SkyTechNerds/faceid
@@ -31,6 +31,9 @@ options:
   unknown_threshold: 0.35
   cluster_eps: 0.55
   suggest_threshold: 0.40
+  backup_enabled: false
+  backup_hour: 3
+  backup_keep: 7
   presence_window: 120
   set_sub_label: true
   cameras: []
@@ -46,6 +49,9 @@ schema:
   unknown_threshold: float(0.1,0.8)
   cluster_eps: float(0.3,0.8)
   suggest_threshold: float(0.1,0.9)
+  backup_enabled: bool
+  backup_hour: int(0,23)
+  backup_keep: int(1,90)
   presence_window: int(10,3600)
   set_sub_label: bool
   cameras:

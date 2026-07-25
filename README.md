@@ -28,6 +28,10 @@ built because Frigate's built-in face recognition UX didn't cut it:
 - **Tags flow back to Frigate.** Recognized names are written as `sub_label`, so you can
   filter clips by person in Frigate's Explore view — including retroactively: the history
   scan tags past events, and assigning a face in the review UI tags its original event too.
+- **Yours to keep.** A Settings tab holds the matching thresholds (live-editable) plus
+  one-click **backup & restore** of your gallery, and an optional built-in **daily
+  auto-backup** — your hand-curated face data is the one irreplaceable thing, so it's
+  easy to safeguard.
 
 ## Screenshots
 
@@ -178,6 +182,30 @@ Ignored faces become negative anchors, grouped by person in the **Ignored** tab:
 as at recognition time). Diversity beats volume. Create dedicated persons for regular
 strangers (mailman, neighbors) instead of discarding them — that keeps them from being
 force-matched to your family.
+
+## Backup & restore
+
+Your gallery (enrolled persons + ignore anchors) is the one thing you can't regenerate —
+so FaceID makes it easy to keep. Everything is on the **Settings** tab:
+
+- **Download backup** — a `.tar.gz` of `persons/` + `ignored/` (not the unknown queue).
+- **Restore** — *replace* everything, or *merge* in only what's missing (handy for moving
+  people between instances).
+- **Automatic daily backup** — enable it, pick an hour and how many to keep. It runs
+  inside FaceID (no external cron needed); the folder defaults to `data/backups`, which
+  survives add-on updates. Point it at a mounted share to get backups off the box.
+
+**Automate it yourself** if you prefer: the download is a plain endpoint, so any host
+cron or Home Assistant automation can pull it:
+
+```bash
+# nightly host cron — keep 14 days
+curl -fsS http://<faceid-host>:8600/api/backup -o /backups/faceid-$(date +\%F).tar.gz
+find /backups -name 'faceid-*.tar.gz' -mtime +14 -delete
+```
+
+Settings changed here (thresholds + backup) are stored in `data/settings.json` and
+**override `config.yaml` / add-on options**, persisting across restarts and updates.
 
 ## Home Assistant
 
