@@ -46,11 +46,11 @@ h2{font:600 12px var(--mono);color:var(--dim);text-transform:uppercase;letter-sp
 .person .head .n{font:12px var(--mono);color:var(--dim)}
 .person .head button.fav{background:none;border:0;color:var(--dim);font-size:16px;cursor:pointer;padding:0 4px;line-height:1}
 .person .head button.fav.on{color:var(--acc)}
-button.act{background:var(--acc);border:0;color:oklch(20% .02 130);font:600 12px var(--mono);
-  padding:5px 12px;cursor:pointer}
-button.ghost{background:none;border:1px solid var(--line);color:var(--dim);font:12px var(--mono);
-  padding:4px 10px;cursor:pointer}
-button.ghost:hover{color:var(--fg)}
+.act,button.act{background:var(--acc);border:0;color:oklch(20% .02 130);font:600 12px var(--mono);
+  padding:5px 12px;cursor:pointer;display:inline-block;line-height:1.35;text-decoration:none;vertical-align:middle}
+.ghost,button.ghost{background:none;border:1px solid var(--line);color:var(--dim);font:12px var(--mono);
+  padding:4px 10px;cursor:pointer;display:inline-block;line-height:1.35;text-decoration:none;vertical-align:middle}
+.ghost:hover,button.ghost:hover{color:var(--fg)}
 input,select{background:var(--panel);border:1px solid var(--line);color:var(--fg);
   font:13px var(--mono);padding:5px 8px}
 table{border-collapse:collapse;width:100%;font:13px var(--mono)}
@@ -400,7 +400,7 @@ async function renderSettings(){
 
     <h2>Manual backup &amp; restore</h2>
     <div class="row">
-      <a class="act" href="api/backup" style="text-decoration:none" title="download persons + ignore anchors as .tar.gz">DOWNLOAD BACKUP</a>
+      <a class="act" href="api/backup" title="download persons + ignore anchors as .tar.gz">DOWNLOAD BACKUP</a>
       <button class="ghost" onclick="backupNow()" title="write a backup into the auto-backup folder now">save to folder now</button>
       <label class="ghost" style="cursor:pointer" title="REPLACES all current persons + ignore anchors">Restore (replace)
         <input type="file" accept=".gz,.tar.gz,application/gzip" style="display:none" onchange="restore(this,false)"></label>

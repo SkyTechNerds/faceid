@@ -3,6 +3,11 @@
 All notable changes to FaceID. The Home Assistant add-on shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.4.2 — 2026-07-23
+
+- Fix: the Download-Backup link and file-upload labels now match the button styling
+  (the .act/.ghost styles only applied to <button> before).
+
 ## 0.4.1 — 2026-07-23
 
 - **New Settings tab** — matching thresholds (recognition, unknown, suggestion, cluster,
