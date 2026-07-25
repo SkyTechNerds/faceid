@@ -413,13 +413,13 @@ async function renderSettings(){
     <h2>Remove duplicate photos</h2>
     <div class="row">
       <b style="min-width:230px;font:600 13px var(--sans)">Duplicate sensitivity</b>
-      <input type="range" id="set-dedupe_threshold" min="0.75" max="0.98" step="0.01" value="${cfg.thresholds.dedupe_threshold}"
-        oninput="document.getElementById('setv-dedupe_threshold').textContent=(+this.value).toFixed(2)" style="flex:1">
+      <input type="range" id="set-dedupe_threshold" min="0.50" max="0.95" step="0.01" value="${cfg.thresholds.dedupe_threshold}"
+        oninput="document.getElementById('setv-dedupe_threshold').textContent=(+this.value).toFixed(2);dedupePreview()" style="flex:1">
       <span id="setv-dedupe_threshold" style="font:13px var(--mono);color:var(--acc);min-width:38px">${cfg.thresholds.dedupe_threshold.toFixed(2)}</span>
     </div>
     <div class="row">
       <button class="act" onclick="runDedupe()">REMOVE DUPLICATES (all persons)</button>
-      <span class="stat">sets aside photos near-identical to one you already have — they add nothing to recognition. Lower sensitivity removes more. Restorable.</span>
+      <span class="stat" id="dedupePrev">sets aside photos similar to one you already have — they add little to recognition. Lower sensitivity = removes more. Camera crops score lower than phone photos, so try ~0.60–0.70. Restorable.</span>
     </div>
 
     <h2>Automatic backup</h2>
@@ -442,6 +442,7 @@ async function renderSettings(){
         <input type="file" accept=".gz,.tar.gz,application/gzip" style="display:none" onchange="restore(this,true)"></label>
     </div>
     <div class="stat">Backup contains only your gallery (persons + ignore anchors) — not the unknown queue.</div>`;
+  dedupePreview();
 }
 async function saveThresholds(){
   const body={};
@@ -453,6 +454,20 @@ async function saveThresholds(){
   const r=await j('api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   toast(r.trimmed?`Saved — ${r.trimmed} photo(s) trimmed`:'Settings saved');
   persons=await j('api/persons');
+}
+let _dedupeTimer=null;
+function dedupePreview(){
+  clearTimeout(_dedupeTimer);
+  _dedupeTimer=setTimeout(async()=>{
+    const el=document.getElementById('set-dedupe_threshold'); if(!el)return;
+    const thr=+el.value;
+    try{
+      const r=await j('api/deduplicate',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({threshold:thr,dry_run:true})});
+      const p=document.getElementById('dedupePrev');
+      if(p)p.textContent=`at sensitivity ${thr.toFixed(2)}: ~${r.would_remove} photo(s) would be set aside across all persons (restorable).`;
+    }catch(e){}
+  },250);
 }
 async function runDedupe(){
   const thr=+document.getElementById('set-dedupe_threshold').value;

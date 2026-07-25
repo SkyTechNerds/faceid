@@ -3,6 +3,13 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.5.2 — 2026-07-23
+
+- **Duplicate removal now works on camera data**: small low-res crops make even
+  near-identical faces score only ~0.66 similar (a phone photo would be 0.95+), so the
+  old 0.75 floor never triggered. The sensitivity range is now 0.50–0.95 (default 0.65)
+  with a **live preview** of how many photos would be set aside as you adjust it.
+
 ## 0.5.1 — 2026-07-23
 
 - **Remove duplicates** (Settings): scans all persons and sets aside photos that are

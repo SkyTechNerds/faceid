@@ -298,15 +298,34 @@ class Gallery:
                 self._persist(slug)
         return total
 
-    def deduplicate_person(self, slug: str, threshold: float = 0.90) -> int:
+    def deduplicate_person(self, slug: str, threshold: float = 0.65, dry_run: bool = False) -> int:
         """Nahezu identische Fotos (Cosine >= threshold) beiseitelegen — sie bringen der
-        Erkennung nichts. Von jedem zu ähnlichen Paar geht das redundantere (höhere
-        mittlere Ähnlichkeit zum Rest). Läuft, bis kein Paar mehr über der Schwelle liegt."""
-        moved = 0
+        Erkennung nichts. Von jedem zu ähnlichen Paar geht das redundantere. dry_run zählt
+        nur (verschiebt nichts). Läuft, bis kein Paar mehr über der Schwelle liegt."""
         with self._lock:
             entry = self._cache.get(slug)
             if entry is None:
                 return 0
+            if dry_run:
+                # Simulation auf Kopie: aktive-Maske, ohne Dateien anzufassen
+                emb = entry["emb"]
+                active = np.ones(emb.shape[0], dtype=bool)
+                removed = 0
+                while active.sum() > 1:
+                    ai = np.where(active)[0]
+                    sub = emb[ai]
+                    sims = sub @ sub.T
+                    np.fill_diagonal(sims, -1.0)
+                    p = int(np.argmax(sims))
+                    r, c = np.unravel_index(p, sims.shape)
+                    if sims[r, c] < threshold:
+                        break
+                    mean = sims.mean(axis=1)  # sub-mean
+                    drop_local = r if mean[r] >= mean[c] else c
+                    active[ai[drop_local]] = False
+                    removed += 1
+                return removed
+            moved = 0
             while len(entry["files"]) > 1:
                 sims = entry["emb"] @ entry["emb"].T
                 np.fill_diagonal(sims, 0.0)
@@ -322,10 +341,10 @@ class Gallery:
                 moved += 1
             if moved:
                 self._persist(slug)
-        return moved
+            return moved
 
-    def deduplicate_all(self, threshold: float = 0.90) -> int:
-        return sum(self.deduplicate_person(s, threshold) for s in list(self._cache.keys()))
+    def deduplicate_all(self, threshold: float = 0.65, dry_run: bool = False) -> int:
+        return sum(self.deduplicate_person(s, threshold, dry_run) for s in list(self._cache.keys()))
 
     def delete_face(self, slug: str, fname: str):
         with self._lock:

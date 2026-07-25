@@ -74,8 +74,11 @@ The per-person cap only acts when you go *over* it. But even under the limit, se
 near-identical photos add nothing to recognition. **Settings → Remove duplicates** scans
 every person and sets aside photos near-identical to one you already have:
 
-- A **Duplicate sensitivity** slider controls how strict "near-identical" is. Higher
-  (e.g. 0.92) removes only true duplicates; lower (e.g. 0.80) prunes more aggressively.
+- A **Duplicate sensitivity** slider controls how strict "near-identical" is, with a live
+  preview of how many photos would be set aside. **Important:** small camera crops score
+  much lower than phone photos — two near-identical doorbell frames may only be ~0.66
+  similar (a phone would be 0.95+). So on camera data, useful values are around
+  **0.60–0.70**, not 0.9. Use the live preview to dial it to your cameras.
 - Of each too-similar pair, the **more redundant** one is set aside, so a diverse set
   always remains.
 - Everything goes to the set-aside area — fully reversible.

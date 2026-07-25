@@ -198,8 +198,9 @@ rather than large:
   the others** — i.e. the most redundant one — so a rare side/angle shot is preserved
   while a 30th near-identical front shot is the first to go.
 - **Remove duplicates on demand**: even under the cap, near-identical photos add nothing.
-  **Settings → Remove duplicates** sets those aside (adjustable sensitivity), keeping the
-  gallery diverse — as a button, so you stay in control.
+  **Settings → Remove duplicates** sets those aside (sensitivity slider with a live preview),
+  keeping the gallery diverse — as a button, so you stay in control. (Camera crops score
+  lower than phone photos, so useful sensitivity is ~0.60–0.70.)
 - **Nothing vanishes silently**: trimmed photos appear on the person card with a short
   reason and a one-click **restore** (or delete), and the set-aside pile is itself capped
   (`trimmed_keep`) so it never grows without bound.
