@@ -164,12 +164,17 @@ class Gallery:
             if not (td / e["file"]).exists():
                 continue
             similar = []
+            partner = e.get("partner") or ""
+            if partner and partner in act_files:
+                similar.append(partner)
             emb = e.get("embedding")
             if emb and len(act_files):
                 sims = act_emb @ np.array(emb, dtype=np.float32)
-                # aktive Fotos, die diesem getrimmten ähneln (Cosine >= 0.45), stärkste zuerst
-                idx = [i for i in np.argsort(-sims) if sims[i] >= self.dedupe_threshold][:12]
-                similar = [act_files[i] for i in idx]
+                # immer die ähnlichsten aktiven Fotos zeigen (keine feste Schwelle — auf
+                # verrauschten Kamera-Crops liegen selbst Dubletten nur bei ~0.6)
+                for i in np.argsort(-sims)[:3]:
+                    if act_files[i] not in similar:
+                        similar.append(act_files[i])
             out.append({"file": e["file"], "ts": e.get("ts", 0), "mean_sim": e.get("mean_sim"),
                         "reason": e.get("reason", ""), "similar": similar,
                         "partner": partner})

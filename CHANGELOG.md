@@ -3,6 +3,11 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.5.5 — 2026-07-23
+
+- Hotfix: a broken code path made /api/persons return 500 right after 0.5.4 (the
+  set-aside partner was referenced before being read). Person list works again.
+
 ## 0.5.4 — 2026-07-23
 
 - **Detects true duplicate images**, not just similar faces: a perceptual-hash pass now
