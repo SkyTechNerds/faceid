@@ -7,7 +7,12 @@ konkret fehlt:
 * **Vielfalt** — mittlere paarweise Ähnlichkeit der Referenzen. Hoch = die Fotos
   ähneln sich stark, jedes weitere bringt wenig.
 * **Blickwinkel** — aus den Landmarks geschätzt: frontal / halb / Profil.
-* **Licht** — Farbaufnahme (Tag) oder Graustufen (Nacht-/IR-Aufnahme).
+* **Kameras** — an welchen Kameras die Person überhaupt vertreten ist. Wer nur an
+  einer Kamera eingelernt ist, wird an den anderen schlechter erkannt (anderer
+  Winkel, andere Höhe, anderes Licht).
+* **Graustufen** — Anteil an S/W-Aufnahmen. Nur dort ein Mangel, wo eine Kamera
+  tatsächlich in den IR-Nachtmodus schaltet; wo bei Bewegung Licht angeht, nimmt sie
+  auch nachts in Farbe auf.
 * **Selbst-Test** — Leave-one-out: wird ein Foto von den übrigen Fotos derselben
   Person wiedergefunden? Achtung, das ist bewusst hart und bei kleinen Sammlungen
   systematisch pessimistisch: bei fünf vielfältigen Fotos muss eines gegen vier ganz
@@ -19,6 +24,7 @@ konkret fehlt:
 """
 import argparse
 import json
+from collections import Counter
 import sys
 from pathlib import Path
 
@@ -85,15 +91,29 @@ def main():
         if emb.ndim != 2 or not len(emb):
             continue
         gal[d.name] = {"name": meta.get("name", d.name), "emb": emb,
-                       "files": meta.get("files", []), "dir": d}
+                       "files": meta.get("files", []), "dir": d,
+                       "sources": meta.get("sources", {})}
 
     if not gal:
         print("keine Galerie gefunden", file=sys.stderr)
         return 1
 
-    print(f"{'Person':24s} {'Fotos':>5s} {'Vielfalt':>8s} {'frontal':>7s} {'halb':>5s} "
-          f"{'Profil':>6s} {'Nacht':>5s} {'Selbst':>7s}")
-    print("-" * 78)
+    print(f"{'Person':22s} {'Fotos':>5s} {'Vielf.':>6s} {'frontal':>7s} {'halb':>5s} "
+          f"{'Profil':>6s} {'S/W':>4s} {'Selbst':>6s}  Kameras")
+    print("-" * 96)
+
+    # Kameras, die tatsaechlich S/W liefern — nur dort ist eine fehlende IR-Aufnahme
+    # ein Mangel. Wird aus dem Bestand abgeleitet statt geraten.
+    ir_cams = set()
+    for g in gal.values():
+        for fn in g["files"]:
+            img = cv2.imread(str(g["dir"] / fn))
+            if img is None:
+                continue
+            if float(np.mean(cv2.cvtColor(img, cv2.COLOR_BGR2HSV)[:, :, 1])) < NIGHT_SAT:
+                cam = (g["sources"].get(fn) or {}).get("camera")
+                if cam:
+                    ir_cams.add(cam)
 
     advice = []
     for slug, g in gal.items():
@@ -102,8 +122,11 @@ def main():
         np.fill_diagonal(sims, np.nan)
         diversity = float(np.nanmean(sims)) if n > 1 else float("nan")
 
+        cams = Counter()
         angles, night = [], 0
         for fn in g["files"]:
+            src = g["sources"].get(fn) or {}
+            cams[src.get("camera") or "?"] += 1
             img = cv2.imread(str(g["dir"] / fn))
             if img is None:
                 continue
@@ -127,16 +150,23 @@ def main():
         rate = 100 * hit // n if n else 0
 
         div_s = "—" if n < 2 else f"{diversity:.2f}"
-        print(f"{g['name'][:24]:24s} {n:5d} {div_s:>8s} {front:>7d} {half:>5d} "
-              f"{prof:>6d} {night:>5d} {rate:>6d}%")
+        known = {c: k for c, k in cams.items() if c != "?"}
+        cam_s = ", ".join(f"{c} {k}" for c, k in sorted(known.items(), key=lambda x: -x[1]))
+        if cams.get("?"):
+            cam_s = (cam_s + ", " if cam_s else "") + f"{cams['?']}x unbekannt"
+        print(f"{g['name'][:22]:22s} {n:5d} {div_s:>6s} {front:>7d} {half:>5d} "
+              f"{prof:>6d} {night:>4d} {rate:>5d}%  {cam_s}")
 
         missing = []
         if n < 5:
             missing.append("zu wenige Fotos")
         if not front:
             missing.append("keine frontale Aufnahme")
-        if not night:
-            missing.append("keine Nacht-/IR-Aufnahme")
+        # S/W nur anmahnen, wo ueberhaupt eine Kamera in den IR-Modus schaltet.
+        if ir_cams and not night and (known.keys() & ir_cams):
+            missing.append("keine Aufnahme im IR-Nachtmodus")
+        if len(known) == 1 and n >= 3:
+            missing.append(f"nur an einer Kamera ({next(iter(known))})")
         if n > 1 and diversity > 0.55:
             missing.append(f"Fotos ähneln sich stark ({diversity:.2f})")
         # Der Selbst-Test ist bei kleinen Sammlungen systematisch pessimistisch —

@@ -61,6 +61,8 @@ class Gallery:
                     "emb": emb,
                     "files": files,
                     "favorite": bool(meta.get("favorite", False)),
+                    # Herkunft je Foto (Kamera, Ereigniszeit) — fehlt bei Altbestand
+                    "sources": dict(meta.get("sources", {})),
                 }
                 if changed:
                     meta_f.write_text(json.dumps(
@@ -235,7 +237,8 @@ class Gallery:
         np.save(pdir / "embeddings.npy", entry["emb"])
         (pdir / "meta.json").write_text(
             json.dumps({"name": entry["name"], "files": entry["files"],
-                        "favorite": bool(entry.get("favorite", False))},
+                        "favorite": bool(entry.get("favorite", False)),
+                        "sources": entry.get("sources", {})},
                        ensure_ascii=False, indent=1)
         )
 
@@ -265,12 +268,18 @@ class Gallery:
             pdir = self.persons_dir / slug
             pdir.mkdir(exist_ok=True)
             if slug not in self._cache:
-                self._cache[slug] = {"name": name, "emb": np.zeros((0, 512), dtype=np.float32), "files": [], "favorite": False}
+                self._cache[slug] = {"name": name, "emb": np.zeros((0, 512), dtype=np.float32),
+                                     "files": [], "favorite": False, "sources": {}}
                 self._persist(slug)
         return slug
 
-    def add_face(self, slug: str, crop_bgr: np.ndarray, embedding: np.ndarray) -> str:
-        """Gesichts-Crop + Embedding einer Person hinzufügen."""
+    def add_face(self, slug: str, crop_bgr: np.ndarray, embedding: np.ndarray,
+                 source: dict | None = None) -> str:
+        """Gesichts-Crop + Embedding einer Person hinzufügen.
+
+        ``source`` haelt fest, woher das Foto stammt (Kamera, Ereigniszeit). Ohne diese
+        Angabe laesst sich spaeter nicht sagen, ob eine Person nur an einer Kamera
+        vertreten ist — siehe scripts/coverage.py."""
         with self._lock:
             if slug not in self._cache:
                 raise KeyError(slug)
@@ -279,6 +288,9 @@ class Gallery:
             cv2.imwrite(str(self.persons_dir / slug / fname), crop_bgr, [cv2.IMWRITE_JPEG_QUALITY, 92])
             entry["emb"] = np.vstack([entry["emb"], embedding.astype(np.float32)[None, :]])
             entry["files"].append(fname)
+            if source:
+                entry.setdefault("sources", {})[fname] = {
+                    k: v for k, v in source.items() if v is not None}
             if self.max_per_person and len(entry["files"]) > self.max_per_person:
                 # redundanteste Referenz aussortieren (höchste mittlere Ähnlichkeit zu den
                 # übrigen = Dublette). Nicht löschen, sondern nach _trimmed/ verschieben,
@@ -288,6 +300,7 @@ class Gallery:
                 mean_sim = sims.mean(axis=1)
                 drop = int(np.argmax(mean_sim))
                 self._trim_face(slug, entry["files"][drop], entry["emb"][drop], float(mean_sim[drop]))
+                entry.get("sources", {}).pop(entry["files"][drop], None)
                 entry["files"].pop(drop)
                 entry["emb"] = np.delete(entry["emb"], drop, axis=0)
             self._persist(slug)
@@ -514,7 +527,9 @@ class Gallery:
             crop = cv2.imread(str(img_f))
             if crop is None:
                 continue
-            self.add_face(slug, crop, np.array(meta["embedding"], dtype=np.float32))
+            self.add_face(slug, crop, np.array(meta["embedding"], dtype=np.float32),
+                          source={"camera": meta.get("camera"),
+                                  "event_ts": meta.get("event_ts") or meta.get("ts")})
             self.delete_ignored(iid)
             n += 1
         return n
@@ -706,7 +721,9 @@ class Gallery:
             return False
         meta = json.loads(jf.read_text())
         crop = cv2.imread(str(img_f))
-        self.add_face(slug, crop, np.array(meta["embedding"], dtype=np.float32))
+        self.add_face(slug, crop, np.array(meta["embedding"], dtype=np.float32),
+                      source={"camera": meta.get("camera"),
+                              "event_ts": meta.get("event_ts") or meta.get("ts")})
         jf.unlink()
         img_f.unlink()
         (self.unknown_dir / f"{uid}_full.jpg").unlink(missing_ok=True)

@@ -138,7 +138,8 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             if face is None:
                 skipped.append(f"{uf.filename}: no face found")
                 continue
-            gallery.add_face(slug, crop_face(img, face.bbox), face.normed_embedding)
+            gallery.add_face(slug, crop_face(img, face.bbox), face.normed_embedding,
+                             source={"camera": "upload"})
             added += 1
         return {"added": added, "skipped": skipped}
 

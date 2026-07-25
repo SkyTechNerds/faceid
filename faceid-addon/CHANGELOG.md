@@ -3,6 +3,21 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.6.5 — 2026-07-25
+
+- **Reference photos now remember where they came from.** Assigning a face used to keep
+  only the crop and the embedding, throwing away camera and event time — so it was
+  impossible to tell whether somebody was enrolled from one camera only. `meta.json`
+  now carries a `sources` entry per photo (existing photos stay as they are, marked
+  unknown).
+- **coverage.py reports camera spread** and flags "only ever seen at one camera", which
+  matters more than photo count: a different camera means a different angle, height and
+  light.
+- **Fixed a misleading warning.** "No night shot" was reported for every person, but
+  where motion-triggered lights switch on, the camera records in colour at night and no
+  IR frame ever exists. Missing IR shots are now only flagged for cameras that actually
+  produce greyscale, derived from the gallery instead of assumed.
+
 ## 0.6.4 — 2026-07-25
 
 - **New: `scripts/coverage.py`** — per person, how well is she actually covered and what

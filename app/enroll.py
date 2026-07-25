@@ -36,7 +36,8 @@ def main():
         if face is None:
             print(f"  übersprungen (kein Gesicht): {p.name}")
             continue
-        gallery.add_face(slug, crop_face(img, face.bbox), face.normed_embedding)
+        gallery.add_face(slug, crop_face(img, face.bbox), face.normed_embedding,
+                         source={"camera": "foto-import"})
         added += 1
         print(f"  eingelernt: {p.name}")
     print(f"Fertig: {added} Gesichter für '{args.person}' ({slug}).")
