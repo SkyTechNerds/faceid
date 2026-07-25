@@ -471,7 +471,7 @@ function personCard(slug,p){
       ${(p.trimmed&&p.trimmed.length)?`
       <div style="margin-top:10px;border-top:1px dashed var(--line);padding-top:10px">
         <span class="trimlabel">✂︎ SET ASIDE · ${p.trimmed.length}</span>
-        <div class="stat">Trimmed to stay under the photo limit — these were the most similar to the rest, so diverse angles were kept. Hover to preview; ↩ restore or × delete.</div>
+        <div class="stat">Trimmed to stay under the photo limit — these were the most similar to the rest, so diverse angles were kept. Hover to preview; ↩ restore or × delete. <a href="https://github.com/SkyTechNerds/faceid/blob/main/docs/trimming.md" target="_blank" rel="noopener" style="color:var(--acc)">Learn more ↗</a></div>
         <div class="grid trimgrid" style="margin-top:6px">${p.trimmed.map(t=>`
           <div class="tile"><img src="data/persons/${slug}/_trimmed/${t.file}" loading="lazy" title="set aside ${fmtTs(t.ts)} · similarity ${t.mean_sim} (higher = more redundant)">
             <button class="u" title="restore this photo" onclick="restoreTrimmed('${slug}','${t.file}')">↩</button>

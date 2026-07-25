@@ -204,6 +204,9 @@ rather than large:
 If someone is recognized poorly from a certain angle, just add a photo from *that* angle —
 being unusual, it's automatically kept.
 
+**Full details:** [docs/trimming.md](docs/trimming.md) explains the why, the exact
+selection rule (with numbers), and how to restore or curate set-aside photos.
+
 ## Backup & restore
 
 Your gallery (enrolled persons + ignore anchors) is the one thing you can't regenerate —

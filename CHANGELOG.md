@@ -3,6 +3,12 @@
 All notable changes to FaceID. The Home Assistant add-on shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.4.8 — 2026-07-23
+
+- Added a dedicated **docs/trimming.md** explaining the photo-limit behaviour in depth
+  (why, the exact most-redundant selection rule with numbers, restore/curate workflow),
+  linked from a "Learn more" link in the set-aside section and from the README.
+
 ## 0.4.7 — 2026-07-23
 
 - Trimmed (set-aside) photos are now clearly distinguished: shown desaturated and dimmed
