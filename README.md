@@ -231,6 +231,29 @@ manual run, not something the live pipeline does.
 than `record.retain` yield nothing and only cost time — a 28-day run against a 10-day
 retention spends most of its hour on events it cannot help.
 
+## Events MQTT never announces
+
+FaceID listens on `frigate/events`. Events **created through Frigate's API** are not
+tracked objects, so they never appear there — FaceID simply never learns about them.
+
+This matters if you use a camera's own person detection as a reliability bridge: an
+automation sees the camera report a person and creates a Frigate event for it. Those
+events carry a snapshot and usually a clip, but stay invisible to FaceID.
+
+Set `poll_interval` (seconds, e.g. `30`) to also poll Frigate's event API:
+
+```yaml
+faceid:
+  poll_interval: 30
+```
+
+On one installation that added ~22 events a day at the front door, of which 12 in 20
+held a usable face — roughly doubling what FaceID could learn from. Polled events run
+through the same pipeline; they carry no bounding box, so their snapshot is the full
+frame rather than a person crop. Off by default, since it costs one API request per
+interval.
+
+
 ## Calibrating the threshold
 
 The defaults are deliberately cautious, and on a real gallery that caution turned out to
@@ -259,6 +282,25 @@ without a single misassignment.
 
 Do not copy these numbers. Run the scripts on your own gallery: how far strangers get is
 the number that decides how low you can safely go.
+
+## Measuring instead of guessing
+
+Two scripts answer the questions that otherwise invite guesswork:
+
+```bash
+python scripts/coverage.py                 # what is each person missing?
+python scripts/measure-recognition.py --baseline /tmp/old --days 3
+```
+
+`coverage.py` reports, per person: photo count, diversity, viewing angles from the
+landmarks, which cameras she was enrolled from, greyscale/IR shots, and a leave-one-out
+self test — then names the concrete gap.
+
+`measure-recognition.py` compares the current gallery against an older one (unpack a
+backup from `data/backups`) and adds a practical probe against recent Frigate events,
+including how much headroom each recognition has above the threshold. Events whose face
+is already in the gallery are excluded — they score ~1.0 and measure nothing.
+
 
 ## How training stays healthy
 
@@ -355,6 +397,8 @@ that matter most:
 | `max_faces_per_person` (40) | soft cap; adding more drops the most redundant reference (0 = unlimited) |
 | `ignore_threshold` (= match_threshold) | similarity at which a face counts as ignored |
 | `ignore_learning` (true) | learn new looks of ignored people as additional anchors (guarded) |
+| `hires_enroll` (true) | fetch new review-queue faces from the recording (sharper references) |
+| `poll_interval` (0) | seconds; >0 also polls Frigate's event API for events MQTT never announces |
 
 ## License
 
