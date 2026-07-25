@@ -198,10 +198,15 @@ events, faces came out roughly **twice as large** (e.g. 84px → 178px). Better 
 mean better recognition — and, as a bonus, similarity scores spread out, making genuine
 duplicates easy to tell from "same person, other angle".
 
-Details: candidate frames are sampled across the event, and every candidate must match
-the snapshot face (so with several people in frame, the wrong face can't be enrolled).
+Details: FaceID downloads the event clip once and scans frames across it, because Frigate
+picks its snapshot from a moment that can't be queried afterwards. Every candidate face
+is compared against the snapshot face and the best identity match wins — so with several
+people in frame, the wrong face can't be enrolled. When no frame yields a usable face
+(roughly one event in three), the original snapshot is kept.
+
 Live recognition still uses the fast snapshot path; only enrollment takes the slower,
-sharper route. Needs recordings enabled for the camera.
+sharper route (a few seconds and one clip download per event). Needs recordings enabled
+for the camera.
 
 ## How training stays healthy
 
