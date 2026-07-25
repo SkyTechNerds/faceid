@@ -208,6 +208,8 @@ class EventProcessor:
                     "start_time": ev.get("start_time") or time.time(),
                     "end_time": ev.get("end_time"),
                 }
+                log.info("Poll: Ereignis %s (%s) nachgezogen — von MQTT nie gemeldet",
+                         eid, cam)
                 try:
                     self.queue.put_nowait({"eid": eid})
                 except queue.Full:
