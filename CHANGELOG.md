@@ -3,6 +3,18 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.6.7 — 2026-07-25
+
+- **New: `poll_interval`** — optionally also poll Frigate's event API instead of relying
+  on MQTT alone. Events created through Frigate's API are not tracked objects and never
+  appear on `frigate/events`, so FaceID never saw them. A common case is a camera's own
+  person detection wired up as a reliability bridge: on one installation that was ~22
+  events per day at the front door, of which 12 in 20 held a usable face — roughly
+  doubling the events FaceID could learn from. Off by default; 30 seconds is sensible.
+- Polled events run through the same pipeline. They carry no bounding box, so their
+  snapshot is the full frame rather than a person crop — face detection copes, and the
+  clip path (sharper reference photos) applies as usual.
+
 ## 0.6.6 — 2026-07-25
 
 - **`match_top_k` is now adjustable in Settings** ("Photos averaged per match"). It was

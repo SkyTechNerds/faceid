@@ -23,6 +23,11 @@ faceid:
   min_face_px: 48                      # minimum face size in the snapshot (pixels)
   det_size: 640                        # detection input size (higher = better far faces, slower)
   max_attempts: 6                      # recognition attempts per Frigate event
+  poll_interval: 0                     # seconds; >0 also polls Frigate's event API.
+                                       # Catches events MQTT never announces — notably
+                                       # ones created through Frigate's API (e.g. a
+                                       # camera's own person detection used as a
+                                       # reliability bridge). 30 is a sensible value.
   retry_seconds: 2.5                   # min. seconds between attempts on the same event
   cluster_eps: 0.55                    # DBSCAN cosine distance for grouping unknowns in the UI
   # review UI: unknown faces with a best-match score >= this get grouped into a

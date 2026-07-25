@@ -13,6 +13,7 @@ import time
 from collections import deque
 
 import paho.mqtt.client as mqtt
+import requests
 
 from .engine import FaceEngine, crop_face
 from .hires import upgrade_face
@@ -42,6 +43,10 @@ class EventProcessor:
         self.ignore_thr = float(f.get("ignore_threshold", f.get("match_threshold", 0.5)))
         self.ignore_learning = bool(f.get("ignore_learning", True))
         self.hires_enroll = bool(f.get("hires_enroll", True))
+        # Ereignisse, die Frigate nicht per MQTT meldet (z. B. per API angelegte
+        # Kamera-Meldungen als Zuverlaessigkeits-Bruecke), per Abfrage nachziehen.
+        self.poll_interval = float(f.get("poll_interval", 0))
+        self._polled: deque = deque(maxlen=500)   # schon gesehene IDs
         self.prefix = str(f.get("mqtt_prefix", "faceid")).strip("/") or "faceid"
         self.present: dict[str, dict[str, float]] = {}  # camera -> {person: zuletzt gesehen}
         self._last_presence: dict[str, list] = {}  # zuletzt publizierter Stand je Kamera
@@ -61,6 +66,8 @@ class EventProcessor:
         self.client = c
         threading.Thread(target=self._worker, daemon=True, name="faceid-worker").start()
         threading.Thread(target=self._finalizer, daemon=True, name="faceid-finalizer").start()
+        if self.poll_interval > 0:
+            threading.Thread(target=self._poller, daemon=True, name="faceid-poller").start()
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         log.info("MQTT verbunden (%s)", reason_code)
@@ -156,6 +163,55 @@ class EventProcessor:
             if prev is None or face.det_score > prev["det_score"]:
                 st["best_unknown"] = {"crop": crop, "emb": emb, "det_score": float(face.det_score),
                                       "guess": name, "guess_score": float(score), "full": img}
+
+    def _poller(self):
+        """Frigate-Ereignisse abfragen, die per MQTT nie ankommen.
+
+        Manuell ueber die API angelegte Ereignisse sind fuer Frigate keine getrackten
+        Objekte und loesen ``frigate/events`` nicht aus — eine Kamera-eigene
+        Personenmeldung, die als Bruecke ein Ereignis anlegt, bliebe sonst ungenutzt.
+        Sie haben keine Bounding-Box, der Snapshot ist also das Vollbild; die Erkennung
+        laeuft ansonsten durch dieselbe Pipeline.
+        """
+        url = self.cfg["frigate"]["url"].rstrip("/")
+        # Beim Start nicht die halbe Historie aufrollen.
+        since = time.time() - min(self.poll_interval * 4, 300)
+        while True:
+            time.sleep(self.poll_interval)
+            try:
+                r = requests.get(f"{url}/api/events",
+                                 params={"label": "person", "has_snapshot": 1,
+                                         "limit": 50, "after": since - 30},
+                                 timeout=10)
+                if r.status_code != 200:
+                    continue
+                batch = r.json()
+            except (requests.RequestException, ValueError) as e:
+                log.debug("Poll fehlgeschlagen: %s", e)
+                continue
+            since = time.time()
+            for ev in batch:
+                eid = ev.get("id")
+                if not eid or eid in self._polled or eid in self.events:
+                    continue
+                cam = ev.get("camera", "")
+                if self.cameras and cam not in self.cameras:
+                    continue
+                self._polled.append(eid)
+                # Nur abgeschlossene Ereignisse — laufende meldet MQTT ohnehin.
+                if not ev.get("end_time"):
+                    continue
+                self.events[eid] = {
+                    "camera": cam, "attempts": 0, "best_score": 0.0, "best_person": None,
+                    "best_unknown": None, "last_try": 0.0, "done": False, "ended": True,
+                    "created": time.time(), "polled": True,
+                    "start_time": ev.get("start_time") or time.time(),
+                    "end_time": ev.get("end_time"),
+                }
+                try:
+                    self.queue.put_nowait({"eid": eid})
+                except queue.Full:
+                    log.warning("Queue voll — Poll-Ereignis %s verworfen", eid)
 
     def _finalizer(self):
         """Beendete Events abschließen: Unknown ablegen, 'unbekannt' melden, aufräumen."""

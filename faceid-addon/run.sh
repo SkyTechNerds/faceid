@@ -64,6 +64,7 @@ faceid:
   trimmed_keep: $(cfg '.trimmed_keep')
   dedupe_threshold: $(cfg '.dedupe_threshold')
   hires_enroll: $(cfg '.hires_enroll')
+  poll_interval: $(cfg '.poll_interval')
   backup_enabled: $(cfg '.backup_enabled')
   backup_hour: $(cfg '.backup_hour')
   backup_keep: $(cfg '.backup_keep')
