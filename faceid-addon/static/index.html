@@ -408,7 +408,19 @@ async function renderSettings(){
       <span class="stat">how many trimmed photos to keep per person for review/restore (0 = delete immediately). Stops the set-aside pile from growing forever.</span>
     </div>
     <div class="row"><button class="act" onclick="saveThresholds()">SAVE SETTINGS</button>
-      <span class="stat">saves the thresholds AND the photo limit above · applies live and persists (overrides config / add-on options)</span></div>
+      <span class="stat">saves the thresholds AND the photo limit above · applies live and persists (overrides config / app options)</span></div>
+
+    <h2>Remove duplicate photos</h2>
+    <div class="row">
+      <b style="min-width:230px;font:600 13px var(--sans)">Duplicate sensitivity</b>
+      <input type="range" id="set-dedupe_threshold" min="0.75" max="0.98" step="0.01" value="${cfg.thresholds.dedupe_threshold}"
+        oninput="document.getElementById('setv-dedupe_threshold').textContent=(+this.value).toFixed(2)" style="flex:1">
+      <span id="setv-dedupe_threshold" style="font:13px var(--mono);color:var(--acc);min-width:38px">${cfg.thresholds.dedupe_threshold.toFixed(2)}</span>
+    </div>
+    <div class="row">
+      <button class="act" onclick="runDedupe()">REMOVE DUPLICATES (all persons)</button>
+      <span class="stat">sets aside photos near-identical to one you already have — they add nothing to recognition. Lower sensitivity removes more. Restorable.</span>
+    </div>
 
     <h2>Automatic backup</h2>
     <div class="row">
@@ -418,7 +430,7 @@ async function renderSettings(){
       <label style="display:flex;gap:6px;align-items:center">folder <input id="bkDir" value="${esc(b.dir)}" placeholder="(data/backups)" size="20"></label>
       <button class="act" onclick="saveBackupCfg()">SAVE</button>
     </div>
-    <div class="stat" style="margin-bottom:16px">runs inside FaceID — no external cron needed. Empty folder = <code>data/backups</code> (survives add-on updates).</div>
+    <div class="stat" style="margin-bottom:16px">runs inside FaceID — no external cron needed. Empty folder = <code>data/backups</code> (survives app updates).</div>
 
     <h2>Manual backup &amp; restore</h2>
     <div class="row">
@@ -437,9 +449,17 @@ async function saveThresholds(){
     const el=document.getElementById('set-'+k); if(el)body[k]=+el.value;});
   const mf=document.getElementById('set-maxfaces'); if(mf)body.max_faces_per_person=+mf.value;
   const tk=document.getElementById('set-trimkeep'); if(tk)body.trimmed_keep=+tk.value;
+  const dt=document.getElementById('set-dedupe_threshold'); if(dt)body.dedupe_threshold=+dt.value;
   const r=await j('api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   toast(r.trimmed?`Saved — ${r.trimmed} photo(s) trimmed`:'Settings saved');
   persons=await j('api/persons');
+}
+async function runDedupe(){
+  const thr=+document.getElementById('set-dedupe_threshold').value;
+  if(!confirm('Scan all persons and set aside near-duplicate photos (sensitivity '+thr.toFixed(2)+')? They stay restorable.'))return;
+  toast('Scanning for duplicates...');
+  const r=await j('api/deduplicate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({threshold:thr})});
+  toast(r.moved?r.moved+' duplicate photo(s) set aside':'No duplicates found');persons=await j('api/persons');
 }
 async function saveBackupCfg(){
   const body={backup_enabled:document.getElementById('bkEnabled').checked,

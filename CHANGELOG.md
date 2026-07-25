@@ -3,6 +3,14 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.5.1 — 2026-07-23
+
+- **Remove duplicates** (Settings): scans all persons and sets aside photos that are
+  near-identical to one you already have — they add nothing to recognition. Adjustable
+  duplicate sensitivity; the more redundant of each pair is moved (restorable). Diversity
+  is what makes recognition robust, not photo count. Fixed lingering 'add-on' wording in
+  the UI (Home Assistant calls them apps).
+
 ## 0.5.0 — 2026-07-23
 
 - **Set-aside photos no longer grow unbounded**: FaceID now keeps only the most recent

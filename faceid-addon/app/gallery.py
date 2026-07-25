@@ -126,7 +126,7 @@ class Gallery:
         d.mkdir(exist_ok=True)
         return d
 
-    def _trim_face(self, slug: str, fname: str, emb, mean_sim: float):
+    def _trim_face(self, slug: str, fname: str, emb, mean_sim: float, reason: str = "over the per-person photo limit — most similar to your other photos"):
         td = self._trimmed_dir(slug)
         src = self.persons_dir / slug / fname
         if src.exists():
@@ -137,7 +137,7 @@ class Gallery:
         except (json.JSONDecodeError, OSError):
             log = []
         log.insert(0, {"file": fname, "ts": time.time(), "mean_sim": round(mean_sim, 3),
-                       "reason": "over the per-person photo limit — most similar to your other photos",
+                       "reason": reason,
                        "embedding": [round(float(v), 6) for v in emb]})
         # Getrimmt-Ordner begrenzen: nur die neuesten trimmed_keep aufheben, Rest löschen
         keep = self.trimmed_keep if self.trimmed_keep and self.trimmed_keep > 0 else len(log)
@@ -297,6 +297,35 @@ class Gallery:
                     total += 1
                 self._persist(slug)
         return total
+
+    def deduplicate_person(self, slug: str, threshold: float = 0.90) -> int:
+        """Nahezu identische Fotos (Cosine >= threshold) beiseitelegen — sie bringen der
+        Erkennung nichts. Von jedem zu ähnlichen Paar geht das redundantere (höhere
+        mittlere Ähnlichkeit zum Rest). Läuft, bis kein Paar mehr über der Schwelle liegt."""
+        moved = 0
+        with self._lock:
+            entry = self._cache.get(slug)
+            if entry is None:
+                return 0
+            while len(entry["files"]) > 1:
+                sims = entry["emb"] @ entry["emb"].T
+                np.fill_diagonal(sims, 0.0)
+                i, jx = np.unravel_index(int(np.argmax(sims)), sims.shape)
+                if sims[i, jx] < threshold:
+                    break
+                mean = sims.mean(axis=1)
+                drop = i if mean[i] >= mean[jx] else jx
+                self._trim_face(slug, entry["files"][drop], entry["emb"][drop], float(mean[drop]),
+                                reason="near-duplicate of another photo — no added value for recognition")
+                entry["files"].pop(drop)
+                entry["emb"] = np.delete(entry["emb"], drop, axis=0)
+                moved += 1
+            if moved:
+                self._persist(slug)
+        return moved
+
+    def deduplicate_all(self, threshold: float = 0.90) -> int:
+        return sum(self.deduplicate_person(s, threshold) for s in list(self._cache.keys()))
 
     def delete_face(self, slug: str, fname: str):
         with self._lock:

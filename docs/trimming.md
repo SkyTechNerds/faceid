@@ -68,6 +68,20 @@ does *not* auto-restore — bring photos back yourself, so nothing reappears une
   the cap only acts on *new* additions, so a gallery you've hand-tuned stays as you left it
   until you add more.
 
+## Removing duplicates on demand
+
+The per-person cap only acts when you go *over* it. But even under the limit, several
+near-identical photos add nothing to recognition. **Settings → Remove duplicates** scans
+every person and sets aside photos near-identical to one you already have:
+
+- A **Duplicate sensitivity** slider controls how strict "near-identical" is. Higher
+  (e.g. 0.92) removes only true duplicates; lower (e.g. 0.80) prunes more aggressively.
+- Of each too-similar pair, the **more redundant** one is set aside, so a diverse set
+  always remains.
+- Everything goes to the set-aside area — fully reversible.
+
+It's a button, not an automatic step: you decide when to compact a gallery.
+
 ## It won't pile up forever
 
 Set-aside photos are capped too: FaceID keeps only the most recent **`trimmed_keep`** per

@@ -197,9 +197,12 @@ rather than large:
   person keeps. When exceeded, FaceID sets aside the photo that is **most similar to all
   the others** — i.e. the most redundant one — so a rare side/angle shot is preserved
   while a 30th near-identical front shot is the first to go.
+- **Remove duplicates on demand**: even under the cap, near-identical photos add nothing.
+  **Settings → Remove duplicates** sets those aside (adjustable sensitivity), keeping the
+  gallery diverse — as a button, so you stay in control.
 - **Nothing vanishes silently**: trimmed photos appear on the person card with a short
-  reason and a one-click **restore** (or delete). Lowering the cap in Settings trims
-  everyone down immediately, so you can see exactly what happened.
+  reason and a one-click **restore** (or delete), and the set-aside pile is itself capped
+  (`trimmed_keep`) so it never grows without bound.
 
 If someone is recognized poorly from a certain angle, just add a photo from *that* angle —
 being unusual, it's automatically kept.

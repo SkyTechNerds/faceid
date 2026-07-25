@@ -88,6 +88,12 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     def clear_trimmed(slug: str):
         return {"cleared": gallery.clear_trimmed(slug)}
 
+    @app.post("/api/deduplicate")
+    def deduplicate(body: dict = None):
+        thr = float((body or {}).get("threshold", cfg["faceid"].get("dedupe_threshold", 0.90)))
+        moved = gallery.deduplicate_all(thr)
+        return {"moved": moved, "threshold": thr}
+
     @app.delete("/api/persons/{slug}/faces/{fname}")
     def delete_face(slug: str, fname: str):
         gallery.delete_face(slug, fname)
@@ -274,6 +280,7 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         "suggest_threshold": (0.1, 0.9),
         "cluster_eps": (0.3, 0.8),
         "ignore_threshold": (0.1, 0.9),
+        "dedupe_threshold": (0.75, 0.98),
     }
     BACKUP_SPEC = {"backup_enabled": bool, "backup_hour": (0, 23), "backup_keep": (1, 90), "backup_dir": str}
     INT_SPEC = {"max_faces_per_person": (5, 100), "trimmed_keep": (0, 100)}
@@ -307,7 +314,7 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         f = cfg["faceid"]
         return {
             "thresholds": {k: float(f.get(k, {"match_threshold":0.5,"unknown_threshold":0.35,
-                "suggest_threshold":0.40,"cluster_eps":0.55,"ignore_threshold":0.5}[k]))
+                "suggest_threshold":0.40,"cluster_eps":0.55,"ignore_threshold":0.5,"dedupe_threshold":0.90}[k]))
                 for k in SETTINGS_SPEC},
             "ranges": {k: v for k, v in SETTINGS_SPEC.items()},
             "backup": {"enabled": bool(f.get("backup_enabled", False)),
