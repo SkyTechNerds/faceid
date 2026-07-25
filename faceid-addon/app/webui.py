@@ -75,6 +75,15 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     def set_favorite(slug: str, body: FavBody):
         return {"ok": gallery.set_favorite(slug, body.favorite)}
 
+    @app.post("/api/persons/{slug}/trimmed/{fname}/restore")
+    def restore_trimmed(slug: str, fname: str):
+        return {"ok": gallery.restore_trimmed(slug, fname)}
+
+    @app.delete("/api/persons/{slug}/trimmed/{fname}")
+    def delete_trimmed(slug: str, fname: str):
+        gallery.delete_trimmed(slug, fname)
+        return {"ok": True}
+
     @app.delete("/api/persons/{slug}/faces/{fname}")
     def delete_face(slug: str, fname: str):
         gallery.delete_face(slug, fname)

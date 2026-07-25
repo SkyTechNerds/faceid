@@ -120,6 +120,70 @@ class Gallery:
             out.append(fn)
         return out, changed
 
+    def _trimmed_dir(self, slug: str) -> Path:
+        d = self.persons_dir / slug / "_trimmed"
+        d.mkdir(exist_ok=True)
+        return d
+
+    def _trim_face(self, slug: str, fname: str, emb, mean_sim: float):
+        td = self._trimmed_dir(slug)
+        src = self.persons_dir / slug / fname
+        if src.exists():
+            src.rename(td / fname)
+        log_f = td / "log.json"
+        try:
+            log = json.loads(log_f.read_text()) if log_f.exists() else []
+        except (json.JSONDecodeError, OSError):
+            log = []
+        log.insert(0, {"file": fname, "ts": time.time(), "mean_sim": round(mean_sim, 3),
+                       "reason": "over the per-person photo limit — most similar to your other photos",
+                       "embedding": [round(float(v), 6) for v in emb]})
+        log_f.write_text(json.dumps(log[:200], ensure_ascii=False))
+
+    def trimmed(self, slug: str):
+        td = self.persons_dir / slug / "_trimmed"
+        log_f = td / "log.json"
+        if not log_f.exists():
+            return []
+        try:
+            log = json.loads(log_f.read_text())
+        except (json.JSONDecodeError, OSError):
+            return []
+        return [{"file": e["file"], "ts": e.get("ts", 0), "mean_sim": e.get("mean_sim"),
+                 "reason": e.get("reason", "")}
+                for e in log if (td / e["file"]).exists()]
+
+    def restore_trimmed(self, slug: str, fname: str) -> bool:
+        """Getrimmtes Foto zurück in die Galerie holen (Cap wird dabei NICHT erzwungen)."""
+        with self._lock:
+            entry = self._cache.get(slug)
+            td = self.persons_dir / slug / "_trimmed"
+            log_f = td / "log.json"
+            if entry is None or not log_f.exists():
+                return False
+            log = json.loads(log_f.read_text())
+            rec = next((e for e in log if e["file"] == fname), None)
+            if rec is None or not (td / fname).exists():
+                return False
+            (td / fname).rename(self.persons_dir / slug / fname)
+            entry["emb"] = np.vstack([entry["emb"], np.array(rec["embedding"], dtype=np.float32)[None, :]])
+            entry["files"].append(fname)
+            log = [e for e in log if e["file"] != fname]
+            log_f.write_text(json.dumps(log, ensure_ascii=False))
+            self._persist(slug)
+            return True
+
+    def delete_trimmed(self, slug: str, fname: str):
+        td = self.persons_dir / slug / "_trimmed"
+        log_f = td / "log.json"
+        (td / fname).unlink(missing_ok=True)
+        if log_f.exists():
+            try:
+                log = [e for e in json.loads(log_f.read_text()) if e["file"] != fname]
+                log_f.write_text(json.dumps(log, ensure_ascii=False))
+            except (json.JSONDecodeError, OSError):
+                pass
+
     def _persist(self, slug: str):
         pdir = self.persons_dir / slug
         entry = self._cache[slug]
@@ -136,7 +200,8 @@ class Gallery:
         with self._lock:
             return {
                 slug: {"name": e["name"], "count": len(e["files"]), "files": list(e["files"]),
-                       "favorite": bool(e.get("favorite", False))}
+                       "favorite": bool(e.get("favorite", False)),
+                       "trimmed": self.trimmed(slug)}
                 for slug, e in self._cache.items()
             }
 
@@ -170,11 +235,14 @@ class Gallery:
             entry["emb"] = np.vstack([entry["emb"], embedding.astype(np.float32)[None, :]])
             entry["files"].append(fname)
             if self.max_per_person and len(entry["files"]) > self.max_per_person:
-                # redundanteste Referenz entfernen (höchste mittlere Ähnlichkeit zu den übrigen)
+                # redundanteste Referenz aussortieren (höchste mittlere Ähnlichkeit zu den
+                # übrigen = Dublette). Nicht löschen, sondern nach _trimmed/ verschieben,
+                # damit der User in der UI sieht WAS ging und es zurückholen kann.
                 sims = entry["emb"] @ entry["emb"].T
                 np.fill_diagonal(sims, 0.0)
-                drop = int(np.argmax(sims.mean(axis=1)))
-                (self.persons_dir / slug / entry["files"][drop]).unlink(missing_ok=True)
+                mean_sim = sims.mean(axis=1)
+                drop = int(np.argmax(mean_sim))
+                self._trim_face(slug, entry["files"][drop], entry["emb"][drop], float(mean_sim[drop]))
                 entry["files"].pop(drop)
                 entry["emb"] = np.delete(entry["emb"], drop, axis=0)
             self._persist(slug)

@@ -458,6 +458,15 @@ function personCard(slug,p){
           <button class="u" title="back to unknown queue" onclick="unassignFace('${slug}','${f}')">↩</button>
           <button class="x" title="delete permanently" onclick="delFace('${slug}','${f}')">×</button></div>`).join('')}
       </div>
+      ${(p.trimmed&&p.trimmed.length)?`
+      <div style="margin-top:8px;border-top:1px dashed var(--line);padding-top:8px">
+        <div class="stat">✂︎ ${p.trimmed.length} photo(s) trimmed to stay under the ${p.count>=40?40:'photo'} limit — the ones most similar to the rest were set aside so diverse angles are kept. Restore ↩ or delete ×.</div>
+        <div class="grid" style="margin-top:6px;opacity:.75">${p.trimmed.map(t=>`
+          <div class="tile"><img src="data/persons/${slug}/_trimmed/${t.file}" loading="lazy" title="set aside ${fmtTs(t.ts)} · similarity ${t.mean_sim}">
+            <button class="u" title="restore this photo" onclick="restoreTrimmed('${slug}','${t.file}')">↩</button>
+            <button class="x" title="delete permanently" onclick="deleteTrimmed('${slug}','${t.file}')">×</button></div>`).join('')}
+        </div>
+      </div>`:''}
     </div>`;
 }
 async function renderPersons(){
@@ -480,6 +489,14 @@ async function renderPersons(){
       <button class="act" onclick="createPerson()">CREATE</button>
       <span style="flex:1"></span>${jump}
     </div>`+body;
+}
+async function restoreTrimmed(slug,file){
+  await j(`api/persons/${slug}/trimmed/${file}/restore`,{method:'POST'});
+  toast('Photo restored');persons=await j('api/persons');if(tab==='persons')renderPersons();
+}
+async function deleteTrimmed(slug,file){
+  await j(`api/persons/${slug}/trimmed/${file}`,{method:'DELETE'});
+  persons=await j('api/persons');if(tab==='persons')renderPersons();
 }
 async function toggleFav(slug,fav){
   await j(`api/persons/${slug}/favorite`,{method:'POST',headers:{'Content-Type':'application/json'},

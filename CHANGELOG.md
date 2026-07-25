@@ -3,6 +3,14 @@
 All notable changes to FaceID. The Home Assistant add-on shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.4.4 — 2026-07-23
+
+- **Transparent photo trimming**: when a person exceeds the photo limit, the removed
+  reference is no longer silently deleted — it is set aside and shown on the person card
+  with a short reason (most similar to the rest, so diverse angles are kept), plus
+  one-click **restore** or delete. The eviction already preferred redundant over unique
+  photos; now you can see and undo it.
+
 ## 0.4.3 — 2026-07-23
 
 - **Self-healing gallery**: on startup, persons whose reference filenames collided in
