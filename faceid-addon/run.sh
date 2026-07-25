@@ -63,6 +63,7 @@ faceid:
   max_faces_per_person: $(cfg '.max_faces_per_person')
   trimmed_keep: $(cfg '.trimmed_keep')
   dedupe_threshold: $(cfg '.dedupe_threshold')
+  hires_enroll: $(cfg '.hires_enroll')
   backup_enabled: $(cfg '.backup_enabled')
   backup_hour: $(cfg '.backup_hour')
   backup_keep: $(cfg '.backup_keep')

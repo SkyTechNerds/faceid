@@ -263,7 +263,8 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
                     engine, gallery, processor.frigate, cfg["frigate"]["url"], days=days,
                     tag=bool(cfg["faceid"].get("set_sub_label", True)),
                     match_thr=float(cfg["faceid"].get("match_threshold", 0.5)),
-                    progress=progress)
+                    progress=progress,
+                    hires=bool(cfg["faceid"].get("hires_enroll", True)))
                 backfill_state["result"] = stats
             except Exception as e:
                 log.exception("Verlaufs-Scan fehlgeschlagen")
@@ -287,7 +288,7 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         "ignore_threshold": (0.1, 0.9),
         "dedupe_threshold": (0.50, 0.95),
     }
-    BACKUP_SPEC = {"backup_enabled": bool, "backup_hour": (0, 23), "backup_keep": (1, 90), "backup_dir": str}
+    BACKUP_SPEC = {"hires_enroll": bool, "backup_enabled": bool, "backup_hour": (0, 23), "backup_keep": (1, 90), "backup_dir": str}
     INT_SPEC = {"max_faces_per_person": (5, 100), "trimmed_keep": (0, 100)}
     settings_file = data_dir / "settings.json"
 
@@ -306,6 +307,8 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             gallery.trimmed_keep = int(updates["trimmed_keep"])
         if "dedupe_threshold" in updates:
             gallery.dedupe_threshold = float(updates["dedupe_threshold"])
+        if "hires_enroll" in updates:
+            processor.hires_enroll = bool(updates["hires_enroll"])
         # settings.json (nur die editierbaren Keys) persistieren
         keys = set(SETTINGS_SPEC) | set(BACKUP_SPEC) | set(INT_SPEC)
         overlay = {}
@@ -330,6 +333,7 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
                        "dir": str(f.get("backup_dir") or "")},
             "max_faces_per_person": int(f.get("max_faces_per_person", 40)),
             "trimmed_keep": int(f.get("trimmed_keep", 10)),
+            "hires_enroll": bool(f.get("hires_enroll", True)),
         }
 
     @app.post("/api/settings")

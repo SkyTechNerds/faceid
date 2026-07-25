@@ -412,6 +412,11 @@ async function renderSettings(){
       <span class="stat">when a person exceeds this, the photo most similar to the rest is set aside (kept diverse angles). Lowering it trims everyone now.</span>
     </div>
     <div class="row" style="margin-top:6px">
+      <b style="min-width:230px;font:600 13px var(--sans)">Sharper reference photos</b>
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="set-hires" ${cfg.hires_enroll?'checked':''}> use recordings</label>
+      <span class="stat">Frigate detects on a downscaled stream but records in full resolution. When enabled, new review-queue faces are re-fetched from the recording — typically twice the face size, so much better references. Slightly slower, live recognition is unaffected.</span>
+    </div>
+    <div class="row" style="margin-top:6px">
       <b style="min-width:230px;font:600 13px var(--sans)">Keep set-aside photos</b>
       <input id="set-trimkeep" type="number" min="0" max="100" value="${cfg.trimmed_keep}" style="width:70px">
       <span class="stat">how many trimmed photos to keep per person for review/restore (0 = delete immediately). Stops the set-aside pile from growing forever.</span>
@@ -460,6 +465,7 @@ async function saveThresholds(){
   const mf=document.getElementById('set-maxfaces'); if(mf)body.max_faces_per_person=+mf.value;
   const tk=document.getElementById('set-trimkeep'); if(tk)body.trimmed_keep=+tk.value;
   const dt=document.getElementById('set-dedupe_threshold'); if(dt)body.dedupe_threshold=+dt.value;
+  const hr=document.getElementById('set-hires'); if(hr)body.hires_enroll=hr.checked;
   const r=await j('api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   toast(r.trimmed?`Saved — ${r.trimmed} photo(s) trimmed`:'Settings saved');
   persons=await j('api/persons');

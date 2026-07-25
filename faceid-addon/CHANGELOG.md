@@ -3,6 +3,17 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.6.0 — 2026-07-23
+
+- **Sharper reference photos (new default)**: faces entering the review queue — live and
+  via the history scan — are now re-fetched from Frigate's *recording* instead of the
+  downscaled detect stream. Across a dozen real events faces came out about twice as
+  large (84px → 178px), which means better recognition and far clearer separation between
+  real duplicates and same-person-other-angle. Candidate frames are sampled across the
+  event and each must match the original face, so with several people in frame the wrong
+  one cannot be enrolled. Live recognition keeps using the fast snapshot path. Toggle:
+  **Settings → Sharper reference photos** (`hires_enroll`).
+
 ## 0.5.6 — 2026-07-23
 
 - **Honest hover highlight.** Hovering a set-aside photo used to outline its three closest

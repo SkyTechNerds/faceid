@@ -27,6 +27,19 @@ class FrigateAPI:
             log.warning("Snapshot %s fehlgeschlagen: %s", event_id, e)
             return None
 
+    def recording_frame(self, camera: str, ts: float) -> np.ndarray | None:
+        """Frame aus der AUFNAHME holen (volle Kamera-Auflösung statt Detect-Stream).
+        Deutlich schärfere Gesichter, dafür langsamer — nur fürs Enrollment gedacht."""
+        url = f"{self.base}/api/{camera}/recordings/{ts}/snapshot.jpg"
+        try:
+            r = self.session.get(url, timeout=self.timeout * 4)
+            if r.status_code != 200 or not r.content:
+                return None
+            return cv2.imdecode(np.frombuffer(r.content, np.uint8), cv2.IMREAD_COLOR)
+        except requests.RequestException as e:
+            log.debug("Recording-Frame %s@%s fehlgeschlagen: %s", camera, ts, e)
+            return None
+
     def set_sub_label(self, event_id: str, label: str, score: float):
         try:
             r = self.session.post(

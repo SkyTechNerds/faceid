@@ -35,6 +35,7 @@ Full documentation: https://github.com/SkyTechNerds/faceid
 | `max_faces_per_person` | photo cap per person; the most redundant reference is set aside when exceeded (restorable) |
 | `trimmed_keep` | how many set-aside photos to keep per person (0 = delete immediately) |
 | `dedupe_threshold` | default sensitivity for the Settings "Remove duplicates" action |
+| `hires_enroll` | fetch new review-queue faces from the recording instead of the detect snapshot (sharper references) |
 | `backup_enabled` / `backup_hour` / `backup_keep` | optional built-in daily gallery backup |
 
 Thresholds and backup can also be changed live on the app's **Settings** tab; those

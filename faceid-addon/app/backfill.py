@@ -11,6 +11,7 @@ import requests
 import yaml
 
 from .engine import FaceEngine, crop_face
+from .hires import upgrade_face
 from .frigate_api import FrigateAPI
 from .gallery import Gallery
 
@@ -19,7 +20,8 @@ BASE = Path(__file__).resolve().parent.parent
 
 def run_backfill(engine, gallery, frigate, frigate_url: str, days: int = 14,
                  min_px: int = 64, min_det: float = 0.65, dedupe: float = 0.82,
-                 tag: bool = True, match_thr: float = 0.5, progress=None) -> dict:
+                 tag: bool = True, match_thr: float = 0.5, progress=None,
+                 hires: bool = True) -> dict:
     """Person-Events der letzten `days` Tage verarbeiten. Threadsafe zur Live-Pipeline
     (Engine und Galerie sind intern gelockt). progress(i, total) wird pro Event gerufen."""
     after = time.time() - days * 86400
@@ -58,11 +60,23 @@ def run_backfill(engine, gallery, frigate, frigate_url: str, days: int = 14,
             if tag:
                 frigate.set_sub_label(ev["id"], name, score)  # Clip rückwirkend taggen
             continue
+        crop, save_emb, full = crop_face(img, face.bbox), emb, img
+        if hires:
+            try:
+                hi = upgrade_face(engine, frigate, ev["camera"], ev.get("start_time"),
+                                  ev.get("end_time"), emb)
+            except Exception:
+                hi = None
+            if hi is not None:
+                hface, himg = hi
+                if int(hface.bbox[2] - hface.bbox[0]) > int(face.bbox[2] - face.bbox[0]):
+                    crop, save_emb, full = crop_face(himg, hface.bbox), hface.normed_embedding, himg
+                    stats["hires"] = stats.get("hires", 0) + 1
         uid = gallery.save_unknown(
-            crop_face(img, face.bbox), emb,
+            crop, save_emb,
             {"camera": ev["camera"], "event_id": ev["id"], "backfill": True,
              "guess": name, "guess_score": round(float(score), 3)},
-            dedupe_sim=dedupe, full_bgr=img,
+            dedupe_sim=dedupe, full_bgr=full,
         )
         stats["dupe" if uid is None else "faces"] += 1
     return stats

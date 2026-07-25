@@ -15,6 +15,7 @@ from collections import deque
 import paho.mqtt.client as mqtt
 
 from .engine import FaceEngine, crop_face
+from .hires import upgrade_face
 
 log = logging.getLogger("faceid.mqtt")
 
@@ -40,6 +41,7 @@ class EventProcessor:
         self.presence_window = float(f.get("presence_window", 120))
         self.ignore_thr = float(f.get("ignore_threshold", f.get("match_threshold", 0.5)))
         self.ignore_learning = bool(f.get("ignore_learning", True))
+        self.hires_enroll = bool(f.get("hires_enroll", True))
         self.prefix = str(f.get("mqtt_prefix", "faceid")).strip("/") or "faceid"
         self.present: dict[str, dict[str, float]] = {}  # camera -> {person: zuletzt gesehen}
         self._last_presence: dict[str, list] = {}  # zuletzt publizierter Stand je Kamera
@@ -85,10 +87,12 @@ class EventProcessor:
             eid,
             {"camera": cam, "attempts": 0, "best_score": 0.0, "best_person": None,
              "best_unknown": None, "last_try": 0.0, "done": False, "ended": False,
-             "created": time.time()},
+             "created": time.time(),
+             "start_time": after.get("start_time") or time.time(), "end_time": None},
         )
         if etype == "end":
             st["ended"] = True
+            st["end_time"] = after.get("end_time") or time.time()
         if st["done"] or st["attempts"] >= self.max_attempts:
             return
         if after.get("has_snapshot") and time.time() - st["last_try"] >= self.retry_secs:
@@ -169,11 +173,27 @@ class EventProcessor:
                     continue  # letzter Versuch evtl. noch in der Queue
                 if st["best_person"] is None and st["best_unknown"] is not None:
                     u = st["best_unknown"]
+                    crop, emb, full = u["crop"], u["emb"], u.get("full")
+                    if self.hires_enroll:
+                        # schärferes Gesicht aus der Aufnahme holen (bessere Referenz)
+                        try:
+                            hi = upgrade_face(self.engine, self.frigate, st["camera"],
+                                              st.get("start_time"), st.get("end_time"), emb)
+                        except Exception:
+                            hi = None
+                        if hi is not None:
+                            face, img = hi
+                            old_w = int(u["crop"].shape[1])
+                            new_w = int(face.bbox[2] - face.bbox[0])
+                            if new_w > old_w:
+                                crop, emb, full = crop_face(img, face.bbox), face.normed_embedding, img
+                                log.info("Event %s: hi-res Referenz aus Aufnahme (%dpx statt %dpx)",
+                                         eid, new_w, old_w)
                     uid = self.gallery.save_unknown(
-                        u["crop"], u["emb"],
+                        crop, emb,
                         {"camera": st["camera"], "event_id": eid,
                          "guess": u["guess"], "guess_score": round(u["guess_score"], 3)},
-                        full_bgr=u.get("full"),
+                        full_bgr=full,
                     )
                     self._publish_recognition(eid, st, "unknown", u["guess_score"])
                     log.info("Event %s: unbekanntes Gesicht abgelegt (%s)", eid, uid)

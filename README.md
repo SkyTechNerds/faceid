@@ -186,6 +186,23 @@ as at recognition time). Diversity beats volume. Create dedicated persons for re
 strangers (mailman, neighbors) instead of discarding them — that keeps them from being
 force-matched to your family.
 
+## Sharper reference photos
+
+Frigate runs detection on a **downscaled** stream (often 1280x960 or even 640x360) but
+records in **full camera resolution** (e.g. 2560x1920). Snapshots come from the detect
+stream, so faces arrive smaller and softer than they need to be.
+
+With **Settings → Sharper reference photos** enabled (default), a face heading for the
+review queue is re-fetched from the *recording* instead: measured across a dozen real
+events, faces came out roughly **twice as large** (e.g. 84px → 178px). Better references
+mean better recognition — and, as a bonus, similarity scores spread out, making genuine
+duplicates easy to tell from "same person, other angle".
+
+Details: candidate frames are sampled across the event, and every candidate must match
+the snapshot face (so with several people in frame, the wrong face can't be enrolled).
+Live recognition still uses the fast snapshot path; only enrollment takes the slower,
+sharper route. Needs recordings enabled for the camera.
+
 ## How training stays healthy
 
 Recognition is only as good as the reference photos, so FaceID keeps galleries diverse
