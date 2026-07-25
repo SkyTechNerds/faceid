@@ -25,6 +25,7 @@ import yaml
 BASE = Path(__file__).resolve().parent.parent
 TOP_K = 3
 FAVORITES = set()   # wird aus meta.json gefuellt
+SELF_HIT = 0.99     # darueber ist es dasselbe Bild, kein echter Test
 
 
 def load_gallery(persons_dir: Path):
@@ -117,7 +118,7 @@ def live_probe(gal_old, gal_new, days, thr, cfg):
         if len(b) < 100:
             break
 
-    faces = hit_old = hit_new = disagree = 0
+    faces = hit_old = hit_new = disagree = selfhits = 0
     gained = Counter()
     per_person = {}   # Name -> Liste der Scores, zeigt den Abstand zur Schwelle
     for ev in events:
@@ -127,11 +128,17 @@ def live_probe(gal_old, gal_new, days, thr, cfg):
         f = FaceEngine.best_face(eng.faces(img), min_px=64, min_det=0.65)
         if f is None:
             continue
-        faces += 1
         e = f.normed_embedding
+        # k-unabhaengig: steht exakt dieses Bild schon in der Galerie?
+        if max((float(np.max(emb @ e)) for _, emb in gal_new.values()), default=0.0) >= SELF_HIT:
+            selfhits += 1
+            continue
+        faces += 1
         _, n_new, s_new = match(gal_new, e)
         ok_new = s_new >= thr
         hit_new += ok_new
+        # Score ~1.0 heisst: exakt dieses Bild steht schon in der Galerie. Solche
+        # Selbsttreffer messen nichts — sie wuerden vor allem kleine k schoenrechnen.
         if ok_new:
             per_person.setdefault(n_new, []).append(s_new)
         if gal_old:
@@ -143,7 +150,8 @@ def live_probe(gal_old, gal_new, days, thr, cfg):
             if ok_new and not ok_old:
                 gained[n_new] += 1
     return {"events": len(events), "faces": faces, "old": hit_old, "new": hit_new,
-            "disagree": disagree, "gained": gained, "per_person": per_person}
+            "disagree": disagree, "gained": gained, "per_person": per_person,
+            "selfhits": selfhits}
 
 
 def main():
@@ -151,7 +159,12 @@ def main():
     ap.add_argument("--baseline", help="Pfad zu einer aelteren Galerie (entpacktes Backup)")
     ap.add_argument("--days", type=float, default=2, help="Zeitraum der Praxisprobe (0 = aus)")
     ap.add_argument("--data", default=str(BASE / "data"))
+    ap.add_argument("--top-k", type=int, help="match_top_k zum Vergleich uebersteuern")
     args = ap.parse_args()
+
+    if args.top_k:
+        global TOP_K
+        TOP_K = max(1, args.top_k)
 
     cfg = yaml.safe_load((BASE / "config.yaml").read_text())
     thr = float(cfg["faceid"].get("match_threshold", 0.5))
@@ -170,7 +183,7 @@ def main():
     print(f"jetzt:   {size(new)}")
     if old:
         print(f"vorher:  {size(old)}")
-    print(f"Schwelle {thr}\n")
+    print(f"Schwelle {thr}, gemittelt ueber {TOP_K} Foto(s)\n")
 
     # 1) Leave-one-out. Testmenge ist die aeltere Galerie, damit keine Seite ihre
     #    eigenen Neuzugaenge benotet.
@@ -194,7 +207,8 @@ def main():
         print()
         lp = live_probe(old, new, args.days, thr, cfg)
         print(f"Praxisprobe ({args.days:g} Tage): {lp['events']} Ereignisse, "
-              f"{lp['faces']} mit verwertbarem Gesicht")
+              f"{lp['faces']} mit verwertbarem Gesicht"
+              + (f" ({lp['selfhits']} Selbsttreffer ausgeschlossen)" if lp["selfhits"] else ""))
         f = max(lp["faces"], 1)
         if old:
             print(f"  erkannt vorher: {lp['old']:3d} ({100*lp['old']//f:3d}%)   "

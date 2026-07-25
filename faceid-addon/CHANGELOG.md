@@ -13,6 +13,10 @@ update dialog; standalone users can watch GitHub releases.
   and *widened* the margin to the runner-up. The reason: the score averages the k best
   matching photos, so a person whose references cover many different angles gets dragged
   down by her own less similar photos — punishing exactly the well-covered people.
+- The practical probe now excludes **self-hits**: an event whose face is already in the
+  gallery scores ~1.0 and measures nothing. It flattered small k badly — after excluding
+  them on a k-independent basis (highest single similarity, not the k-mean), the honest
+  comparison on one identical test set is 90% / 93% / 100% recognised for k = 3 / 2 / 1.
 - The imbalance concern behind top-k was checked, not assumed: strangers (ignore anchors)
   peaked at 0.19 against a 0.50 threshold at every k, and no wrong person ever crossed
   the threshold. Measure your own with `scripts/measure-recognition.py` before changing.
