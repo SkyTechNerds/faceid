@@ -93,8 +93,11 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         b = body or {}
         thr = float(b.get("threshold", cfg["faceid"].get("dedupe_threshold", 0.65)))
         dry = bool(b.get("dry_run", False))
-        n = gallery.deduplicate_all(thr, dry_run=dry)
-        return {"would_remove" if dry else "moved": n, "threshold": thr}
+        # zuerst echte Bild-Dubletten (identisches Foto), dann aehnliche Gesichter
+        pix = gallery.deduplicate_pixels_all(dry_run=dry)
+        emb = gallery.deduplicate_all(thr, dry_run=dry)
+        key = "would_remove" if dry else "moved"
+        return {key: pix + emb, "same_image": pix, "similar_face": emb, "threshold": thr}
 
     @app.delete("/api/persons/{slug}/faces/{fname}")
     def delete_face(slug: str, fname: str):

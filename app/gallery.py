@@ -127,7 +127,7 @@ class Gallery:
         d.mkdir(exist_ok=True)
         return d
 
-    def _trim_face(self, slug: str, fname: str, emb, mean_sim: float, reason: str = "over the per-person photo limit — most similar to your other photos"):
+    def _trim_face(self, slug: str, fname: str, emb, mean_sim: float, reason: str = "over the per-person photo limit — most similar to your other photos", partner: str = ""):
         td = self._trimmed_dir(slug)
         src = self.persons_dir / slug / fname
         if src.exists():
@@ -138,7 +138,7 @@ class Gallery:
         except (json.JSONDecodeError, OSError):
             log = []
         log.insert(0, {"file": fname, "ts": time.time(), "mean_sim": round(mean_sim, 3),
-                       "reason": reason,
+                       "reason": reason, "partner": partner,
                        "embedding": [round(float(v), 6) for v in emb]})
         # Getrimmt-Ordner begrenzen: nur die neuesten trimmed_keep aufheben, Rest löschen
         keep = self.trimmed_keep if self.trimmed_keep and self.trimmed_keep > 0 else len(log)
@@ -171,7 +171,8 @@ class Gallery:
                 idx = [i for i in np.argsort(-sims) if sims[i] >= self.dedupe_threshold][:12]
                 similar = [act_files[i] for i in idx]
             out.append({"file": e["file"], "ts": e.get("ts", 0), "mean_sim": e.get("mean_sim"),
-                        "reason": e.get("reason", ""), "similar": similar})
+                        "reason": e.get("reason", ""), "similar": similar,
+                        "partner": partner})
         return out
 
     def restore_trimmed(self, slug: str, fname: str) -> bool:
@@ -299,6 +300,64 @@ class Gallery:
                 self._persist(slug)
         return total
 
+    @staticmethod
+    def _dhash(path, size: int = 8):
+        """Perceptual hash — erkennt visuell identische Bilddateien unabhaengig vom
+        Erkennungsmodell (z.B. zweimal hochgeladen, oder Alt-Artefakte)."""
+        img = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            return None
+        img = cv2.resize(img, (size + 1, size))
+        return (img[:, 1:] > img[:, :-1]).flatten()
+
+    def deduplicate_pixels(self, slug: str, max_hamming: int = 2, dry_run: bool = False) -> int:
+        """Bild-Dubletten entfernen: Fotos, deren BILD praktisch identisch zu einem
+        anderen ist. Das kommt vor, wenn dasselbe Foto zweimal landet — dann zeigen zwei
+        Kacheln dasselbe Gesicht, obwohl die hinterlegten Merkmale verschieden sind.
+        Solche Referenzen sind nicht beurteilbar und fliegen raus."""
+        with self._lock:
+            entry = self._cache.get(slug)
+            if entry is None:
+                return 0
+            pdir = self.persons_dir / slug
+            hashes = {}
+            for f in entry["files"]:
+                h = self._dhash(pdir / f)
+                if h is not None:
+                    hashes[f] = h
+            drop = set()
+            names = list(hashes)
+            for a in range(len(names)):
+                if names[a] in drop:
+                    continue
+                for b in range(a + 1, len(names)):
+                    if names[b] in drop:
+                        continue
+                    if int((hashes[names[a]] != hashes[names[b]]).sum()) <= max_hamming:
+                        # das spaeter hinzugefuegte (bzw. _dup-Artefakt) weicht
+                        loser = names[b] if "_dup" not in names[a] else names[a]
+                        drop.add(loser)
+            if dry_run:
+                return len(drop)
+            moved = 0
+            for fname in list(drop):
+                if fname not in entry["files"]:
+                    continue
+                i = entry["files"].index(fname)
+                self._trim_face(slug, fname, entry["emb"][i], 1.0,
+                                reason="same image as another photo — cannot be judged as its own reference",
+                                partner=next((n for n in names if n not in drop and
+                                              int((hashes[n] != hashes[fname]).sum()) <= max_hamming), ""))
+                entry["files"].pop(i)
+                entry["emb"] = np.delete(entry["emb"], i, axis=0)
+                moved += 1
+            if moved:
+                self._persist(slug)
+            return moved
+
+    def deduplicate_pixels_all(self, max_hamming: int = 2, dry_run: bool = False) -> int:
+        return sum(self.deduplicate_pixels(s, max_hamming, dry_run) for s in list(self._cache.keys()))
+
     def deduplicate_person(self, slug: str, threshold: float = None, dry_run: bool = False) -> int:
         """Nahezu identische Fotos (Cosine >= threshold) beiseitelegen — sie bringen der
         Erkennung nichts. Von jedem zu ähnlichen Paar geht das redundantere. dry_run zählt
@@ -337,8 +396,10 @@ class Gallery:
                     break
                 mean = sims.mean(axis=1)
                 drop = i if mean[i] >= mean[jx] else jx
+                keeper = jx if drop == i else i
                 self._trim_face(slug, entry["files"][drop], entry["emb"][drop], float(mean[drop]),
-                                reason="near-duplicate of another photo — no added value for recognition")
+                                reason="near-duplicate of another photo — no added value for recognition",
+                                partner=entry["files"][keeper])
                 entry["files"].pop(drop)
                 entry["emb"] = np.delete(entry["emb"], drop, axis=0)
                 moved += 1

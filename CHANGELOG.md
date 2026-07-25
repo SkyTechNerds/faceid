@@ -3,6 +3,17 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.5.4 — 2026-07-23
+
+- **Detects true duplicate images**, not just similar faces: a perceptual-hash pass now
+  finds photos whose *image* is identical to another one (e.g. the same crop stored
+  twice). These could never be caught by face-similarity — for the model they look like
+  two different faces — which is why visibly identical tiles survived earlier passes.
+- **Fixed the hover highlight on set-aside photos**: it now always highlights the photos
+  it was considered a duplicate of (the exact partner is recorded when trimming, plus the
+  closest matches), instead of silently showing nothing when similarity fell below a fixed
+  threshold.
+
 ## 0.5.3 — 2026-07-23
 
 - Hover-highlight on set-aside photos now uses the same sensitivity as duplicate removal,
