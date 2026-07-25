@@ -20,6 +20,13 @@ faceid:
   #   in between           -> uncertain; goes to the review queue only
   match_threshold: 0.50
   unknown_threshold: 0.35
+  # A match score is the mean of the top-k most similar reference photos of a person.
+  # Higher resists a single lucky photo, but drags down people whose references cover
+  # many angles — their own less similar photos pull the mean. Measure before changing:
+  # scripts/measure-recognition.py --top-k N. On one real gallery, 1 nearly doubled
+  # correct recognitions over 3 with no misassignments.
+  match_top_k: 3
+  max_faces_per_person: 40             # soft cap; the most redundant photo is set aside
   min_face_px: 48                      # minimum face size in the snapshot (pixels)
   det_size: 640                        # detection input size (higher = better far faces, slower)
   max_attempts: 6                      # recognition attempts per Frigate event
