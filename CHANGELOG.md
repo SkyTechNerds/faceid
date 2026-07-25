@@ -3,6 +3,16 @@
 All notable changes to FaceID. The Home Assistant add-on shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.4.0 — 2026-07-23
+
+- **Backup & restore**: download your whole gallery (persons + ignore anchors) as a
+  `.tar.gz` from the Persons tab, and restore it later — either **replace** everything
+  or **merge** in only what's missing. Path-traversal-safe. Your face data is the one
+  irreplaceable thing here, so now it's one click to safeguard.
+- **Removed the Recognitions tab** — it was an in-memory, since-restart-only list that
+  never persisted; Frigate's Explore (with the names FaceID writes back) covers "who
+  was seen when" far better.
+
 ## 0.3.2 — 2026-07-23
 
 - **Configurable suggestion threshold** (`suggest_threshold`, default 0.40): controls

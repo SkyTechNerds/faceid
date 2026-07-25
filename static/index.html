@@ -79,7 +79,6 @@ td.p{color:var(--acc)} td.u{color:var(--warn)}
   <button data-t="unknowns" class="on" title="review queue: unrecognized faces, grouped by person">UNKNOWN</button>
   <button data-t="persons" title="your gallery: enrolled people and their reference faces">PERSONS</button>
   <button data-t="ignored" title="people you don't track: never notified, matched or resurfaced">IGNORED</button>
-  <button data-t="recent" title="latest recognitions since service start">RECOGNITIONS</button>
 </nav>
 <main id="main"></main>
 <div id="toast"></div>
@@ -120,7 +119,7 @@ async function render(){
   if(tab==='unknowns')return renderUnknowns();
   if(tab==='persons')return renderPersons();
   if(tab==='ignored')return renderIgnored();
-  return renderRecent();
+  return renderPersons();
 }
 
 function backfillRow(bf){
@@ -397,7 +396,28 @@ async function renderPersons(){
       <input id="pname" placeholder="New person…" size="18" title="create an empty person, then upload photos or assign faces from the unknown queue">
       <button class="act" onclick="createPerson()">CREATE</button>
       <span style="flex:1"></span>${jump}
-    </div>`+body;
+    </div>`+body+`
+    <div class="row" style="margin-top:20px;border-top:1px solid var(--line);padding-top:14px">
+      <span class="stat">BACKUP</span>
+      <a class="act" href="api/backup" title="download all persons + ignore anchors as a .tar.gz" style="text-decoration:none">DOWNLOAD BACKUP</a>
+      <label class="ghost" style="cursor:pointer" title="restore a backup — REPLACES all current persons + ignore anchors">Restore (replace)
+        <input type="file" accept=".gz,.tar.gz,application/gzip" style="display:none" onchange="restore(this,false)">
+      </label>
+      <label class="ghost" style="cursor:pointer" title="restore a backup — only ADDS persons/anchors missing locally, keeps existing">Restore (merge)
+        <input type="file" accept=".gz,.tar.gz,application/gzip" style="display:none" onchange="restore(this,true)">
+      </label>
+    </div>`;
+}
+async function restore(inp,merge){
+  const f=inp.files[0]; if(!f)return;
+  if(!merge&&!confirm('Replace ALL current persons and ignore anchors with this backup? This cannot be undone.')){inp.value='';return;}
+  const fd=new FormData(); fd.append('file',f);
+  toast('Restoring…');
+  try{
+    const r=await j('api/restore?merge='+(merge?'true':'false'),{method:'POST',body:fd});
+    toast(`Restored ${r.restored_files} file(s) (${r.mode}) — ${r.persons} persons`);
+  }catch(e){toast('Restore failed: '+String(e.message).slice(0,80));}
+  inp.value=''; persons=await j('api/persons'); if(tab==='persons')renderPersons();
 }
 async function toggleFav(slug,fav){
   await j(`api/persons/${slug}/favorite`,{method:'POST',headers:{'Content-Type':'application/json'},
@@ -424,16 +444,6 @@ async function ignorePerson(slug,name){
 async function delPerson(slug,name){if(!confirm(`Delete "${name}" and all their faces?`))return;
   await j(`api/persons/${slug}`,{method:'DELETE'});render()}
 
-async function renderRecent(){
-  const rows=await j('api/recent');
-  if(tab!=='recent')return;
-  main.innerHTML=rows.length?`<table>
-    <tr><th>Time</th><th>Camera</th><th>Person</th><th>Score</th><th>Event</th></tr>
-    ${rows.map(r=>`<tr><td>${fmtTs(r.ts)}</td><td>${esc(r.camera)}</td>
-      <td class="${r.person==='unknown'?'u':'p'}">${esc(r.person)}</td>
-      <td>${(r.score*100).toFixed(0)}%</td><td class="n">${esc(r.event_id)}</td></tr>`).join('')}
-  </table>`:'<div class="empty">No recognitions since startup.</div>';
-}
 
 health();setInterval(health,10000);render();
 </script>

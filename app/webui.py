@@ -1,15 +1,18 @@
 """Review-UI + JSON-API: Personen verwalten, Unknown-Cluster zuordnen, letzte Erkennungen."""
 import base64
+import io
 import json
 import logging
 import secrets
+import tarfile
 import threading
+import time
 from pathlib import Path
 
 import cv2
 import numpy as np
 from fastapi import FastAPI, HTTPException, Response, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -249,9 +252,61 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     def backfill_status():
         return backfill_state
 
-    @app.get("/api/recent")
-    def recent():
-        return list(processor.recent)
+    @app.get("/api/backup")
+    def backup():
+        """Komplette Galerie (persons + ignored) als tar.gz — die einzige unersetzliche
+        Datenquelle. Unknown-Queue und Frigate-Vollbilder werden bewusst ausgelassen."""
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            for sub in ("persons", "ignored"):
+                d = data_dir / sub
+                if d.exists():
+                    tar.add(d, arcname=sub)
+        buf.seek(0)
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        return Response(buf.getvalue(), media_type="application/gzip",
+                        headers={"Content-Disposition": f'attachment; filename="faceid-backup-{ts}.tar.gz"'})
+
+    @app.post("/api/restore")
+    async def restore(file: UploadFile, merge: bool = False):
+        """Backup einspielen. merge=false (Default) ersetzt persons+ignored komplett;
+        merge=true fügt nur fehlende Personen/Anker hinzu (bestehende bleiben)."""
+        raw = await file.read()
+        try:
+            tar = tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz")
+        except tarfile.TarError:
+            raise HTTPException(400, "Not a valid .tar.gz backup")
+        members = tar.getmembers()
+        # Sicherheit: keine absoluten Pfade / path traversal, nur persons/ und ignored/
+        for m in members:
+            norm = Path(m.name)
+            if m.name.startswith("/") or ".." in norm.parts or (norm.parts and norm.parts[0] not in ("persons", "ignored")):
+                raise HTTPException(400, f"Refusing unsafe path in archive: {m.name}")
+        if not merge:
+            for sub in ("persons", "ignored"):
+                d = data_dir / sub
+                if d.exists():
+                    for f in d.rglob("*"):
+                        if f.is_file():
+                            f.unlink()
+                    for f in sorted(d.rglob("*"), reverse=True):
+                        if f.is_dir():
+                            f.rmdir()
+        added = 0
+        for m in members:
+            if not m.isfile():
+                continue
+            target = data_dir / m.name
+            if merge and target.exists():
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with tar.extractfile(m) as src:
+                target.write_bytes(src.read())
+            added += 1
+        tar.close()
+        gallery.reload()
+        return {"restored_files": added, "mode": "merge" if merge else "replace",
+                "persons": len(gallery.persons())}
 
     @app.get("/api/health")
     def health():
