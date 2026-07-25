@@ -422,8 +422,12 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
 
     @app.get("/api/health")
     def health():
+        # "queue" ist die Review-Queue — das ist es, was der Header zeigt. Die interne
+        # Verarbeitungs-Warteschlange steht separat unter "processing".
         return {"status": "ok", "persons": len(gallery.persons()),
-                "queue": processor.queue.qsize(), "open_events": len(processor.events),
+                "queue": len(list((data_dir / "unknowns").glob("*.json"))),
+                "processing": processor.queue.qsize(),
+                "open_events": len(processor.events),
                 "suggest_threshold": float(cfg["faceid"].get("suggest_threshold", 0.40))}
 
     return app

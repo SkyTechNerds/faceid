@@ -8,7 +8,11 @@ update dialog; standalone users can watch GitHub releases.
 - **Hotfix: the web UI stayed blank after 0.6.6.** The new "photos averaged per match"
   field declared a `const tk` that already existed for the set-aside limit — a
   `SyntaxError` that stops the entire script from loading, so the whole page died, not
-  just Settings.
+  just Settings. CI now runs `node --check` over the inline script, so a broken UI can
+  no longer be released.
+- **Fixed: the header showed `queue 0` while faces were waiting.** It reported the size
+  of the internal processing queue, not the review queue. The review count is now what
+  it says it is; the internal one moved to `processing`.
 
 ## 0.6.7 — 2026-07-25
 

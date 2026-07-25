@@ -82,3 +82,23 @@ jobs:
               print(f"version {version} has no CHANGELOG.md entry"); sys.exit(1)
           print(f"version {version} OK")
           EOF
+
+      - name: Web UI script parses
+        run: |
+          python - << 'EOF'
+          import re, subprocess, sys
+          from pathlib import Path
+          html = Path("static/index.html").read_text()
+          blocks = re.findall(r"<script>(.*?)</script>", html, re.S)
+          if not blocks:
+              print("no inline script found in static/index.html"); sys.exit(1)
+          # Ein SyntaxError laesst die GANZE Seite leer bleiben, nicht nur den Teil,
+          # der ihn enthaelt — deshalb hier hart pruefen.
+          for i, b in enumerate(blocks):
+              Path(f"/tmp/ui{i}.js").write_text(b)
+              r = subprocess.run(["node", "--check", f"/tmp/ui{i}.js"],
+                                 capture_output=True, text=True)
+              if r.returncode != 0:
+                  print(f"script block {i} does not parse:\n{r.stderr}"); sys.exit(1)
+          print(f"{len(blocks)} script block(s) parse")
+          EOF
