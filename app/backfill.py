@@ -22,14 +22,16 @@ def run_backfill(engine, gallery, frigate, frigate_url: str, days: int = 14,
                  min_px: int = 64, min_det: float = 0.65, dedupe: float = 0.82,
                  tag: bool = True, match_thr: float = 0.5, progress=None,
                  hires: bool = True, rescue: bool = False,
-                 rescue_min_px: int = 90) -> dict:
+                 rescue_min_px: int = 90, rescue_min_det: float = 0.85) -> dict:
     """Person-Events der letzten `days` Tage verarbeiten. Threadsafe zur Live-Pipeline
     (Engine und Galerie sind intern gelockt). progress(i, total) wird pro Event gerufen.
 
     ``rescue`` holt Ereignisse zurück, in deren Snapshot gar kein Gesicht steckte: der
     Detect-Stream ist zu grob, in der Aufnahme ist dieselbe Person oft doppelt so groß und
     wird dann erkannt. Kostet einen Clip-Download pro betroffenem Ereignis — deshalb nur
-    für diesen manuell angestoßenen Lauf, nicht für die Live-Pipeline.
+    für diesen manuell angestoßenen Lauf, nicht für die Live-Pipeline. Erwartungswert aus
+    einer Messung über 180 Ereignisse: gut jedes fünfte liefert einen Fund, der die
+    Güteschwelle übersteht.
     """
     after = time.time() - days * 86400
     events, before = [], None
@@ -60,12 +62,15 @@ def run_backfill(engine, gallery, frigate, frigate_url: str, days: int = 14,
                 stats["no_face"] += 1
                 continue
             # Kein Gesicht im Detect-Snapshot heißt nicht "kein Gesicht da" — in der
-            # Aufnahme ist es doppelt so groß. Ohne Referenzgesicht kann hier nicht auf
-            # Identität geprüft werden, darum strenger bei Größe und Detektionsgüte.
+            # Aufnahme ist es doppelt so groß. Ohne Referenzgesicht fehlt hier die
+            # Identitätsprüfung, deshalb entscheidet die Detektionsgüte: an 74 echten
+            # Funden gemessen liefert alles unter ~0.8 Hinterköpfe, Bewegungsunschärfe
+            # und schlicht Fehldetektionen (ein Kirchturm bei 0.57). Nicht zusätzlich auf
+            # den Galerie-Match filtern — Fremde sollen ja gerade in die Queue.
             try:
                 hit = upgrade_face(engine, frigate, ev["camera"], ev.get("start_time"),
                                    ev.get("end_time"), None, event_id=ev["id"],
-                                   min_px=rescue_min_px)
+                                   min_px=rescue_min_px, min_det=rescue_min_det)
             except Exception:
                 hit = None
             if hit is None:
@@ -115,6 +120,8 @@ def main():
     ap.add_argument("--no-tag", action="store_true", help="erkannte Events NICHT in Frigate sub_labeln")
     ap.add_argument("--rescue", action="store_true",
                     help="Events ohne Gesicht im Snapshot per Clip-Scan nachholen (langsam)")
+    ap.add_argument("--rescue-min-det", type=float, default=0.85,
+                    help="Detektionsgüte für Rescue-Funde; niedriger = mehr Funde, mehr Ausschuss")
     args = ap.parse_args()
 
     cfg = yaml.safe_load((BASE / "config.yaml").read_text())
@@ -130,7 +137,8 @@ def main():
                          min_px=args.min_px, min_det=args.min_det, dedupe=args.dedupe,
                          tag=not args.no_tag,
                          match_thr=float(cfg["faceid"].get("match_threshold", 0.5)),
-                         progress=progress, rescue=args.rescue)
+                         progress=progress, rescue=args.rescue,
+                         rescue_min_det=args.rescue_min_det)
     print(f"Fertig: {stats['faces']} Gesichter in der Review-Queue, {stats['dupe']} Dubletten, "
           f"{stats['no_face']} ohne brauchbares Gesicht, {stats['known']} bereits bekannt "
           f"(von {stats['events']} Events).")

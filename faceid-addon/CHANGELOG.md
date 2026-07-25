@@ -3,6 +3,22 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.6.2 — 2026-07-25
+
+- **History scan can recover missed events** (`python -m app.backfill --rescue`). When the
+  detect snapshot holds no usable face, the event clip is scanned instead — measured over
+  180 events, about one in five yields a face that the normal scan misses entirely.
+- **Quality gate calibrated against real data, not intuition.** A first run put 308 faces
+  into the review queue, most of them useless: back-of-head shots, motion blur, and
+  outright false positives (a church spire scored 0.57). Sorting 74 finds by detection
+  score showed a clean split — below ~0.8 it is mostly junk, above it mostly real faces.
+  Rescue therefore requires **0.85** by default (`--rescue-min-det`), which cuts the yield
+  to roughly a seventh and leaves the usable finds.
+- Deliberately **no** filter on gallery match score: a stranger's face scores low by
+  definition, and enrolling strangers is what the queue is for. Also no pose filter —
+  measurement showed working galleries are full of profile shots (median frontality 0.55),
+  so filtering those would discard good references.
+
 ## 0.6.1 — 2026-07-25
 
 - **Sharper reference photos now actually land.** 0.6.0 sampled a handful of timestamps

@@ -208,6 +208,25 @@ Live recognition still uses the fast snapshot path; only enrollment takes the sl
 sharper route (a few seconds and one clip download per event). Needs recordings enabled
 for the camera.
 
+### Recovering missed events
+
+Sometimes the detect snapshot holds no usable face at all and the event is skipped
+entirely. The history scan can go back over those via the clip:
+
+```bash
+python -m app.backfill --days 28 --rescue
+```
+
+About one in five such events yields a face this way. Because there is no snapshot face
+to check identity against, the only guard is detection quality — and it has to be strict:
+in a measured run, finds below ~0.8 were overwhelmingly back-of-head shots, motion blur
+and false positives (a church spire scored 0.57), while finds above it were real faces.
+The default is `--rescue-min-det 0.85`; lowering it multiplies the queue faster than it
+adds usable references.
+
+Expect a clip download (8–32 MB) and several seconds per affected event, so this is a
+manual run, not something the live pipeline does.
+
 ## How training stays healthy
 
 Recognition is only as good as the reference photos, so FaceID keeps galleries diverse

@@ -19,7 +19,7 @@ from .engine import FaceEngine
 log = logging.getLogger("faceid.hires")
 
 
-def _pick(engine, frame, ref_embedding, min_px, identity_min):
+def _pick(engine, frame, ref_embedding, min_px, identity_min, min_det=0.55):
     """Aus allen Gesichtern eines Frames das passendste zurückgeben.
 
     Wichtig bei mehreren Personen im Bild: das GRÖSSTE Gesicht ist nicht zwingend das
@@ -29,7 +29,7 @@ def _pick(engine, frame, ref_embedding, min_px, identity_min):
     best = None
     for f in engine.faces(frame):
         w = float(f.bbox[2] - f.bbox[0])
-        if w < min_px or float(f.det_score) < 0.55:
+        if w < min_px or float(f.det_score) < min_det:
             continue
         sim = 1.0 if ref_embedding is None else float(f.normed_embedding @ ref_embedding)
         if sim < identity_min:
@@ -39,7 +39,8 @@ def _pick(engine, frame, ref_embedding, min_px, identity_min):
     return best
 
 
-def _scan_clip(engine, frigate, event_id, ref_embedding, max_frames, min_px, identity_min):
+def _scan_clip(engine, frigate, event_id, ref_embedding, max_frames, min_px, identity_min,
+               min_det):
     fd, path = tempfile.mkstemp(suffix=".mp4", prefix="faceid-clip-")
     os.close(fd)
     try:
@@ -59,7 +60,7 @@ def _scan_clip(engine, frigate, event_id, ref_embedding, max_frames, min_px, ide
                 ok, frame = cap.read()
                 if not ok or frame is None:
                     continue
-                cand = _pick(engine, frame, ref_embedding, min_px, identity_min)
+                cand = _pick(engine, frame, ref_embedding, min_px, identity_min, min_det)
                 if cand is None:
                     continue
                 if best is None or cand[1] > best[0][1]:
@@ -75,7 +76,7 @@ def _scan_clip(engine, frigate, event_id, ref_embedding, max_frames, min_px, ide
 
 
 def _scan_recordings(engine, frigate, camera, start_time, end_time, ref_embedding,
-                     attempts, min_px, identity_min):
+                     attempts, min_px, identity_min, min_det):
     """Fallback ohne Clip: einzelne Aufnahme-Frames per HTTP abklopfen."""
     span = max(0.0, (end_time or start_time) - start_time)
     offsets = [1.0, 0.5, 2.0] if span <= 2 else [span * 0.25, span * 0.5, span * 0.75, 1.0]
@@ -84,7 +85,7 @@ def _scan_recordings(engine, frigate, camera, start_time, end_time, ref_embeddin
         img = frigate.recording_frame(camera, round(start_time + off, 3))
         if img is None:
             continue
-        cand = _pick(engine, img, ref_embedding, min_px, identity_min)
+        cand = _pick(engine, img, ref_embedding, min_px, identity_min, min_det)
         if cand is None:
             continue
         if best is None or cand[1] > best[0][1]:
@@ -94,7 +95,8 @@ def _scan_recordings(engine, frigate, camera, start_time, end_time, ref_embeddin
 
 def upgrade_face(engine, frigate, camera: str, start_time: float, end_time: float,
                  ref_embedding, event_id: str | None = None, max_frames: int = 12,
-                 attempts: int = 3, min_px: int = 60, identity_min: float = 0.5):
+                 attempts: int = 3, min_px: int = 60, identity_min: float = 0.5,
+                 min_det: float = 0.55):
     """Sucht in der Aufnahme ein größeres Gesicht DERSELBEN Person.
 
     ``ref_embedding`` ist das Gesicht aus dem Snapshot — jeder Kandidat muss dazu passen
@@ -105,10 +107,10 @@ def upgrade_face(engine, frigate, camera: str, start_time: float, end_time: floa
     """
     if event_id:
         hit = _scan_clip(engine, frigate, event_id, ref_embedding, max_frames, min_px,
-                         identity_min)
+                         identity_min, min_det)
         if hit is not None:
             return hit
     if not camera or not start_time:
         return None
     return _scan_recordings(engine, frigate, camera, start_time, end_time, ref_embedding,
-                            attempts, min_px, identity_min)
+                            attempts, min_px, identity_min, min_det)
