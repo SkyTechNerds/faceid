@@ -25,6 +25,10 @@ faceid:
   max_attempts: 6                      # recognition attempts per Frigate event
   retry_seconds: 2.5                   # min. seconds between attempts on the same event
   cluster_eps: 0.55                    # DBSCAN cosine distance for grouping unknowns in the UI
+  # review UI: unknown faces with a best-match score >= this get grouped into a
+  # "Looks like <person>" suggestion with the dropdown pre-selected. Keep below
+  # match_threshold so borderline faces are pre-sorted without weak-match noise.
+  suggest_threshold: 0.40
   set_sub_label: true                  # write recognized names back to Frigate events
   presence_window: 120                 # camera sensor shows everyone seen within this window (s)
   # process events only from these cameras (empty = all cameras)

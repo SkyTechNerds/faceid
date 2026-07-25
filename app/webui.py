@@ -256,6 +256,7 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     @app.get("/api/health")
     def health():
         return {"status": "ok", "persons": len(gallery.persons()),
-                "queue": processor.queue.qsize(), "open_events": len(processor.events)}
+                "queue": processor.queue.qsize(), "open_events": len(processor.events),
+                "suggest_threshold": float(cfg["faceid"].get("suggest_threshold", 0.40))}
 
     return app

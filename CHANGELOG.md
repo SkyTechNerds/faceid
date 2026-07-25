@@ -3,6 +3,14 @@
 All notable changes to FaceID. The Home Assistant add-on shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.3.2 — 2026-07-23
+
+- **Configurable suggestion threshold** (`suggest_threshold`, default 0.40): controls
+  when an unknown face is grouped into a "Looks like <person>" suggestion. Available as
+  an add-on option too.
+- **Jump-to-person dropdown** on the Persons tab (shown once you have more than a few
+  people) — pick a name to scroll straight to that person.
+
 ## 0.3.1 — 2026-07-23
 
 - **Smarter review queue**: unknown faces that resemble an enrolled person are now

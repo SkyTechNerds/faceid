@@ -59,6 +59,7 @@ faceid:
   match_threshold: $(cfg '.match_threshold')
   unknown_threshold: $(cfg '.unknown_threshold')
   cluster_eps: $(cfg '.cluster_eps')
+  suggest_threshold: $(cfg '.suggest_threshold')
   presence_window: $(cfg '.presence_window')
   set_sub_label: $(cfg '.set_sub_label')
   min_face_px: 48

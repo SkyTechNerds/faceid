@@ -87,7 +87,7 @@ td.p{color:var(--acc)} td.u{color:var(--warn)}
 
 <script>
 const $=s=>document.querySelector(s), main=$('#main');
-let tab='unknowns', persons={}, selected=new Set();
+let tab='unknowns', persons={}, selected=new Set(), suggestThr=0.40;
 
 async function j(url,opt){const r=await fetch(url,opt);if(!r.ok)throw new Error(await r.text());return r.json()}
 function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';setTimeout(()=>t.style.display='none',2500)}
@@ -100,6 +100,7 @@ document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
   render()});
 
 async function health(){try{const h=await j('api/health');
+  if(typeof h.suggest_threshold==='number')suggestThr=h.suggest_threshold;
   $('#health').textContent=`${h.persons} persons · queue ${h.queue} · events ${h.open_events}`}catch(e){$('#health').textContent='offline'}}
 
 function personOptions(sel){
@@ -157,7 +158,7 @@ async function renderUnknowns(){
     main.innerHTML=backfillRow(bf)+'<div class="empty">No unknown faces in the queue.</div>';return}
   const excluded=window._excludedIds||(window._excludedIds=new Set());
   const n2s={}; Object.entries(persons).forEach(([sl,p])=>{n2s[p.name]=sl;});
-  const SUGGEST=0.40;
+  const SUGGEST=suggestThr;
   // Vorschlags-Gruppen (nach vermuteter Person) + Rest-Cluster
   const byName={};
   const rest=[];
@@ -358,7 +359,7 @@ async function discardCluster(i){
 
 function personCard(slug,p){
   return `
-    <div class="person">
+    <div class="person" id="p-${slug}">
       <div class="head">
         <button class="fav${p.favorite?' on':''}" title="${p.favorite?'remove from favorites':'mark as favorite'}" onclick="toggleFav('${slug}',${p.favorite?0:1})">${p.favorite?'★':'☆'}</button>
         <b>${esc(p.name)}</b><span class="n">${p.count} faces</span>
@@ -387,10 +388,15 @@ async function renderPersons(){
   if(favs.length) body+=`<h2>★ Favorites (${favs.length})</h2>`+favs.map(([s,p])=>personCard(s,p)).join('');
   if(rest.length) body+=`<h2>${favs.length?'Others':'Persons'} (${rest.length})</h2>`+rest.map(([s,p])=>personCard(s,p)).join('');
   if(!entries.length) body='<div class="empty">No persons yet.</div>';
+  const jump=entries.length>3?`
+      <select id="pjump" title="jump to a person" onchange="if(this.value){document.getElementById('p-'+this.value).scrollIntoView({behavior:'smooth',block:'start'});this.value='';}">
+        <option value="">Jump to…</option>${personOptions('')}
+      </select>`:'';
   main.innerHTML=`
     <div class="row">
       <input id="pname" placeholder="New person…" size="18" title="create an empty person, then upload photos or assign faces from the unknown queue">
       <button class="act" onclick="createPerson()">CREATE</button>
+      <span style="flex:1"></span>${jump}
     </div>`+body;
 }
 async function toggleFav(slug,fav){
