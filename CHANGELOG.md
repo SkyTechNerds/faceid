@@ -3,6 +3,11 @@
 All notable changes to FaceID. The Home Assistant add-on shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.4.6 — 2026-07-23
+
+- Clearer Settings: the save button is now "SAVE SETTINGS" (it saves the thresholds and
+  the photo limit together) — the photo-limit field only applies when you press it.
+
 ## 0.4.5 — 2026-07-23
 
 - **Adjustable photo cap in Settings** (`max_faces_per_person`): lowering it trims every
