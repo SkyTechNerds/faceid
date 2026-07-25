@@ -5,6 +5,7 @@ Kein Training, kein Overfitting: jedes Bild ist ein eigener Vergleichspunkt.
 """
 import json
 import re
+import shutil
 import threading
 import time
 from pathlib import Path
@@ -52,12 +53,18 @@ class Gallery:
                     continue
                 meta = json.loads(meta_f.read_text())
                 emb = np.load(emb_f)
+                files, changed = self._repair_person(pdir, meta, emb)
                 self._cache[pdir.name] = {
                     "name": meta.get("name", pdir.name),
                     "emb": emb,
-                    "files": meta.get("files", []),
+                    "files": files,
                     "favorite": bool(meta.get("favorite", False)),
                 }
+                if changed:
+                    meta_f.write_text(json.dumps(
+                        {"name": meta.get("name", pdir.name), "files": files,
+                         "favorite": bool(meta.get("favorite", False))},
+                        ensure_ascii=False, indent=1))
             embs, ids, groups = [], [], []
             for jf in sorted(self.ignored_dir.glob("*.json")):
                 try:
@@ -79,6 +86,39 @@ class Gallery:
                 groups[i] = best[1] if best[0] >= 0.5 else f"g{ids[i]}"
                 self._rewrite_ignored_meta(ids[i], {"group": groups[i]})
             self._ign_groups = groups
+
+    def _repair_person(self, pdir: Path, meta: dict, emb: "np.ndarray"):
+        """Alt-Daten (vor v0.2.1) heilen: doppelte/fehlende Dateinamen 1:1 zu Embeddings
+        machen. Embeddings bleiben unangetastet (Erkennung), nur die JPG/Namen werden
+        konsistent. Gibt (files, changed) zurück."""
+        files = list(meta.get("files", []))
+        n = int(emb.shape[0])
+        changed = False
+        # Länge an Embeddings angleichen (Guard; sollte selten nötig sein)
+        if len(files) < n:
+            files += [f"missing_{i}.jpg" for i in range(len(files), n)]
+            changed = True
+        elif len(files) > n:
+            files = files[:n]
+            changed = True
+        # Dateinamen eindeutig machen; für Kollisionen vorhandenes JPG kopieren
+        seen, out = set(), []
+        for i, fn in enumerate(files):
+            src = pdir / fn
+            if fn in seen or not src.exists():
+                stem = Path(fn).stem.split("_dup")[0]
+                new = f"{stem}_dup{i}.jpg"
+                while new in seen or (pdir / new).exists():
+                    new = f"{stem}_dup{i}_{len(seen)}.jpg"
+                # Bildquelle: das (überlebende) JPG dieses Namens, sonst irgendein vorhandenes
+                real = src if src.exists() else next((pdir / o for o in files if (pdir / o).exists()), None)
+                if real is not None and real.exists():
+                    shutil.copyfile(real, pdir / new)
+                fn = new
+                changed = True
+            seen.add(fn)
+            out.append(fn)
+        return out, changed
 
     def _persist(self, slug: str):
         pdir = self.persons_dir / slug

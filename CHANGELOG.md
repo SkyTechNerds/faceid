@@ -3,6 +3,13 @@
 All notable changes to FaceID. The Home Assistant add-on shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.4.3 — 2026-07-23
+
+- **Self-healing gallery**: on startup, persons whose reference filenames collided in
+  pre-0.2.1 data (duplicate names, embedding/image count mismatch) are repaired
+  automatically — filenames become unique and 1:1 with embeddings, so backups and the
+  UI stay consistent. Recognition data is never touched.
+
 ## 0.4.2 — 2026-07-23
 
 - Fix: the Download-Backup link and file-upload labels now match the button styling
