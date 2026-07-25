@@ -64,6 +64,9 @@ td.p{color:var(--acc)} td.u{color:var(--warn)}
 .tile button.z{position:absolute;bottom:18px;right:0;background:var(--bg);border:0;color:var(--acc);
   font:12px var(--mono);padding:2px 6px;cursor:pointer;display:none}
 .tile:hover button.z{display:block}
+.trimgrid .tile img{filter:grayscale(1) brightness(.55);transition:filter .15s}
+.trimgrid .tile:hover img{filter:none}
+.trimlabel{display:inline-block;font:600 10px var(--mono);letter-spacing:.1em;color:var(--warn);border:1px solid var(--warn);border-radius:3px;padding:1px 6px;margin-bottom:4px}
 #lightbox{position:fixed;inset:0;background:color-mix(in oklab,var(--bg) 88%,transparent);
   display:none;align-items:center;justify-content:center;z-index:10;cursor:zoom-out;flex-direction:column;gap:8px}
 #lightbox img{max-width:94vw;max-height:88vh;border:1px solid var(--acc)}
@@ -466,10 +469,11 @@ function personCard(slug,p){
           <button class="x" title="delete permanently" onclick="delFace('${slug}','${f}')">×</button></div>`).join('')}
       </div>
       ${(p.trimmed&&p.trimmed.length)?`
-      <div style="margin-top:8px;border-top:1px dashed var(--line);padding-top:8px">
-        <div class="stat">✂︎ ${p.trimmed.length} photo(s) trimmed to stay under the ${p.count>=40?40:'photo'} limit — the ones most similar to the rest were set aside so diverse angles are kept. Restore ↩ or delete ×.</div>
-        <div class="grid" style="margin-top:6px;opacity:.75">${p.trimmed.map(t=>`
-          <div class="tile"><img src="data/persons/${slug}/_trimmed/${t.file}" loading="lazy" title="set aside ${fmtTs(t.ts)} · similarity ${t.mean_sim}">
+      <div style="margin-top:10px;border-top:1px dashed var(--line);padding-top:10px">
+        <span class="trimlabel">✂︎ SET ASIDE · ${p.trimmed.length}</span>
+        <div class="stat">Trimmed to stay under the photo limit — these were the most similar to the rest, so diverse angles were kept. Hover to preview; ↩ restore or × delete.</div>
+        <div class="grid trimgrid" style="margin-top:6px">${p.trimmed.map(t=>`
+          <div class="tile"><img src="data/persons/${slug}/_trimmed/${t.file}" loading="lazy" title="set aside ${fmtTs(t.ts)} · similarity ${t.mean_sim} (higher = more redundant)">
             <button class="u" title="restore this photo" onclick="restoreTrimmed('${slug}','${t.file}')">↩</button>
             <button class="x" title="delete permanently" onclick="deleteTrimmed('${slug}','${t.file}')">×</button></div>`).join('')}
         </div>

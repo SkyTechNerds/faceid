@@ -3,6 +3,12 @@
 All notable changes to FaceID. The Home Assistant add-on shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.4.7 — 2026-07-23
+
+- Trimmed (set-aside) photos are now clearly distinguished: shown desaturated and dimmed
+  under a "SET ASIDE" label, and full-colour on hover, so they read as archived rather
+  than active reference photos.
+
 ## 0.4.6 — 2026-07-23
 
 - Clearer Settings: the save button is now "SAVE SETTINGS" (it saves the thresholds and
