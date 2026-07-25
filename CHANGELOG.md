@@ -3,6 +3,13 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.6.8 — 2026-07-25
+
+- **Hotfix: the web UI stayed blank after 0.6.6.** The new "photos averaged per match"
+  field declared a `const tk` that already existed for the set-aside limit — a
+  `SyntaxError` that stops the entire script from loading, so the whole page died, not
+  just Settings.
+
 ## 0.6.7 — 2026-07-25
 
 - **New: `poll_interval`** — optionally also poll Frigate's event API instead of relying

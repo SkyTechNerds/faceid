@@ -471,7 +471,7 @@ async function saveThresholds(){
   ['match_threshold','unknown_threshold','suggest_threshold','cluster_eps','ignore_threshold'].forEach(k=>{
     const el=document.getElementById('set-'+k); if(el)body[k]=+el.value;});
   const mf=document.getElementById('set-maxfaces'); if(mf)body.max_faces_per_person=+mf.value;
-  const tk=document.getElementById('set-topk'); if(tk)body.match_top_k=+tk.value;
+  const topk=document.getElementById('set-topk'); if(topk)body.match_top_k=+topk.value;
   const tk=document.getElementById('set-trimkeep'); if(tk)body.trimmed_keep=+tk.value;
   const dt=document.getElementById('set-dedupe_threshold'); if(dt)body.dedupe_threshold=+dt.value;
   const hr=document.getElementById('set-hires'); if(hr)body.hires_enroll=hr.checked;

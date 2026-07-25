@@ -23,7 +23,9 @@ konkret fehlt:
     python scripts/coverage.py
 """
 import argparse
+import datetime
 import json
+import time
 from collections import Counter
 import sys
 from pathlib import Path
@@ -66,6 +68,48 @@ def match(gal, e, drop_slug, drop_idx):
         if s > best:
             best_slug, best = slug, s
     return best_slug, best
+
+
+def ir_cameras(cfg, days: int = 7, sample: int = 8) -> set:
+    """Kameras, deren Nachtaufnahmen in Graustufen kommen (echte IR-Umschaltung).
+
+    Wo bei Bewegung Licht angeht, nimmt die Kamera auch nachts in Farbe auf — dort ist
+    eine fehlende IR-Referenz kein Mangel. Ermittelt aus echten Ereignissen statt aus
+    der Galerie, sonst wuerde man genau die Luecke uebersehen, die man sucht.
+    """
+    try:
+        from zoneinfo import ZoneInfo
+        import requests
+        from app.frigate_api import FrigateAPI
+    except ImportError:
+        return set()
+    url = cfg.get("frigate", {}).get("url")
+    if not url:
+        return set()
+    api = FrigateAPI(url)
+    tz = ZoneInfo(cfg.get("faceid", {}).get("timezone", "Europe/Berlin"))
+    out, seen = set(), {}
+    try:
+        evs = requests.get(f"{url}/api/events",
+                           params={"label": "person", "has_snapshot": 1, "limit": 300,
+                                   "after": time.time() - days * 86400},
+                           timeout=15).json()
+    except Exception:
+        return set()
+    for ev in evs:
+        cam = ev.get("camera")
+        if not cam or seen.get(cam, 0) >= sample:
+            continue
+        hour = datetime.datetime.fromtimestamp(ev["start_time"], tz).hour
+        if not (hour >= 21 or hour <= 5):
+            continue
+        img = api.snapshot(ev["id"], crop=True)
+        if img is None:
+            continue
+        seen[cam] = seen.get(cam, 0) + 1
+        if float(np.mean(cv2.cvtColor(img, cv2.COLOR_BGR2HSV)[:, :, 1])) < NIGHT_SAT:
+            out.add(cam)
+    return out
 
 
 def load_config(base: Path) -> dict:
@@ -120,18 +164,12 @@ def main():
           f"{'Profil':>6s} {'S/W':>4s} {'Selbst':>6s}  Kameras")
     print("-" * 96)
 
-    # Kameras, die tatsaechlich S/W liefern — nur dort ist eine fehlende IR-Aufnahme
-    # ein Mangel. Wird aus dem Bestand abgeleitet statt geraten.
-    ir_cams = set()
-    for g in gal.values():
-        for fn in g["files"]:
-            img = cv2.imread(str(g["dir"] / fn))
-            if img is None:
-                continue
-            if float(np.mean(cv2.cvtColor(img, cv2.COLOR_BGR2HSV)[:, :, 1])) < NIGHT_SAT:
-                cam = (g["sources"].get(fn) or {}).get("camera")
-                if cam:
-                    ir_cams.add(cam)
+    # Welche Kameras nachts ueberhaupt in Graustufen schalten? Das aus der Galerie
+    # abzuleiten waere zirkulaer — fehlt die IR-Aufnahme, faende man die Kamera nie.
+    # Also bei Frigate nachsehen, wie die Naechte dort tatsaechlich aussehen.
+    ir_cams = ir_cameras(cfg)
+    if ir_cams:
+        print(f"Kameras mit IR-Nachtmodus: {', '.join(sorted(ir_cams))}\n")
 
     advice = []
     for slug, g in gal.items():
