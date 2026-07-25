@@ -41,6 +41,8 @@ h2{font:600 12px var(--mono);color:var(--dim);text-transform:uppercase;letter-sp
 .person .head{display:flex;align-items:baseline;gap:12px;margin-bottom:8px}
 .person .head b{font:600 14px var(--sans)}
 .person .head .n{font:12px var(--mono);color:var(--dim)}
+.person .head button.fav{background:none;border:0;color:var(--dim);font-size:16px;cursor:pointer;padding:0 4px;line-height:1}
+.person .head button.fav.on{color:var(--acc)}
 button.act{background:var(--acc);border:0;color:oklch(20% .02 130);font:600 12px var(--mono);
   padding:5px 12px;cursor:pointer}
 button.ghost{background:none;border:1px solid var(--line);color:var(--dim);font:12px var(--mono);
@@ -281,17 +283,11 @@ async function discardCluster(i){
   toast(`${ids.length} discarded`);render();
 }
 
-async function renderPersons(){
-  if(tab!=='persons')return;
-  const entries=Object.entries(persons);
-  main.innerHTML=`
-    <div class="row">
-      <input id="pname" placeholder="New person…" size="18" title="create an empty person, then upload photos or assign faces from the unknown queue">
-      <button class="act" onclick="createPerson()">CREATE</button>
-    </div>`+
-    (entries.length?entries.map(([slug,p])=>`
+function personCard(slug,p){
+  return `
     <div class="person">
       <div class="head">
+        <button class="fav${p.favorite?' on':''}" title="${p.favorite?'remove from favorites':'mark as favorite'}" onclick="toggleFav('${slug}',${p.favorite?0:1})">${p.favorite?'★':'☆'}</button>
         <b>${esc(p.name)}</b><span class="n">${p.count} faces</span>
         <span style="flex:1"></span>
         <label class="ghost" style="cursor:pointer" title="enroll photos (e.g. from your photo library) — faces are extracted automatically">Upload photos
@@ -306,7 +302,29 @@ async function renderPersons(){
           <button class="u" title="back to unknown queue" onclick="unassignFace('${slug}','${f}')">↩</button>
           <button class="x" title="delete permanently" onclick="delFace('${slug}','${f}')">×</button></div>`).join('')}
       </div>
-    </div>`).join(''):'<div class="empty">No persons yet.</div>');
+    </div>`;
+}
+async function renderPersons(){
+  if(tab!=='persons')return;
+  const entries=Object.entries(persons)
+    .sort((a,b)=>a[1].name.localeCompare(b[1].name,undefined,{sensitivity:'base'}));
+  const favs=entries.filter(([,p])=>p.favorite);
+  const rest=entries.filter(([,p])=>!p.favorite);
+  let body='';
+  if(favs.length) body+=`<h2>★ Favorites (${favs.length})</h2>`+favs.map(([s,p])=>personCard(s,p)).join('');
+  if(rest.length) body+=`<h2>${favs.length?'Others':'Persons'} (${rest.length})</h2>`+rest.map(([s,p])=>personCard(s,p)).join('');
+  if(!entries.length) body='<div class="empty">No persons yet.</div>';
+  main.innerHTML=`
+    <div class="row">
+      <input id="pname" placeholder="New person…" size="18" title="create an empty person, then upload photos or assign faces from the unknown queue">
+      <button class="act" onclick="createPerson()">CREATE</button>
+    </div>`+body;
+}
+async function toggleFav(slug,fav){
+  await j(`api/persons/${slug}/favorite`,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({favorite:!!fav})});
+  persons=await j('api/persons');
+  if(tab==='persons')renderPersons();
 }
 async function createPerson(){const n=$('#pname').value.trim();if(!n)return;
   await j('api/persons',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n})});

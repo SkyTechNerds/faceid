@@ -63,6 +63,13 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         gallery.delete_person(slug)
         return {"ok": True}
 
+    class FavBody(BaseModel):
+        favorite: bool
+
+    @app.post("/api/persons/{slug}/favorite")
+    def set_favorite(slug: str, body: FavBody):
+        return {"ok": gallery.set_favorite(slug, body.favorite)}
+
     @app.delete("/api/persons/{slug}/faces/{fname}")
     def delete_face(slug: str, fname: str):
         gallery.delete_face(slug, fname)

@@ -3,6 +3,12 @@
 All notable changes to FaceID. The Home Assistant add-on shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.3.0 — 2026-07-23
+
+- **Favorites & sorted person list**: mark people as favorites with the ★ button on
+  their card. The Persons tab now groups into **Favorites** and **Others**, each sorted
+  alphabetically — so the household members you care about stay at the top.
+
 ## 0.2.9 — 2026-07-23
 
 - **Fix: tab content race** — switching tabs while a fetch was still in flight

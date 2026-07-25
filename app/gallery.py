@@ -56,6 +56,7 @@ class Gallery:
                     "name": meta.get("name", pdir.name),
                     "emb": emb,
                     "files": meta.get("files", []),
+                    "favorite": bool(meta.get("favorite", False)),
                 }
             embs, ids, groups = [], [], []
             for jf in sorted(self.ignored_dir.glob("*.json")):
@@ -84,7 +85,9 @@ class Gallery:
         entry = self._cache[slug]
         np.save(pdir / "embeddings.npy", entry["emb"])
         (pdir / "meta.json").write_text(
-            json.dumps({"name": entry["name"], "files": entry["files"]}, ensure_ascii=False, indent=1)
+            json.dumps({"name": entry["name"], "files": entry["files"],
+                        "favorite": bool(entry.get("favorite", False))},
+                       ensure_ascii=False, indent=1)
         )
 
     # ---------- Personen ----------
@@ -92,9 +95,19 @@ class Gallery:
     def persons(self):
         with self._lock:
             return {
-                slug: {"name": e["name"], "count": len(e["files"]), "files": list(e["files"])}
+                slug: {"name": e["name"], "count": len(e["files"]), "files": list(e["files"]),
+                       "favorite": bool(e.get("favorite", False))}
                 for slug, e in self._cache.items()
             }
+
+    def set_favorite(self, slug: str, fav: bool) -> bool:
+        with self._lock:
+            entry = self._cache.get(slug)
+            if entry is None:
+                return False
+            entry["favorite"] = bool(fav)
+            self._persist(slug)
+            return True
 
     def create_person(self, name: str) -> str:
         slug = slugify(name)
@@ -102,7 +115,7 @@ class Gallery:
             pdir = self.persons_dir / slug
             pdir.mkdir(exist_ok=True)
             if slug not in self._cache:
-                self._cache[slug] = {"name": name, "emb": np.zeros((0, 512), dtype=np.float32), "files": []}
+                self._cache[slug] = {"name": name, "emb": np.zeros((0, 512), dtype=np.float32), "files": [], "favorite": False}
                 self._persist(slug)
         return slug
 
