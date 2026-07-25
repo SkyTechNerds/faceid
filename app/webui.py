@@ -84,6 +84,10 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         gallery.delete_trimmed(slug, fname)
         return {"ok": True}
 
+    @app.post("/api/persons/{slug}/trimmed/clear")
+    def clear_trimmed(slug: str):
+        return {"cleared": gallery.clear_trimmed(slug)}
+
     @app.delete("/api/persons/{slug}/faces/{fname}")
     def delete_face(slug: str, fname: str):
         gallery.delete_face(slug, fname)
@@ -272,7 +276,7 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         "ignore_threshold": (0.1, 0.9),
     }
     BACKUP_SPEC = {"backup_enabled": bool, "backup_hour": (0, 23), "backup_keep": (1, 90), "backup_dir": str}
-    INT_SPEC = {"max_faces_per_person": (5, 100)}
+    INT_SPEC = {"max_faces_per_person": (5, 100), "trimmed_keep": (0, 100)}
     settings_file = data_dir / "settings.json"
 
     def _apply_settings(updates: dict):
@@ -286,6 +290,8 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         if "max_faces_per_person" in updates:
             gallery.max_per_person = int(updates["max_faces_per_person"])
             trimmed = gallery.enforce_cap_all()
+        if "trimmed_keep" in updates:
+            gallery.trimmed_keep = int(updates["trimmed_keep"])
         # settings.json (nur die editierbaren Keys) persistieren
         keys = set(SETTINGS_SPEC) | set(BACKUP_SPEC) | set(INT_SPEC)
         overlay = {}
@@ -309,6 +315,7 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
                        "keep": int(f.get("backup_keep", 7)),
                        "dir": str(f.get("backup_dir") or "")},
             "max_faces_per_person": int(f.get("max_faces_per_person", 40)),
+            "trimmed_keep": int(f.get("trimmed_keep", 10)),
         }
 
     @app.post("/api/settings")

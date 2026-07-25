@@ -68,6 +68,16 @@ does *not* auto-restore — bring photos back yourself, so nothing reappears une
   the cap only acts on *new* additions, so a gallery you've hand-tuned stays as you left it
   until you add more.
 
+## It won't pile up forever
+
+Set-aside photos are capped too: FaceID keeps only the most recent **`trimmed_keep`** per
+person (default 10, in Settings) and deletes older ones. So even after years of a person
+walking past the camera, the set-aside area stays small. A **clear all** button per person
+removes them on demand.
+
+Note: recognizing a face live does **not** add it to the gallery — only *you* do, by
+assigning or uploading. Walking past the camera costs nothing in storage.
+
 ## Under the hood
 
 - Similarity is cosine similarity between L2-normalized ArcFace embeddings — the same

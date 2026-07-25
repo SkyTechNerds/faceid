@@ -32,6 +32,7 @@ class Gallery:
         self.ignored_dir.mkdir(parents=True, exist_ok=True)
         self.top_k = max(1, int(top_k))
         self.max_per_person = int(max_per_person)  # 0 = unbegrenzt
+        self.trimmed_keep = 10  # wie viele beiseitegelegte Fotos je Person aufgehoben werden
         self._lock = threading.Lock()
         self._cache = {}  # slug -> {"name":..., "emb": np.ndarray, "files": [...]}
         self._ign_emb = np.zeros((0, 512), dtype=np.float32)
@@ -138,7 +139,12 @@ class Gallery:
         log.insert(0, {"file": fname, "ts": time.time(), "mean_sim": round(mean_sim, 3),
                        "reason": "over the per-person photo limit — most similar to your other photos",
                        "embedding": [round(float(v), 6) for v in emb]})
-        log_f.write_text(json.dumps(log[:200], ensure_ascii=False))
+        # Getrimmt-Ordner begrenzen: nur die neuesten trimmed_keep aufheben, Rest löschen
+        keep = self.trimmed_keep if self.trimmed_keep and self.trimmed_keep > 0 else len(log)
+        for old in log[keep:]:
+            (td / old["file"]).unlink(missing_ok=True)
+        log = log[:keep]
+        log_f.write_text(json.dumps(log, ensure_ascii=False))
 
     def trimmed(self, slug: str):
         td = self.persons_dir / slug / "_trimmed"
@@ -197,6 +203,16 @@ class Gallery:
                 log_f.write_text(json.dumps(log, ensure_ascii=False))
             except (json.JSONDecodeError, OSError):
                 pass
+
+    def clear_trimmed(self, slug: str) -> int:
+        td = self.persons_dir / slug / "_trimmed"
+        if not td.exists():
+            return 0
+        n = 0
+        for f in td.glob("*.jpg"):
+            f.unlink(missing_ok=True); n += 1
+        (td / "log.json").unlink(missing_ok=True)
+        return n
 
     def _persist(self, slug: str):
         pdir = self.persons_dir / slug

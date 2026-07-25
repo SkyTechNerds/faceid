@@ -33,6 +33,7 @@ Full documentation: https://github.com/SkyTechNerds/faceid
 | `discovery_cameras` | cameras that get a Home Assistant sensor |
 | `suggest_threshold` | score at which unknown faces are grouped into a "looks like <person>" suggestion |
 | `max_faces_per_person` | photo cap per person; the most redundant reference is set aside when exceeded (restorable) |
+| `trimmed_keep` | how many set-aside photos to keep per person (0 = delete immediately) |
 | `backup_enabled` / `backup_hour` / `backup_keep` | optional built-in daily gallery backup |
 
 Thresholds and backup can also be changed live on the app's **Settings** tab; those

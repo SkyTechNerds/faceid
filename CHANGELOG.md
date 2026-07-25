@@ -3,6 +3,14 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.5.0 — 2026-07-23
+
+- **Set-aside photos no longer grow unbounded**: FaceID now keeps only the most recent
+  `trimmed_keep` trimmed photos per person (default 10, adjustable in Settings) and
+  deletes older ones, plus a **clear all** button per person. Recognizing a face live
+  never adds to the gallery — only manual assign/upload does — so day-to-day use costs
+  no extra storage. See docs/trimming.md.
+
 ## 0.4.9 — 2026-07-23
 
 - Hovering a set-aside (trimmed) photo now highlights the active reference photos it is

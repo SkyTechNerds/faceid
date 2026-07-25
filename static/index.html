@@ -402,6 +402,11 @@ async function renderSettings(){
       <input id="set-maxfaces" type="number" min="5" max="100" value="${cfg.max_faces_per_person}" style="width:70px">
       <span class="stat">when a person exceeds this, the photo most similar to the rest is set aside (kept diverse angles). Lowering it trims everyone now.</span>
     </div>
+    <div class="row" style="margin-top:6px">
+      <b style="min-width:230px;font:600 13px var(--sans)">Keep set-aside photos</b>
+      <input id="set-trimkeep" type="number" min="0" max="100" value="${cfg.trimmed_keep}" style="width:70px">
+      <span class="stat">how many trimmed photos to keep per person for review/restore (0 = delete immediately). Stops the set-aside pile from growing forever.</span>
+    </div>
     <div class="row"><button class="act" onclick="saveThresholds()">SAVE SETTINGS</button>
       <span class="stat">saves the thresholds AND the photo limit above · applies live and persists (overrides config / add-on options)</span></div>
 
@@ -431,6 +436,7 @@ async function saveThresholds(){
   ['match_threshold','unknown_threshold','suggest_threshold','cluster_eps','ignore_threshold'].forEach(k=>{
     const el=document.getElementById('set-'+k); if(el)body[k]=+el.value;});
   const mf=document.getElementById('set-maxfaces'); if(mf)body.max_faces_per_person=+mf.value;
+  const tk=document.getElementById('set-trimkeep'); if(tk)body.trimmed_keep=+tk.value;
   const r=await j('api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   toast(r.trimmed?`Saved — ${r.trimmed} photo(s) trimmed`:'Settings saved');
   persons=await j('api/persons');
@@ -479,7 +485,7 @@ function personCard(slug,p){
       </div>
       ${(p.trimmed&&p.trimmed.length)?`
       <div style="margin-top:10px;border-top:1px dashed var(--line);padding-top:10px">
-        <span class="trimlabel">✂︎ SET ASIDE · ${p.trimmed.length}</span>
+        <span class="trimlabel">✂︎ SET ASIDE · ${p.trimmed.length}</span> <button class="ghost" style="font-size:10px;padding:1px 8px" title="delete all set-aside photos for this person" onclick="clearTrimmed('${slug}','${esc(p.name)}')">clear all</button>
         <div class="stat">Trimmed to stay under the photo limit — these were the most similar to the rest, so diverse angles were kept. Hover to preview; ↩ restore or × delete. <a href="https://github.com/SkyTechNerds/faceid/blob/main/docs/trimming.md" target="_blank" rel="noopener" style="color:var(--acc)">Learn more ↗</a></div>
         <div class="grid trimgrid" style="margin-top:6px">${p.trimmed.map(t=>`
           <div class="tile" onmouseenter="hiliteSimilar('${slug}',${JSON.stringify(t.similar||[]).replace(/"/g,'&quot;')})" onmouseleave="hiliteSimilar('${slug}',[])"><img src="data/persons/${slug}/_trimmed/${t.file}" loading="lazy" title="set aside ${fmtTs(t.ts)} · similarity ${t.mean_sim} (higher = more redundant) — hover to see the similar photos above">
@@ -509,6 +515,11 @@ async function renderPersons(){
       <button class="act" onclick="createPerson()">CREATE</button>
       <span style="flex:1"></span>${jump}
     </div>`+body;
+}
+async function clearTrimmed(slug,name){
+  if(!confirm('Delete all set-aside photos of "'+name+'"? Your active reference photos stay.'))return;
+  const r=await j('api/persons/'+slug+'/trimmed/clear',{method:'POST'});
+  toast(r.cleared+' set-aside photo(s) deleted');persons=await j('api/persons');if(tab==='persons')renderPersons();
 }
 async function restoreTrimmed(slug,file){
   await j(`api/persons/${slug}/trimmed/${file}/restore`,{method:'POST'});

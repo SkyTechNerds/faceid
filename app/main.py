@@ -36,6 +36,7 @@ def main():
     gallery = Gallery(data_dir,
                       top_k=int(cfg["faceid"].get("match_top_k", 3)),
                       max_per_person=int(cfg["faceid"].get("max_faces_per_person", 40)))
+    gallery.trimmed_keep = int(cfg["faceid"].get("trimmed_keep", 10))
     frigate = FrigateAPI(cfg["frigate"]["url"])
     processor = EventProcessor(cfg, engine, gallery, frigate)
     processor.start()
