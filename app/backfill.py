@@ -21,9 +21,16 @@ BASE = Path(__file__).resolve().parent.parent
 def run_backfill(engine, gallery, frigate, frigate_url: str, days: int = 14,
                  min_px: int = 64, min_det: float = 0.65, dedupe: float = 0.82,
                  tag: bool = True, match_thr: float = 0.5, progress=None,
-                 hires: bool = True) -> dict:
+                 hires: bool = True, rescue: bool = False,
+                 rescue_min_px: int = 90) -> dict:
     """Person-Events der letzten `days` Tage verarbeiten. Threadsafe zur Live-Pipeline
-    (Engine und Galerie sind intern gelockt). progress(i, total) wird pro Event gerufen."""
+    (Engine und Galerie sind intern gelockt). progress(i, total) wird pro Event gerufen.
+
+    ``rescue`` holt Ereignisse zurück, in deren Snapshot gar kein Gesicht steckte: der
+    Detect-Stream ist zu grob, in der Aufnahme ist dieselbe Person oft doppelt so groß und
+    wird dann erkannt. Kostet einen Clip-Download pro betroffenem Ereignis — deshalb nur
+    für diesen manuell angestoßenen Lauf, nicht für die Live-Pipeline.
+    """
     after = time.time() - days * 86400
     events, before = [], None
     while True:  # Frigate paginiert über before=start_time
@@ -47,9 +54,26 @@ def run_backfill(engine, gallery, frigate, frigate_url: str, days: int = 14,
             stats["no_face"] += 1
             continue
         face = FaceEngine.best_face(engine.faces(img), min_px=min_px, min_det=min_det)
+        upgraded = False
         if face is None:
-            stats["no_face"] += 1
-            continue
+            if not (hires and rescue):
+                stats["no_face"] += 1
+                continue
+            # Kein Gesicht im Detect-Snapshot heißt nicht "kein Gesicht da" — in der
+            # Aufnahme ist es doppelt so groß. Ohne Referenzgesicht kann hier nicht auf
+            # Identität geprüft werden, darum strenger bei Größe und Detektionsgüte.
+            try:
+                hit = upgrade_face(engine, frigate, ev["camera"], ev.get("start_time"),
+                                   ev.get("end_time"), None, event_id=ev["id"],
+                                   min_px=rescue_min_px)
+            except Exception:
+                hit = None
+            if hit is None:
+                stats["no_face"] += 1
+                continue
+            face, img = hit
+            upgraded = True
+            stats["rescued"] = stats.get("rescued", 0) + 1
         emb = face.normed_embedding
         slug, name, score = gallery.match(emb)
         if gallery.match_ignored(emb) >= max(match_thr, score):
@@ -61,7 +85,7 @@ def run_backfill(engine, gallery, frigate, frigate_url: str, days: int = 14,
                 frigate.set_sub_label(ev["id"], name, score)  # Clip rückwirkend taggen
             continue
         crop, save_emb, full = crop_face(img, face.bbox), emb, img
-        if hires:
+        if hires and not upgraded:
             try:
                 hi = upgrade_face(engine, frigate, ev["camera"], ev.get("start_time"),
                                   ev.get("end_time"), emb, event_id=ev["id"])
@@ -89,6 +113,8 @@ def main():
     ap.add_argument("--min-det", type=float, default=0.65)
     ap.add_argument("--dedupe", type=float, default=0.82, help="Cosine-Sim, ab der ein Gesicht als Dublette gilt")
     ap.add_argument("--no-tag", action="store_true", help="erkannte Events NICHT in Frigate sub_labeln")
+    ap.add_argument("--rescue", action="store_true",
+                    help="Events ohne Gesicht im Snapshot per Clip-Scan nachholen (langsam)")
     args = ap.parse_args()
 
     cfg = yaml.safe_load((BASE / "config.yaml").read_text())
@@ -104,10 +130,12 @@ def main():
                          min_px=args.min_px, min_det=args.min_det, dedupe=args.dedupe,
                          tag=not args.no_tag,
                          match_thr=float(cfg["faceid"].get("match_threshold", 0.5)),
-                         progress=progress)
+                         progress=progress, rescue=args.rescue)
     print(f"Fertig: {stats['faces']} Gesichter in der Review-Queue, {stats['dupe']} Dubletten, "
           f"{stats['no_face']} ohne brauchbares Gesicht, {stats['known']} bereits bekannt "
           f"(von {stats['events']} Events).")
+    if stats.get("rescued"):
+        print(f"  davon {stats['rescued']} erst über die Aufnahme gefunden.")
 
 
 if __name__ == "__main__":
