@@ -68,6 +68,22 @@ def match(gal, e, drop_slug, drop_idx):
     return best_slug, best
 
 
+def load_config(base: Path) -> dict:
+    """config.yaml plus die in der UI gesetzten Werte aus data/settings.json.
+
+    Der Dienst legt settings.json ueber die config — ohne das misst ein Skript
+    andere Schwellen als die, die tatsaechlich laufen.
+    """
+    cfg = yaml.safe_load((base / "config.yaml").read_text())
+    sf = base / "data" / "settings.json"
+    if sf.exists():
+        try:
+            cfg.setdefault("faceid", {}).update(json.loads(sf.read_text()))
+        except (OSError, json.JSONDecodeError):
+            pass
+    return cfg
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default=str(BASE / "data"))
@@ -76,8 +92,10 @@ def main():
     sys.path.insert(0, str(BASE))
     from app.engine import FaceEngine
 
-    cfg = yaml.safe_load((BASE / "config.yaml").read_text())
+    cfg = load_config(BASE)
     thr = float(cfg["faceid"].get("match_threshold", 0.5))
+    global TOP_K
+    TOP_K = max(1, int(cfg["faceid"].get("match_top_k", 3)))
     eng = FaceEngine(det_size=int(cfg["faceid"].get("det_size", 640)))
 
     persons = Path(args.data) / "persons"

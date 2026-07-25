@@ -154,6 +154,22 @@ def live_probe(gal_old, gal_new, days, thr, cfg):
             "selfhits": selfhits}
 
 
+def load_config(base: Path) -> dict:
+    """config.yaml plus die in der UI gesetzten Werte aus data/settings.json.
+
+    Der Dienst legt settings.json ueber die config — ohne das misst ein Skript
+    andere Schwellen als die, die tatsaechlich laufen.
+    """
+    cfg = yaml.safe_load((base / "config.yaml").read_text())
+    sf = base / "data" / "settings.json"
+    if sf.exists():
+        try:
+            cfg.setdefault("faceid", {}).update(json.loads(sf.read_text()))
+        except (OSError, json.JSONDecodeError):
+            pass
+    return cfg
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--baseline", help="Pfad zu einer aelteren Galerie (entpacktes Backup)")
@@ -162,12 +178,14 @@ def main():
     ap.add_argument("--top-k", type=int, help="match_top_k zum Vergleich uebersteuern")
     args = ap.parse_args()
 
+    global TOP_K
     if args.top_k:
-        global TOP_K
         TOP_K = max(1, args.top_k)
 
-    cfg = yaml.safe_load((BASE / "config.yaml").read_text())
+    cfg = load_config(BASE)
     thr = float(cfg["faceid"].get("match_threshold", 0.5))
+    if not args.top_k:
+        TOP_K = max(1, int(cfg["faceid"].get("match_top_k", 3)))
     new = load_gallery(Path(args.data) / "persons")
     if not new:
         print("keine Galerie gefunden", file=sys.stderr)
