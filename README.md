@@ -253,6 +253,9 @@ through the same pipeline; they carry no bounding box, so their snapshot is the 
 frame rather than a person crop. Off by default, since it costs one API request per
 interval.
 
+Setting up such a bridge, checking beforehand whether it pays off, and the pitfalls of
+box-less snapshots: **[docs/camera-bridge.md](docs/camera-bridge.md)**.
+
 
 ## Calibrating the threshold
 

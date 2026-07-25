@@ -1,0 +1,30 @@
+# FaceID as a container — for Home Assistant Container/Core, or any Docker host.
+#
+#   1. cp docs/example-config.yaml config.yaml
+#   2. edit config.yaml: Frigate URL, MQTT host + credentials, camera names
+#   3. docker compose up -d
+#
+# First start downloads the InsightFace model pack (~300 MB) into the data volume.
+# Then open http://<host>:8600
+services:
+  faceid:
+    build: .
+    # Or, once you have built and pushed it yourself:
+    # image: your-registry/faceid:latest
+    container_name: faceid
+    restart: unless-stopped
+    ports:
+      - "8600:8600"
+    volumes:
+      # Your configuration. Read at startup; the Settings tab writes to data/ instead,
+      # so this file stays yours.
+      - ./config.yaml:/opt/faceid/config.yaml:ro
+      # Gallery, review queue, settings, backups and the model pack. Back this up —
+      # it is the one part that cannot be recreated.
+      - faceid-data:/opt/faceid/data
+    # Recognition is CPU-only and needs AVX; any host CPU from the last decade has it.
+    # Uncomment to keep FaceID from competing with other services for cores:
+    # cpus: 2.0
+
+volumes:
+  faceid-data:
