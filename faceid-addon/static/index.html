@@ -34,6 +34,9 @@ h2{font:600 12px var(--mono);color:var(--dim);text-transform:uppercase;letter-sp
   font:12px var(--mono);padding:2px 6px;cursor:pointer;display:none}
 .tile:hover button.x,.tile:hover button.u{display:block}
 .cluster{border:1px solid var(--line);padding:10px;margin-bottom:14px}
+.cluster.sugg{border-color:var(--acc)}
+.cluster.sugg .head b{color:var(--acc)}
+.tile .x{position:absolute;top:0;right:0;background:var(--bg);border:0;color:var(--bad);font:12px var(--mono);padding:2px 6px;cursor:pointer}
 .cluster .head{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}
 .cluster .head b{font:600 13px var(--mono);color:var(--fg)}
 .cluster .guess{font:12px var(--mono);color:var(--warn)}
@@ -99,7 +102,15 @@ document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
 async function health(){try{const h=await j('api/health');
   $('#health').textContent=`${h.persons} persons · queue ${h.queue} · events ${h.open_events}`}catch(e){$('#health').textContent='offline'}}
 
-function personOptions(){return Object.entries(persons).map(([s,p])=>`<option value="${s}">${esc(p.name)}</option>`).join('')}
+function personOptions(sel){
+  const es=Object.entries(persons).sort((a,b)=>a[1].name.localeCompare(b[1].name,undefined,{sensitivity:'base'}));
+  const opt=([s,p])=>`<option value="${s}"${s===sel?' selected':''}>${esc(p.name)}</option>`;
+  const favs=es.filter(([,p])=>p.favorite), rest=es.filter(([,p])=>!p.favorite);
+  let out='';
+  if(favs.length)out+=`<optgroup label="★ Favorites">${favs.map(opt).join('')}</optgroup>`;
+  if(rest.length)out+=(favs.length?`<optgroup label="Others">${rest.map(opt).join('')}</optgroup>`:rest.map(opt).join(''));
+  return out;
+}
 
 async function render(){
   const t=tab;
@@ -144,17 +155,64 @@ async function renderUnknowns(){
   if(bf.running&&tab==='unknowns')setTimeout(()=>{if(tab==='unknowns')render()},4000);
   if(!clusters.length){
     main.innerHTML=backfillRow(bf)+'<div class="empty">No unknown faces in the queue.</div>';return}
-  main.innerHTML=backfillRow(bf)+`<div class="row">
+  const excluded=window._excludedIds||(window._excludedIds=new Set());
+  const n2s={}; Object.entries(persons).forEach(([sl,p])=>{n2s[p.name]=sl;});
+  const SUGGEST=0.40;
+  // Vorschlags-Gruppen (nach vermuteter Person) + Rest-Cluster
+  const byName={};
+  const rest=[];
+  clusters.forEach(c=>{
+    const keep=[];
+    c.forEach(it=>{
+      if(it.guess&&it.guess_score>=SUGGEST&&n2s[it.guess]&&!excluded.has(it.id))
+        (byName[it.guess]=byName[it.guess]||[]).push(it);
+      else keep.push(it);
+    });
+    if(keep.length)rest.push(keep);
+  });
+  const sugg=Object.keys(byName).sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:'base'}))
+    .map(name=>({name,slug:n2s[name],items:byName[name]}));
+  window._sugg=sugg; window._clusters=rest; window._n2s=n2s;
+
+  let html=backfillRow(bf)+`<div class="row">
     <button class="act" title="assign every face whose best gallery match clears the recognition threshold" onclick="autoAssign()">APPLY SUGGESTIONS ≥50%</button>
     <span class="stat">assigns every face whose best gallery match clears the recognition threshold</span>
-  </div>`+clusters.map((c,i)=>`
+  </div>`;
+
+  // --- Vorschlags-Gruppen ---
+  html+=sugg.map((g,gi)=>{
+    const avg=Math.round(g.items.reduce((a,it)=>a+(it.guess_score||0),0)/g.items.length*100);
+    return `
+    <div class="cluster sugg" data-sg="${gi}">
+      <div class="head">
+        <b>★ Looks like ${esc(g.name)}</b>
+        <span class="stat">${g.items.length} face(s) · avg ${avg}%</span>
+        <span style="flex:1"></span>
+        <select id="ssel${gi}" title="assign to a different person instead">${personOptions(g.slug)}</select>
+        <button class="act" title="assign all faces in this group" onclick="assignSuggestion(${gi})">ASSIGN ALL</button>
+        <button class="ghost" style="color:var(--warn);border-color:var(--warn)" title="never notify, match or resurface these faces" onclick="ignoreSuggestion(${gi})">ignore</button>
+      </div>
+      <div class="grid">${g.items.map(u=>`
+        <div class="tile">
+          <img src="data/unknowns/${u.id}.jpg" loading="lazy">
+          <span class="score">${(u.guess_score*100|0)}% · ${fmtTs(u.ts)}</span>
+          ${u.full_url?`<button class="z" title="full snapshot" onclick="showFull('${u.full_url}','${esc(u.camera||'')} · ${fmtTs(u.ts)}','data/unknowns/${u.id}.jpg')">⛶</button>`:''}
+          <button class="x" title="not ${esc(g.name)} — pull this face out" onclick="rejectSuggestion('${u.id}')">×</button>
+        </div>`).join('')}
+      </div>
+    </div>`;}).join('');
+
+  // --- Rest-Cluster (unerkannt), Dropdown auf Guess vorgewaehlt ---
+  html+=rest.map((c,i)=>{
+    const gslug=(c[0].guess&&n2s[c[0].guess])?n2s[c[0].guess]:'';
+    return `
     <div class="cluster" data-i="${i}">
       <div class="head">
         <b>CLUSTER ${String(i+1).padStart(2,'0')}</b>
         <span class="stat">${c.length} capture${c.length>1?'s':''} · ${esc(c[0].camera||'')}</span>
         ${c[0].guess?`<span class="guess">looks like ${esc(c[0].guess)} (${(c[0].guess_score*100|0)}%)</span>`:''}
         <span style="flex:1"></span>
-        <select id="sel${i}" title="assign to an existing person"><option value="">— pick person —</option>${personOptions()}</select>
+        <select id="sel${i}" title="assign to an existing person"><option value="">— pick person —</option>${personOptions(gslug)}</select>
         <input id="new${i}" placeholder="…or new name" size="14" title="or create a new person with this name">
         <button class="act" title="assign selected tiles (or the whole cluster) to the chosen person" onclick="assignCluster(${i})">ASSIGN</button>
         <button class="ghost" style="color:var(--warn);border-color:var(--warn)" onclick="ignoreCluster(${i})" title="never notify, match or resurface these faces">ignore</button>
@@ -167,9 +225,24 @@ async function renderUnknowns(){
           ${u.full_url?`<button class="z" title="full snapshot" onclick="event.stopPropagation();showFull('${u.full_url}','${esc(u.camera||'')} · ${fmtTs(u.ts)}','data/unknowns/${u.id}.jpg')">⛶</button>`:''}
         </div>`).join('')}
       </div>
-    </div>`).join('');
-  window._clusters=clusters;
+    </div>`;}).join('');
+  main.innerHTML=html;
 }
+async function assignSuggestion(gi){
+  const g=window._sugg[gi]; if(!g)return;
+  const slug=$(`#ssel${gi}`).value||g.slug;
+  const ids=g.items.map(it=>it.id).filter(id=>!window._excludedIds.has(id));
+  if(!ids.length)return toast('Nothing to assign');
+  const r=await j('api/unknowns/assign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids,person:slug})});
+  toast(`${r.assigned} face(s) assigned`);render();
+}
+async function ignoreSuggestion(gi){
+  const g=window._sugg[gi]; if(!g)return;
+  const ids=g.items.map(it=>it.id).filter(id=>!window._excludedIds.has(id));
+  const r=await j('api/unknowns/ignore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids,person:'-'})});
+  toast(`${r.ignored} ignored`);render();
+}
+function rejectSuggestion(id){(window._excludedIds||(window._excludedIds=new Set())).add(id);render();}
 async function renderIgnored(){
   const clusters=await j('api/ignored');
   if(tab!=='ignored')return;

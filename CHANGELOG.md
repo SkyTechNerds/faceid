@@ -3,6 +3,17 @@
 All notable changes to FaceID. The Home Assistant add-on shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.3.1 — 2026-07-23
+
+- **Smarter review queue**: unknown faces that resemble an enrolled person are now
+  grouped into one **"Looks like <name>"** card with a single **ASSIGN ALL** button —
+  no more assigning the same person cluster by cluster. The person dropdown is
+  pre-selected to the suggestion, and each face has a ✗ **"not this person"** button to
+  pull it out if it doesn't belong. Remaining unrecognized clusters keep their own
+  dropdown, pre-selected to the best guess.
+- **Grouped person dropdowns**: every person picker is now split into ★ Favorites and
+  Others, alphabetically sorted.
+
 ## 0.3.0 — 2026-07-23
 
 - **Favorites & sorted person list**: mark people as favorites with the ★ button on
