@@ -85,22 +85,19 @@ class EventProcessor:
         try:
             r = requests.get(f"{url}/api/config", timeout=8)
             if r.status_code != 200:
-                log.error("Frigate unter %s antwortet mit HTTP %s — ohne Snapshots kann "
-                          "nicht erkannt werden", url, r.status_code)
+                log.error("Frigate at %s replied HTTP %s — without snapshots nothing can be recognised", url, r.status_code)
                 return
             cams = list((r.json().get("cameras") or {}).keys())
-            log.info("Frigate erreichbar (%s), Kameras: %s", url, ", ".join(cams) or "keine")
+            log.info("Frigate reachable (%s), cameras: %s", url, ", ".join(cams) or "keine")
             if self.cameras:
                 unknown = self.cameras - set(cams)
                 if unknown:
-                    log.warning("Konfigurierte Kamera(s) %s gibt es in Frigate nicht — "
-                                "von diesen wird nie etwas verarbeitet", ", ".join(sorted(unknown)))
+                    log.warning("Configured camera(s) %s do not exist in Frigate — nothing from these will ever be processed", ", ".join(sorted(unknown)))
         except (requests.RequestException, ValueError) as e:
-            log.error("Frigate unter %s nicht erreichbar: %s — Snapshots und damit die "
-                      "Erkennung werden fehlschlagen", url, e)
+            log.error("Frigate at %s unreachable: %s — snapshots, and therefore recognition, will fail", url, e)
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
-        log.info("MQTT verbunden (%s), abonniere %s/events", reason_code, self.frigate_topic)
+        log.info("MQTT connected (%s), subscribing to %s/events", reason_code, self.frigate_topic)
         client.subscribe(f"{self.frigate_topic}/events")
         client.publish(f"{self.prefix}/status", "online", retain=True)
         self._publish_discovery()
@@ -140,7 +137,7 @@ class EventProcessor:
             try:
                 self.queue.put_nowait({"eid": eid})
             except queue.Full:
-                log.warning("Queue voll, Event %s übersprungen", eid)
+                log.warning("queue full, skipping event %s", eid)
 
     # ---------- Verarbeitung ----------
 
@@ -150,7 +147,7 @@ class EventProcessor:
             try:
                 self._process(item["eid"])
             except Exception:
-                log.exception("Fehler bei Event %s", item["eid"])
+                log.exception("error while handling event %s", item["eid"])
 
     def _process(self, eid: str):
         st = self.events.get(eid)
@@ -159,7 +156,7 @@ class EventProcessor:
         st["attempts"] += 1
         img = self.frigate.snapshot(eid, crop=True)
         if img is None:
-            log.info("Event %s (%s): kein Snapshot von Frigate", eid, st["camera"])
+            log.info("event %s (%s): no snapshot from Frigate", eid, st["camera"])
             return
         found = self.engine.faces(img)
         face = FaceEngine.best_face(found, min_px=self.min_face_px)
@@ -172,11 +169,11 @@ class EventProcessor:
             h, w = img.shape[:2]
             if found:
                 big = max(int(f.bbox[2] - f.bbox[0]) for f in found)
-                log.info("Event %s (%s): Versuch %d, groesstes Gesicht %dpx < min_face_px "
+                log.info("event %s (%s): attempt %d, largest face %dpx < min_face_px "
                          "%d (Snapshot %dx%d)", eid, st["camera"], st["attempts"], big,
                          self.min_face_px, w, h)
             else:
-                log.info("Event %s (%s): Versuch %d, kein Gesicht im Snapshot %dx%d",
+                log.info("event %s (%s): attempt %d, no face detected in snapshot %dx%d",
                          eid, st["camera"], st["attempts"], w, h)
             return
         emb = face.normed_embedding
@@ -192,11 +189,11 @@ class EventProcessor:
             if self.ignore_learning and ig >= self.ignore_thr + 0.1 and ig - score >= 0.1:
                 iid = self.gallery.add_ignore_anchor(crop_face(img, face.bbox), emb)
                 if iid:
-                    log.info("Event %s: neuer Auto-Ignore-Anker %s (sim %.3f)", eid, iid, ig)
-            log.info("Event %s (%s): ignoriertes Gesicht (sim %.3f)", eid, st["camera"], ig)
+                    log.info("event %s: new auto ignore anchor %s (sim %.3f)", eid, iid, ig)
+            log.info("event %s (%s): ignored face (sim %.3f)", eid, st["camera"], ig)
             return
         crop = crop_face(img, face.bbox)
-        log.info("Event %s (%s): Versuch %d, Match %s (%.3f)", eid, st["camera"], st["attempts"], name, score)
+        log.info("event %s (%s): attempt %d, match %s (%.3f)", eid, st["camera"], st["attempts"], name, score)
 
         if slug and score >= self.match_thr:
             if score > st["best_score"]:
@@ -236,7 +233,7 @@ class EventProcessor:
                     continue
                 batch = r.json()
             except (requests.RequestException, ValueError) as e:
-                log.debug("Poll fehlgeschlagen: %s", e)
+                log.debug("poll failed: %s", e)
                 continue
             since = time.time()
             for ev in batch:
@@ -259,12 +256,12 @@ class EventProcessor:
                     "start_time": ev.get("start_time") or time.time(),
                     "end_time": ev.get("end_time"),
                 }
-                log.info("Poll: Ereignis %s (%s) nachgezogen — von MQTT nie gemeldet",
+                log.info("poll: picked up event %s (%s) — never announced over MQTT",
                          eid, cam)
                 try:
                     self.queue.put_nowait({"eid": eid})
                 except queue.Full:
-                    log.warning("Queue voll — Poll-Ereignis %s verworfen", eid)
+                    log.warning("queue full — dropped polled event %s", eid)
 
     def _finalizer(self):
         """Beendete Events abschließen: Unknown ablegen, 'unbekannt' melden, aufräumen."""
@@ -297,7 +294,7 @@ class EventProcessor:
                             new_w = int(face.bbox[2] - face.bbox[0])
                             if new_w > old_w:
                                 crop, emb, full = crop_face(img, face.bbox), face.normed_embedding, img
-                                log.info("Event %s: hi-res Referenz aus Aufnahme (%dpx statt %dpx)",
+                                log.info("event %s: sharper reference from the recording (%dpx instead of %dpx)",
                                          eid, new_w, old_w)
                     uid = self.gallery.save_unknown(
                         crop, emb,
@@ -307,7 +304,7 @@ class EventProcessor:
                         full_bgr=full,
                     )
                     self._publish_recognition(eid, st, "unknown", u["guess_score"])
-                    log.info("Event %s: unbekanntes Gesicht abgelegt (%s)", eid, uid)
+                    log.info("event %s: unknown face stored (%s)", eid, uid)
                 self.events.pop(eid, None)
 
     # ---------- Publish ----------
@@ -351,8 +348,7 @@ class EventProcessor:
             if r.status_code == 200:
                 return set((r.json().get("cameras") or {}).keys())
         except (requests.RequestException, ValueError) as e:
-            log.warning("Kameraliste von Frigate nicht abrufbar (%s) — Sensoren entstehen "
-                        "dann erst, sobald die erste Person erkannt wird", e)
+            log.warning("could not fetch the camera list from Frigate (%s) — sensors will appear once the first person is seen", e)
         return set()
 
     def _ensure_discovery(self, cam: str):
@@ -377,8 +373,8 @@ class EventProcessor:
                     or set(self.cfg["faceid"].get("discovery_cameras") or [])
                     or self._frigate_cameras())
             self._announced |= cams
-            log.info("MQTT-Discovery: %d Sensor(en) angemeldet%s", len(cams),
-                     "" if cams else " — Kameras unbekannt, folgen bei der ersten Erkennung")
+            log.info("MQTT discovery: announced %d sensor(s)%s", len(cams),
+                     "" if cams else " — cameras unknown, they follow on first recognition")
         device = {"identifiers": [self.prefix], "name": self.prefix.replace("-", " ").title() if self.prefix != "faceid" else "FaceID",
                   "manufacturer": "Eigenbau", "model": "InsightFace/ArcFace"}
         for cam in cams:

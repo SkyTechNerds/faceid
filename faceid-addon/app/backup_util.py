@@ -55,9 +55,9 @@ def start_auto_backup(cfg_faceid: dict, data_dir: Path):
                         p = write_backup_file(data_dir, backup_dir)
                         prune_backups(backup_dir, int(cfg_faceid.get("backup_keep", 7)))
                         last_day = day
-                        log.info("Auto-Backup geschrieben: %s", p)
+                        log.info("auto backup written: %s", p)
             except Exception:
-                log.exception("Auto-Backup fehlgeschlagen")
+                log.exception("auto backup failed")
             time.sleep(300)  # alle 5 Min prüfen
 
     threading.Thread(target=loop, daemon=True, name="faceid-autobackup").start()

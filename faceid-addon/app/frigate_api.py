@@ -24,7 +24,7 @@ class FrigateAPI:
             img = cv2.imdecode(np.frombuffer(r.content, np.uint8), cv2.IMREAD_COLOR)
             return img
         except requests.RequestException as e:
-            log.warning("Snapshot %s fehlgeschlagen: %s", event_id, e)
+            log.warning("snapshot %s failed: %s", event_id, e)
             return None
 
     def recording_frame(self, camera: str, ts: float) -> np.ndarray | None:
@@ -37,7 +37,7 @@ class FrigateAPI:
                 return None
             return cv2.imdecode(np.frombuffer(r.content, np.uint8), cv2.IMREAD_COLOR)
         except requests.RequestException as e:
-            log.debug("Recording-Frame %s@%s fehlgeschlagen: %s", camera, ts, e)
+            log.debug("recording frame %s@%s failed: %s", camera, ts, e)
             return None
 
     def download_clip(self, event_id: str, dest: str, max_bytes: int = 80_000_000) -> bool:
@@ -58,12 +58,12 @@ class FrigateAPI:
                             continue
                         written += len(chunk)
                         if written > max_bytes:
-                            log.debug("Clip %s abgebrochen (> %d Bytes)", event_id, max_bytes)
+                            log.debug("clip %s aborted (> %d bytes)", event_id, max_bytes)
                             return False
                         fh.write(chunk)
                 return written > 1000
         except (requests.RequestException, OSError) as e:
-            log.debug("Clip %s fehlgeschlagen: %s", event_id, e)
+            log.debug("clip %s failed: %s", event_id, e)
             return False
 
     def set_sub_label(self, event_id: str, label: str, score: float):
@@ -76,4 +76,4 @@ class FrigateAPI:
             if r.status_code not in (200, 202):
                 log.warning("sub_label %s -> %s: HTTP %s %s", event_id, label, r.status_code, r.text[:200])
         except requests.RequestException as e:
-            log.warning("sub_label %s fehlgeschlagen: %s", event_id, e)
+            log.warning("sub_label %s failed: %s", event_id, e)

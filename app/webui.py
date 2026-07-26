@@ -269,7 +269,7 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
                     hires=bool(cfg["faceid"].get("hires_enroll", True)))
                 backfill_state["result"] = stats
             except Exception as e:
-                log.exception("Verlaufs-Scan fehlgeschlagen")
+                log.exception("history scan failed")
                 backfill_state["result"] = {"error": str(e)}
             finally:
                 backfill_state["running"] = False

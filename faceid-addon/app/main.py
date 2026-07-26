@@ -32,8 +32,8 @@ def main():
         try:
             cfg.setdefault("faceid", {}).update(json.loads(settings_f.read_text()))
         except (json.JSONDecodeError, OSError):
-            log.warning("settings.json unlesbar — ignoriert")
-    log.info("Lade InsightFace (buffalo_l) …")
+            log.warning("settings.json unreadable — ignoring it")
+    log.info("loading InsightFace (buffalo_l) …")
     engine = FaceEngine(det_size=int(cfg["faceid"].get("det_size", 640)))
     gallery = Gallery(data_dir,
                       top_k=int(cfg["faceid"].get("match_top_k", 3)),

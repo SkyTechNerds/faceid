@@ -3,6 +3,14 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.6.13 — 2026-07-26
+
+- **Log messages are English now.** README, UI, docs and changelog were English while the
+  service logged in German — so anyone reporting a problem had to translate their own log
+  first, and the diagnostic lines added in 0.6.10–0.6.12 were unreadable for most of the
+  people they were written for. All user-facing log output is now English. (Code comments
+  stay German; they are for whoever edits the source, not for whoever runs it.)
+
 ## 0.6.12 — 2026-07-26
 
 - **"No face found" now says which kind.** The log distinguishes *a face was detected but
