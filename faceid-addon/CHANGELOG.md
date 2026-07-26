@@ -3,6 +3,21 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.6.9 — 2026-07-26
+
+- **Fixed: no Home Assistant entities unless you listed your cameras.** An empty
+  `cameras` list means "process every camera" — but MQTT discovery looped over exactly
+  that empty list, so it announced nothing. Anyone running the default configuration got
+  no sensors at all. FaceID now asks Frigate for the camera list when none is configured,
+  and additionally announces a camera the first time it sees an event from it. Reported
+  in the community thread; it never showed up here because our own config lists cameras
+  explicitly.
+- **New: `frigate_topic_prefix`** (default `frigate`). The subscription was hard-coded,
+  so a Frigate instance with a custom `mqtt.topic_prefix` was silently never heard.
+- **Startup now says whether Frigate is reachable**, lists its cameras, and warns about
+  configured cameras that do not exist there. "It recognises nothing" and "nothing ever
+  arrives" were indistinguishable in the log before.
+
 ## 0.6.8 — 2026-07-25
 
 - **Hotfix: the web UI stayed blank after 0.6.6.** The new "photos averaged per match"

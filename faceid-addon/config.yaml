@@ -1,5 +1,5 @@
 name: FaceID
-version: "0.6.8"
+version: "0.6.9"
 slug: faceid
 description: Face recognition for Frigate — trainable gallery, clustered unknown review, HA sensors
 url: https://github.com/SkyTechNerds/faceid
@@ -35,6 +35,7 @@ options:
   trimmed_keep: 10
   dedupe_threshold: 0.65
   hires_enroll: true
+  frigate_topic_prefix: frigate
   poll_interval: 0
   backup_enabled: false
   backup_hour: 3
@@ -58,6 +59,7 @@ schema:
   trimmed_keep: int(0,100)
   dedupe_threshold: float(0.50,0.95)
   hires_enroll: bool
+  frigate_topic_prefix: str?
   poll_interval: int(0,3600)
   backup_enabled: bool
   backup_hour: int(0,23)

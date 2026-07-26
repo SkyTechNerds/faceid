@@ -37,6 +37,7 @@ faceid:
   min_face_px: 48                      # minimum face size in the snapshot (pixels)
   det_size: 640                        # detection input size (higher = better far faces, slower)
   max_attempts: 6                      # recognition attempts per Frigate event
+  frigate_topic_prefix: frigate        # must match `mqtt.topic_prefix` in Frigate's config
   poll_interval: 0                     # seconds; >0 also polls Frigate's event API.
                                        # Catches events MQTT never announces — notably
                                        # ones created through Frigate's API (e.g. a

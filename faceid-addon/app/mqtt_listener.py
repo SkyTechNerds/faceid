@@ -46,7 +46,10 @@ class EventProcessor:
         # Ereignisse, die Frigate nicht per MQTT meldet (z. B. per API angelegte
         # Kamera-Meldungen als Zuverlaessigkeits-Bruecke), per Abfrage nachziehen.
         self.poll_interval = float(f.get("poll_interval", 0))
+        # Frigate darf sein MQTT-Topic umbenennen (topic_prefix in dessen config.yml).
+        self.frigate_topic = str(f.get("frigate_topic_prefix", "frigate")).strip("/") or "frigate"
         self._polled: deque = deque(maxlen=500)   # schon gesehene IDs
+        self._announced: set = set()              # Kameras mit angemeldetem Sensor
         self.prefix = str(f.get("mqtt_prefix", "faceid")).strip("/") or "faceid"
         self.present: dict[str, dict[str, float]] = {}  # camera -> {person: zuletzt gesehen}
         self._last_presence: dict[str, list] = {}  # zuletzt publizierter Stand je Kamera
@@ -64,14 +67,38 @@ class EventProcessor:
         c.connect(m["host"], int(m.get("port", 1883)), keepalive=60)
         c.loop_start()
         self.client = c
+        self._check_frigate()
         threading.Thread(target=self._worker, daemon=True, name="faceid-worker").start()
         threading.Thread(target=self._finalizer, daemon=True, name="faceid-finalizer").start()
         if self.poll_interval > 0:
             threading.Thread(target=self._poller, daemon=True, name="faceid-poller").start()
 
+    def _check_frigate(self):
+        """Beim Start einmal nachsehen, ob Frigate ueberhaupt antwortet.
+
+        Ohne diese Zeile im Log ist "es erkennt nichts" kaum von "es kommt nichts an"
+        zu unterscheiden."""
+        url = self.cfg["frigate"]["url"].rstrip("/")
+        try:
+            r = requests.get(f"{url}/api/config", timeout=8)
+            if r.status_code != 200:
+                log.error("Frigate unter %s antwortet mit HTTP %s — ohne Snapshots kann "
+                          "nicht erkannt werden", url, r.status_code)
+                return
+            cams = list((r.json().get("cameras") or {}).keys())
+            log.info("Frigate erreichbar (%s), Kameras: %s", url, ", ".join(cams) or "keine")
+            if self.cameras:
+                unknown = self.cameras - set(cams)
+                if unknown:
+                    log.warning("Konfigurierte Kamera(s) %s gibt es in Frigate nicht — "
+                                "von diesen wird nie etwas verarbeitet", ", ".join(sorted(unknown)))
+        except (requests.RequestException, ValueError) as e:
+            log.error("Frigate unter %s nicht erreichbar: %s — Snapshots und damit die "
+                      "Erkennung werden fehlschlagen", url, e)
+
     def _on_connect(self, client, userdata, flags, reason_code, properties):
-        log.info("MQTT verbunden (%s)", reason_code)
-        client.subscribe("frigate/events")
+        log.info("MQTT verbunden (%s), abonniere %s/events", reason_code, self.frigate_topic)
+        client.subscribe(f"{self.frigate_topic}/events")
         client.publish(f"{self.prefix}/status", "online", retain=True)
         self._publish_discovery()
 
@@ -90,6 +117,7 @@ class EventProcessor:
         eid = after.get("id")
         if not eid:
             return
+        self._ensure_discovery(cam)
         st = self.events.setdefault(
             eid,
             {"camera": cam, "attempts": 0, "best_score": 0.0, "best_person": None,
@@ -198,6 +226,7 @@ class EventProcessor:
                 if self.cameras and cam not in self.cameras:
                     continue
                 self._polled.append(eid)
+                self._ensure_discovery(cam)
                 # Nur abgeschlossene Ereignisse — laufende meldet MQTT ohnehin.
                 if not ev.get("end_time"):
                     continue
@@ -293,9 +322,41 @@ class EventProcessor:
             self.client.publish(f"{self.prefix}/{cam}/person", ", ".join(names) or "nobody", retain=True)
             self.client.publish(f"{self.prefix}/{cam}/attributes", json.dumps(attrs, ensure_ascii=False), retain=True)
 
-    def _publish_discovery(self):
-        """HA MQTT-Discovery: ein Sensor je Kamera (zuletzt erkannte Person)."""
-        cams = self.cameras or set(self.cfg["faceid"].get("discovery_cameras") or [])
+    def _frigate_cameras(self) -> set:
+        """Kameranamen von Frigate holen — fuer den Fall, dass keine konfiguriert sind."""
+        try:
+            r = requests.get(f"{self.cfg['frigate']['url'].rstrip('/')}/api/config", timeout=8)
+            if r.status_code == 200:
+                return set((r.json().get("cameras") or {}).keys())
+        except (requests.RequestException, ValueError) as e:
+            log.warning("Kameraliste von Frigate nicht abrufbar (%s) — Sensoren entstehen "
+                        "dann erst, sobald die erste Person erkannt wird", e)
+        return set()
+
+    def _ensure_discovery(self, cam: str):
+        """Sensor fuer eine Kamera anlegen, falls noch nicht geschehen."""
+        if not cam or cam in self._announced:
+            return
+        self._announced.add(cam)
+        self._publish_discovery([cam])
+
+    def _publish_discovery(self, only: list | None = None):
+        """HA MQTT-Discovery: ein Sensor je Kamera (zuletzt erkannte Person).
+
+        Eine leere ``cameras``-Liste bedeutet "alle Kameras verarbeiten" — frueher
+        entstanden dann gar keine Sensoren, weil hier ueber eine leere Menge gelaufen
+        wurde. Ohne Konfiguration fragen wir deshalb Frigate; klappt auch das nicht,
+        legt ``_ensure_discovery`` den Sensor an, sobald die Kamera das erste Mal
+        auftaucht."""
+        if only is not None:
+            cams = set(only)
+        else:
+            cams = (self.cameras
+                    or set(self.cfg["faceid"].get("discovery_cameras") or [])
+                    or self._frigate_cameras())
+            self._announced |= cams
+            log.info("MQTT-Discovery: %d Sensor(en) angemeldet%s", len(cams),
+                     "" if cams else " — Kameras unbekannt, folgen bei der ersten Erkennung")
         device = {"identifiers": [self.prefix], "name": self.prefix.replace("-", " ").title() if self.prefix != "faceid" else "FaceID",
                   "manufacturer": "Eigenbau", "model": "InsightFace/ArcFace"}
         for cam in cams:
