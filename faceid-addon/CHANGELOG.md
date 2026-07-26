@@ -3,6 +3,18 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.6.10 — 2026-07-26
+
+- **Fixed: polled events could be processed twice.** The finalizer clears an event from
+  memory once it is done, so the poller then saw a fully processed MQTT event as new and
+  ran it again — while logging the untruth "never announced by MQTT". It now remembers
+  the last 1000 event ids it handled.
+- **The log no longer goes silent when nothing is recognised.** Events without a usable
+  face are the normal case (back to camera, too far away), but they were dropped without
+  a word — making a healthy install look identical to a broken one. Both "no snapshot"
+  and "no face >= min_face_px" are now logged. Measured here: over 19 hours, 17 of 20
+  events held no face at all, and the log said nothing about any of them.
+
 ## 0.6.9 — 2026-07-26
 
 - **Fixed: no Home Assistant entities unless you listed your cameras.** An empty

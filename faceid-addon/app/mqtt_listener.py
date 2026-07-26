@@ -50,6 +50,9 @@ class EventProcessor:
         self.frigate_topic = str(f.get("frigate_topic_prefix", "frigate")).strip("/") or "frigate"
         self._polled: deque = deque(maxlen=500)   # schon gesehene IDs
         self._announced: set = set()              # Kameras mit angemeldetem Sensor
+        # Der Finalizer raeumt self.events nach der Verarbeitung ab — ohne dieses
+        # Gedaechtnis haelt der Poller ein fertig verarbeitetes Ereignis fuer neu.
+        self._handled: deque = deque(maxlen=1000)
         self.prefix = str(f.get("mqtt_prefix", "faceid")).strip("/") or "faceid"
         self.present: dict[str, dict[str, float]] = {}  # camera -> {person: zuletzt gesehen}
         self._last_presence: dict[str, list] = {}  # zuletzt publizierter Stand je Kamera
@@ -117,6 +120,8 @@ class EventProcessor:
         eid = after.get("id")
         if not eid:
             return
+        if eid not in self._handled:
+            self._handled.append(eid)
         self._ensure_discovery(cam)
         st = self.events.setdefault(
             eid,
@@ -154,9 +159,14 @@ class EventProcessor:
         st["attempts"] += 1
         img = self.frigate.snapshot(eid, crop=True)
         if img is None:
+            log.info("Event %s (%s): kein Snapshot von Frigate", eid, st["camera"])
             return
         face = FaceEngine.best_face(self.engine.faces(img), min_px=self.min_face_px)
         if face is None:
+            # Der haeufigste Normalfall (Ruecken zur Kamera, zu weit weg) — trotzdem
+            # protokollieren, sonst sieht ein stiller Log wie ein Defekt aus.
+            log.info("Event %s (%s): Versuch %d, kein Gesicht >= %dpx im Snapshot",
+                     eid, st["camera"], st["attempts"], self.min_face_px)
             return
         emb = face.normed_embedding
         slug, name, score = self.gallery.match(emb)
@@ -220,7 +230,8 @@ class EventProcessor:
             since = time.time()
             for ev in batch:
                 eid = ev.get("id")
-                if not eid or eid in self._polled or eid in self.events:
+                if (not eid or eid in self._polled or eid in self.events
+                        or eid in self._handled):
                     continue
                 cam = ev.get("camera", "")
                 if self.cameras and cam not in self.cameras:
