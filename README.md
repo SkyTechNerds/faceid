@@ -331,6 +331,14 @@ being unusual, it's automatically kept.
 **Full details:** [docs/trimming.md](docs/trimming.md) explains the why, the exact
 selection rule (with numbers), and how to restore or curate set-aside photos.
 
+## Seeing what it is doing
+
+The **LOG tab** shows the last 500 log lines straight in the UI — including the quiet
+cases that decide whether a setup works: whether Frigate answers at startup, which
+cameras were announced to Home Assistant, and for every event whether a face was found
+at all. If nothing is ever recognised, that tab usually says why within a few lines.
+There is a warnings-only filter and a copy button for pasting into an issue.
+
 ## Backup & restore
 
 Your gallery (enrolled persons + ignore anchors) is the one thing you can't regenerate —

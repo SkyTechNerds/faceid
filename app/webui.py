@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import logbuffer
 from .engine import FaceEngine, crop_face, find_face_padded
 from .backup_util import build_backup_gz, write_backup_file, prune_backups
 from pathlib import Path as _P
@@ -419,6 +420,15 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         gallery.reload()
         return {"restored_files": added, "mode": "merge" if merge else "replace",
                 "persons": len(gallery.persons())}
+
+    @app.get("/api/logs")
+    def logs(limit: int = 300, level: str | None = None):
+        """Die letzten Logzeilen — im Container und standalone sonst nur per Terminal
+        einsehbar, genau wenn man wissen will warum nichts erkannt wird."""
+        buf = logbuffer.buffer()
+        if buf is None:
+            return {"lines": [], "note": "Log-Puffer nicht aktiv"}
+        return {"lines": buf.tail(max(1, min(limit, 500)), level)}
 
     @app.get("/api/health")
     def health():

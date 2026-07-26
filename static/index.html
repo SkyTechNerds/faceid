@@ -75,6 +75,12 @@ td.p{color:var(--acc)} td.u{color:var(--warn)}
   display:none;align-items:center;justify-content:center;z-index:10;cursor:zoom-out;flex-direction:column;gap:8px}
 #lightbox img{max-width:94vw;max-height:88vh;border:1px solid var(--acc)}
 #lightbox .cap{font:12px var(--mono);color:var(--dim)}
+  .logline{font:12px/1.55 var(--mono);white-space:pre-wrap;word-break:break-word;padding:1px 0}
+  .logline .t{color:var(--dim)}
+  .lv-WARNING{color:#e0a030}
+  .lv-ERROR,.lv-CRITICAL{color:#e05555}
+  .logwrap{background:var(--panel);border:1px solid var(--line);padding:10px;
+           max-height:70vh;overflow:auto}
 </style>
 </head>
 <body>
@@ -87,6 +93,7 @@ td.p{color:var(--acc)} td.u{color:var(--warn)}
   <button data-t="persons" title="your gallery: enrolled people and their reference faces">PERSONS</button>
   <button data-t="ignored" title="people you don't track: never notified, matched or resurfaced">IGNORED</button>
   <button data-t="settings" title="matching thresholds, backup and restore">SETTINGS</button>
+  <button data-t="log" title="recent service log — what FaceID is doing, and why nothing was recognised">LOG</button>
 </nav>
 <main id="main"></main>
 <div id="toast"></div>
@@ -131,6 +138,7 @@ async function render(){
   if(tab==='persons')return renderPersons();
   if(tab==='ignored')return renderIgnored();
   if(tab==='settings')return renderSettings();
+  if(tab==='log')return renderLog();
   return renderPersons();
 }
 
@@ -380,6 +388,38 @@ async function discardCluster(i){
   await j('api/unknowns/discard',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({ids,person:'-'})});
   toast(`${ids.length} discarded`);render();
+}
+
+let logTimer=null, logLevel=null;
+async function renderLog(){
+  const r=await j('api/logs?limit=400'+(logLevel?'&level='+logLevel:''));
+  if(tab!=='log')return;
+  const lines=r.lines||[];
+  const body=lines.map(l=>{
+    const t=new Date(l.ts*1000).toLocaleTimeString();
+    return `<div class="logline lv-${esc(l.level)}"><span class="t">${t}</span>  ${esc(l.logger)}  ${esc(l.msg)}</div>`;
+  }).join('')||'<span class="stat">no log lines yet</span>';
+  $('#main').innerHTML=`
+    <div class="row" style="margin-bottom:8px;align-items:center">
+      <b style="font:600 13px var(--sans)">SERVICE LOG</b>
+      <span class="stat">${lines.length} line(s)${logLevel?' · '+logLevel.toLowerCase()+' and above':''}</span>
+      <span style="flex:1"></span>
+      <button class="act" onclick="setLogLevel(null)"${logLevel?'':' disabled'}>all</button>
+      <button class="act" onclick="setLogLevel('WARNING')"${logLevel==='WARNING'?' disabled':''}>warnings</button>
+      <button class="act" onclick="copyLog()">copy</button>
+    </div>
+    <div class="logwrap" id="logwrap">${body}</div>
+    <span class="stat">Refreshes every 5s while this tab is open. Handy when reporting an
+    issue: "copy" puts the visible lines on your clipboard.</span>`;
+  const w=$('#logwrap'); if(w)w.scrollTop=w.scrollHeight;
+  clearTimeout(logTimer);
+  logTimer=setTimeout(()=>{if(tab==='log')renderLog()},5000);
+}
+function setLogLevel(l){logLevel=l;renderLog()}
+async function copyLog(){
+  const t=[...document.querySelectorAll('#logwrap .logline')].map(e=>e.textContent).join('\n');
+  try{await navigator.clipboard.writeText(t);toast('log copied')}
+  catch(e){toast('copy failed — select the text manually')}
 }
 
 async function renderSettings(){

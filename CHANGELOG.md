@@ -3,6 +3,15 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.6.11 — 2026-07-26
+
+- **New LOG tab.** The service log is now visible in the web UI — the last 500 lines,
+  refreshing every 5 seconds, with a warnings-only filter and a copy button for pasting
+  into a bug report. Home Assistant app users had the app's log tab; standalone and
+  container users had to reach for `journalctl` or `docker logs`, which is exactly the
+  wrong moment to switch to a terminal when you are trying to find out why nothing is
+  being recognised. Noise from the inference library is filtered out.
+
 ## 0.6.10 — 2026-07-26
 
 - **Fixed: polled events could be processed twice.** The finalizer clears an event from

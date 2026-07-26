@@ -6,6 +6,7 @@ from pathlib import Path
 import uvicorn
 import yaml
 
+from . import logbuffer
 from .engine import FaceEngine
 from .frigate_api import FrigateAPI
 from .gallery import Gallery
@@ -16,6 +17,7 @@ from .backup_util import start_auto_backup
 BASE = Path(__file__).resolve().parent.parent
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+logbuffer.install()   # damit die Weboberflaeche das Log zeigen kann
 log = logging.getLogger("faceid")
 
 
