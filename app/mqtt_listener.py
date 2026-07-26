@@ -161,12 +161,23 @@ class EventProcessor:
         if img is None:
             log.info("Event %s (%s): kein Snapshot von Frigate", eid, st["camera"])
             return
-        face = FaceEngine.best_face(self.engine.faces(img), min_px=self.min_face_px)
+        found = self.engine.faces(img)
+        face = FaceEngine.best_face(found, min_px=self.min_face_px)
         if face is None:
-            # Der haeufigste Normalfall (Ruecken zur Kamera, zu weit weg) — trotzdem
-            # protokollieren, sonst sieht ein stiller Log wie ein Defekt aus.
-            log.info("Event %s (%s): Versuch %d, kein Gesicht >= %dpx im Snapshot",
-                     eid, st["camera"], st["attempts"], self.min_face_px)
+            # Haeufigster Normalfall (Ruecken zur Kamera, zu weit weg) — trotzdem
+            # protokollieren, sonst sieht ein stiller Log wie ein Defekt aus. Die
+            # Unterscheidung "zu klein" vs. "gar keins" entscheidet, wo man sucht:
+            # zu klein deutet auf Frigates snapshots.height oder Kameraabstand,
+            # gar keins eher auf Blickwinkel oder Licht.
+            h, w = img.shape[:2]
+            if found:
+                big = max(int(f.bbox[2] - f.bbox[0]) for f in found)
+                log.info("Event %s (%s): Versuch %d, groesstes Gesicht %dpx < min_face_px "
+                         "%d (Snapshot %dx%d)", eid, st["camera"], st["attempts"], big,
+                         self.min_face_px, w, h)
+            else:
+                log.info("Event %s (%s): Versuch %d, kein Gesicht im Snapshot %dx%d",
+                         eid, st["camera"], st["attempts"], w, h)
             return
         emb = face.normed_embedding
         slug, name, score = self.gallery.match(emb)

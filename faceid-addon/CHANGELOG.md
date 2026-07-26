@@ -3,6 +3,14 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.6.12 — 2026-07-26
+
+- **"No face found" now says which kind.** The log distinguishes *a face was detected but
+  it is too small* (reporting its pixel width, the `min_face_px` limit and the snapshot
+  dimensions) from *no face at all* — two very different problems. Too small points at
+  Frigate's `snapshots.height` or camera distance; none at all points at viewing angle or
+  light. Previously both produced the same line, leaving nowhere to start.
+
 ## 0.6.11 — 2026-07-26
 
 - **New LOG tab.** The service log is now visible in the web UI — the last 500 lines,
