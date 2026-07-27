@@ -337,6 +337,35 @@ being unusual, it's automatically kept.
 **Full details:** [docs/trimming.md](docs/trimming.md) explains the why, the exact
 selection rule (with numbers), and how to restore or curate set-aside photos.
 
+## Connecting to Frigate
+
+By default FaceID talks to Frigate's API on **port 5000**, which is unauthenticated. That
+is fine on a trusted LAN and needs no configuration.
+
+Frigate also serves an **authenticated** API on port 8971. To use it, add credentials:
+
+```yaml
+frigate:
+  url: https://192.168.1.10:8971
+  user: faceid
+  password: secret
+  verify_tls: false     # Frigate's default certificate is self-signed
+```
+
+**One caveat, measured against Frigate 0.17 rather than assumed:** a `viewer` account can
+read everything FaceID needs — config, events, snapshots, clips — but it **cannot write
+`sub_label`**. Frigate answers `Role viewer not authorized. Required: admin`, so the
+recognised names never make it back into Frigate's Explore view. That leaves two honest
+options: use an **admin** account (and accept admin credentials sitting in a config file),
+or keep a viewer account and set `set_sub_label: false`.
+
+Which is safer depends on what you are protecting against. An open port on a trusted LAN
+and admin credentials in a file on the same machine are different risks, not strictly
+better or worse. FaceID logs a clear warning if a write is rejected, and falls back to
+working unauthenticated if a login fails — so neither setting can silently break
+recognition.
+
+
 ## Seeing what it is doing
 
 The **LOG tab** shows the last 500 log lines straight in the UI — including the quiet

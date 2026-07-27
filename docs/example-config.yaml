@@ -2,7 +2,12 @@
 # config.yaml is gitignored: it contains your MQTT credentials.
 
 frigate:
+  # Either Frigate's open API (port 5000) or its authenticated one (8971, https).
+  # For 8971 add user/password below; see README "Connecting to Frigate".
   url: http://192.168.1.10:5000        # your Frigate base URL
+  # user: faceid            # optional — only for the authenticated port 8971
+  # password: secret        # a viewer account can read; sub_label write-back needs admin
+  # verify_tls: false       # Frigate ships a self-signed certificate by default
 
 mqtt:
   host: 192.168.1.2                    # your MQTT broker (same one Frigate uses)

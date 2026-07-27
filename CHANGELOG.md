@@ -3,6 +3,24 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.7.0 — 2026-07-27
+
+- **Optional authentication against Frigate.** Set `user`/`password` under `frigate:` and
+  FaceID logs in against Frigate's authenticated API (port 8971), keeping the session and
+  renewing it on 401. Without credentials nothing changes — the open port 5000 keeps
+  working exactly as before, and a failed login falls back to unauthenticated instead of
+  breaking recognition.
+- **Measured, not assumed:** a Frigate `viewer` account can read everything FaceID needs,
+  but **cannot** write `sub_label` — Frigate answers `Role viewer not authorized.
+  Required: admin`. So authenticating either costs you the name write-back into Frigate,
+  or requires admin credentials in a config file. The README states both plainly rather
+  than recommending one; a rejected write now logs exactly that instead of a bare 403.
+- `verify_tls` (default false) because Frigate ships a self-signed certificate — enabling
+  verification without your own CA would fail every request.
+- All Frigate calls now go through one client. The history scan, the startup check, the
+  camera list and the poller previously issued their own unauthenticated requests, which
+  would have quietly bypassed any login.
+
 ## 0.6.13 — 2026-07-26
 
 - **Log messages are English now.** README, UI, docs and changelog were English while the

@@ -1,5 +1,5 @@
 name: FaceID
-version: "0.6.13"
+version: "0.7.0"
 slug: faceid
 description: Face recognition for Frigate — trainable gallery, clustered unknown review, HA sensors
 url: https://github.com/SkyTechNerds/faceid
@@ -22,6 +22,8 @@ services:
   - mqtt:want
 options:
   mqtt_prefix: faceid
+  frigate_user: ""
+  frigate_password: ""
   frigate_url: http://192.168.1.10:5000
   mqtt_host: ""
   mqtt_port: 1883

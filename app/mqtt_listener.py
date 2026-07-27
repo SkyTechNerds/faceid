@@ -82,12 +82,13 @@ class EventProcessor:
         Ohne diese Zeile im Log ist "es erkennt nichts" kaum von "es kommt nichts an"
         zu unterscheiden."""
         url = self.cfg["frigate"]["url"].rstrip("/")
+        conf = self.frigate.config()
         try:
-            r = requests.get(f"{url}/api/config", timeout=8)
-            if r.status_code != 200:
-                log.error("Frigate at %s replied HTTP %s — without snapshots nothing can be recognised", url, r.status_code)
+            if conf is None:
+                log.error("Frigate at %s did not answer — without snapshots nothing can "
+                          "be recognised", url)
                 return
-            cams = list((r.json().get("cameras") or {}).keys())
+            cams = list((conf.get("cameras") or {}).keys())
             log.info("Frigate reachable (%s), cameras: %s", url, ", ".join(cams) or "keine")
             if self.cameras:
                 unknown = self.cameras - set(cams)
@@ -225,13 +226,8 @@ class EventProcessor:
         while True:
             time.sleep(self.poll_interval)
             try:
-                r = requests.get(f"{url}/api/events",
-                                 params={"label": "person", "has_snapshot": 1,
-                                         "limit": 50, "after": since - 30},
-                                 timeout=10)
-                if r.status_code != 200:
-                    continue
-                batch = r.json()
+                batch = self.frigate.events(label="person", has_snapshot=1,
+                                            limit=50, after=since - 30)
             except (requests.RequestException, ValueError) as e:
                 log.debug("poll failed: %s", e)
                 continue
@@ -344,9 +340,9 @@ class EventProcessor:
     def _frigate_cameras(self) -> set:
         """Kameranamen von Frigate holen — fuer den Fall, dass keine konfiguriert sind."""
         try:
-            r = requests.get(f"{self.cfg['frigate']['url'].rstrip('/')}/api/config", timeout=8)
-            if r.status_code == 200:
-                return set((r.json().get("cameras") or {}).keys())
+            conf = self.frigate.config()
+            if conf is not None:
+                return set((conf.get("cameras") or {}).keys())
         except (requests.RequestException, ValueError) as e:
             log.warning("could not fetch the camera list from Frigate (%s) — sensors will appear once the first person is seen", e)
         return set()

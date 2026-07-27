@@ -7,12 +7,11 @@ import argparse
 import time
 from pathlib import Path
 
-import requests
 import yaml
 
 from .engine import FaceEngine, crop_face
 from .hires import upgrade_face
-from .frigate_api import FrigateAPI
+from .frigate_api import frigate_client
 from .gallery import Gallery
 
 BASE = Path(__file__).resolve().parent.parent
@@ -39,7 +38,7 @@ def run_backfill(engine, gallery, frigate, frigate_url: str, days: int = 14,
         params = {"label": "person", "has_snapshot": 1, "limit": 100, "after": after}
         if before:
             params["before"] = before
-        batch = requests.get(f"{frigate_url}/api/events", params=params, timeout=10).json()
+        batch = frigate.events(**params)
         if not batch:
             break
         events.extend(batch)
@@ -126,7 +125,7 @@ def main():
     args = ap.parse_args()
 
     cfg = yaml.safe_load((BASE / "config.yaml").read_text())
-    frigate = FrigateAPI(cfg["frigate"]["url"])
+    frigate = frigate_client(cfg)
     gallery = Gallery(BASE / "data")
     engine = FaceEngine(det_size=int(cfg["faceid"].get("det_size", 640)))
 
