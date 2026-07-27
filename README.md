@@ -310,6 +310,12 @@ is already in the gallery are excluded — they score ~1.0 and measure nothing.
 Recognition is only as good as the reference photos, so FaceID keeps galleries diverse
 rather than large:
 
+- **A successful recognition never adds a photo.** Recognising you at the door tags the
+  Frigate event and updates the sensor — but the gallery stays untouched. This is
+  deliberate: a gallery that grows from its own matches reinforces whatever it already
+  believes, and a single wrong match would quietly breed more of the same. References
+  only come from what *you* assign in the review queue, or upload yourself.
+
 - **New photos are only kept if they add something** — a near-duplicate of one you
   already have is skipped.
 - **A per-person cap** (default 40, adjustable in Settings) bounds how many references a
