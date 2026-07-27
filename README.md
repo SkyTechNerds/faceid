@@ -339,10 +339,9 @@ selection rule (with numbers), and how to restore or curate set-aside photos.
 
 ## Connecting to Frigate
 
-By default FaceID talks to Frigate's API on **port 5000**, which is unauthenticated. That
-is fine on a trusted LAN and needs no configuration.
-
-Frigate also serves an **authenticated** API on port 8971. To use it, add credentials:
+By default FaceID uses Frigate's API on **port 5000**, which is unauthenticated — fine on
+a trusted LAN, and it needs no configuration. Frigate also serves an authenticated API on
+port 8971:
 
 ```yaml
 frigate:
@@ -352,19 +351,13 @@ frigate:
   verify_tls: false     # Frigate's default certificate is self-signed
 ```
 
-**One caveat, measured against Frigate 0.17 rather than assumed:** a `viewer` account can
-read everything FaceID needs — config, events, snapshots, clips — but it **cannot write
-`sub_label`**. Frigate answers `Role viewer not authorized. Required: admin`, so the
-recognised names never make it back into Frigate's Explore view. That leaves two honest
-options: use an **admin** account (and accept admin credentials sitting in a config file),
-or keep a viewer account and set `set_sub_label: false`.
+One thing to know before you switch, measured rather than assumed: a `viewer` account can
+read everything FaceID needs, but **cannot write `sub_label`** back into Frigate
+(`Role viewer not authorized. Required: admin`). So authenticating costs you either the
+names in Frigate's Explore view, or requires admin credentials in a config file.
 
-Which is safer depends on what you are protecting against. An open port on a trusted LAN
-and admin credentials in a file on the same machine are different risks, not strictly
-better or worse. FaceID logs a clear warning if a write is rejected, and falls back to
-working unauthenticated if a login fails — so neither setting can silently break
-recognition.
-
+Trade-offs, TLS, what FaceID actually requests, and which setup fits which network:
+**[docs/frigate-connection.md](docs/frigate-connection.md)**.
 
 ## Seeing what it is doing
 
