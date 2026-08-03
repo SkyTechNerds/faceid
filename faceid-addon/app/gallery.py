@@ -4,6 +4,7 @@ Matching per Cosine-Similarity (Embeddings sind L2-normiert -> Dot-Product).
 Kein Training, kein Overfitting: jedes Bild ist ein eigener Vergleichspunkt.
 """
 import json
+import logging
 import re
 import shutil
 import threading
@@ -12,6 +13,8 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+
+log = logging.getLogger("faceid.gallery")
 
 
 def slugify(name: str) -> str:
@@ -31,6 +34,8 @@ class Gallery:
         self.unknown_dir.mkdir(parents=True, exist_ok=True)
         self.ignored_dir.mkdir(parents=True, exist_ok=True)
         self.top_k = max(1, int(top_k))
+        # 0 = unbegrenzt; begrenzt nur automatisch gelernte Anker je Gruppe
+        self.max_ignore_anchors = 0
         self.max_per_person = int(max_per_person)  # 0 = unbegrenzt
         self.trimmed_keep = 10  # wie viele beiseitegelegte Fotos je Person aufgehoben werden
         self.dedupe_threshold = 0.65  # ab hier gilt ein Foto als Duplikat (Hover-Highlight + Dedup)
@@ -606,7 +611,41 @@ class Gallery:
             self._ign_emb = np.vstack([self._ign_emb, embedding.astype(np.float32)[None, :]])
             self._ign_ids.append(iid)
             self._ign_groups.append(grp)
+            self._enforce_anchor_cap(grp)
             return iid
+
+    def _enforce_anchor_cap(self, group: str):
+        """Auto-gelernte Anker einer Gruppe begrenzen (wie das Foto-Limit bei Personen).
+
+        Ohne Deckel waechst die Ignore-Liste bei viel Publikumsverkehr unbegrenzt. Es
+        fliegt der REDUNDANTESTE Anker (hoechste mittlere Aehnlichkeit zu den uebrigen),
+        nicht der aelteste — Alter sagt nichts darueber, wie gut ein Anker die Person
+        abdeckt. Von Hand angelegte Anker bleiben unangetastet; nur automatisch gelernte
+        werden entfernt, sonst koennte die Ignore-Wirkung ganz verschwinden."""
+        if not self.max_ignore_anchors:
+            return
+        idx = [i for i, g in enumerate(self._ign_groups) if g == group]
+        if len(idx) <= self.max_ignore_anchors:
+            return
+        auto = []
+        for i in idx:
+            jf = self.ignored_dir / f"{self._ign_ids[i]}.json"
+            try:
+                if json.loads(jf.read_text()).get("auto"):
+                    auto.append(i)
+            except (OSError, json.JSONDecodeError):
+                continue
+        if not auto:
+            return          # nur manuelle Anker — dann lieber wachsen lassen
+        sub = self._ign_emb[idx]
+        sims = sub @ sub.T
+        np.fill_diagonal(sims, 0.0)
+        mean_sim = sims.mean(axis=1)
+        pos = {v: k for k, v in enumerate(idx)}
+        drop = max(auto, key=lambda i: mean_sim[pos[i]])
+        log.info("ignore anchor %s dropped: group '%s' over the cap of %d",
+                 self._ign_ids[drop], group, self.max_ignore_anchors)
+        self.delete_ignored(self._ign_ids[drop])
 
     def ignored(self):
         out = []

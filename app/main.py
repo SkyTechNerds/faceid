@@ -39,6 +39,7 @@ def main():
                       top_k=int(cfg["faceid"].get("match_top_k", 3)),
                       max_per_person=int(cfg["faceid"].get("max_faces_per_person", 40)))
     gallery.trimmed_keep = int(cfg["faceid"].get("trimmed_keep", 10))
+    gallery.max_ignore_anchors = int(cfg["faceid"].get("max_ignore_anchors", 0))
     gallery.dedupe_threshold = float(cfg["faceid"].get("dedupe_threshold", 0.65))
     frigate = frigate_client(cfg)
     processor = EventProcessor(cfg, engine, gallery, frigate)

@@ -316,6 +316,11 @@ rather than large:
   believes, and a single wrong match would quietly breed more of the same. References
   only come from what *you* assign in the review queue, or upload yourself.
 
+- **Ignore anchors can be capped too** (`max_ignore_anchors`). With `ignore_learning`
+  switched on, every unambiguous ignore match adds an anchor, which grows without bound
+  on a busy street. The cap drops the most redundant auto-learned anchor per group —
+  never a manual one, and never by age, since an old anchor is exactly as valid as a new
+  one and removing it would let that person resurface.
 - **New photos are only kept if they add something** — a near-duplicate of one you
   already have is skipped.
 - **A per-person cap** (default 40, adjustable in Settings) bounds how many references a

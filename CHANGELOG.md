@@ -3,6 +3,19 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.7.1 — 2026-08-02
+
+- **Select and delete ignore anchors across all groups.** Each group already had its own
+  delete button, but with many groups that meant clicking through them one by one.
+  The Ignored tab now has *select all*, *clear* and *delete selected* spanning every
+  group, with a confirmation that spells out the consequence.
+- **New: `max_ignore_anchors`** (Settings, 0 = unlimited) — a cap on *auto-learned*
+  anchors per group, mirroring the per-person photo cap. Requested as "delete ignored
+  people after N days", but age is the wrong criterion here: an anchor from three months
+  ago is exactly as valid as yesterday's, and deleting it lets that person resurface in
+  the review queue — the opposite of what the ignore list is for. The cap drops the most
+  **redundant** anchor instead, and never touches one you added by hand.
+
 ## 0.7.0 — 2026-07-27
 
 - **Optional authentication against Frigate.** Set `user`/`password` under `frigate:` and

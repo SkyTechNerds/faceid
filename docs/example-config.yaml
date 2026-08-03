@@ -38,6 +38,10 @@ faceid:
                                        # the detect snapshot — typically twice the face size
   ignore_threshold: 0.50               # similarity at which a face counts as ignored
                                        # (defaults to match_threshold when unset)
+  max_ignore_anchors: 0                # cap on AUTO-learned ignore anchors per group
+                                       # (0 = unlimited). Drops the most redundant one,
+                                       # never a manually added anchor — deleting by age
+                                       # would let ignored people resurface.
   ignore_learning: true                # learn new looks of ignored people as extra anchors
   min_face_px: 48                      # minimum face size in the snapshot (pixels)
   det_size: 640                        # detection input size (higher = better far faces, slower)
