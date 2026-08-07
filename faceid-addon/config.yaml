@@ -1,5 +1,5 @@
 name: FaceID
-version: "0.7.1"
+version: "0.7.2"
 slug: faceid
 description: Face recognition for Frigate — trainable gallery, clustered unknown review, HA sensors
 url: https://github.com/SkyTechNerds/faceid
@@ -33,6 +33,9 @@ options:
   unknown_threshold: 0.35
   cluster_eps: 0.55
   suggest_threshold: 0.40
+  min_face_px: 48
+  det_size: 640
+  max_attempts: 6
   max_faces_per_person: 40
   trimmed_keep: 10
   dedupe_threshold: 0.65
@@ -57,6 +60,9 @@ schema:
   unknown_threshold: float(0.1,0.8)
   cluster_eps: float(0.3,0.8)
   suggest_threshold: float(0.1,0.9)
+  min_face_px: int(16,200)
+  det_size: int(320,1280)
+  max_attempts: int(1,20)
   max_faces_per_person: int(5,100)
   trimmed_keep: int(0,100)
   dedupe_threshold: float(0.50,0.95)

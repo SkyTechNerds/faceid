@@ -3,6 +3,23 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.7.2 — 2026-08-07
+
+- **Fixed: `min_face_px` was hard-coded in the Home Assistant app.** The app wrote a
+  fixed `48` into its config regardless of any option, so the one setting that matters
+  when faces arrive slightly too small could not be changed at all there. It is now an
+  app option *and* live-editable in Settings, together with `det_size` and
+  `max_attempts` — the other two knobs for exactly that problem. Reported in the
+  community thread by someone whose detections sat just under the limit.
+- **Saved backups are now listed and individually downloadable** (Settings). The download
+  button always produced a *fresh* backup; the ones written by "backup now" or the daily
+  auto-backup were unreachable from the UI — which, running as an app without filesystem
+  access, meant unreachable full stop. The list also shows at a glance whether the
+  auto-backup is actually running.
+- **Backups download instead of opening as gibberish on iOS.** Safari ignores
+  `Content-Disposition` for `application/gzip` and renders the archive inline; the
+  download now uses `application/octet-stream` plus a `download` attribute.
+
 ## 0.7.1 — 2026-08-02
 
 - **Select and delete ignore anchors across all groups.** Each group already had its own

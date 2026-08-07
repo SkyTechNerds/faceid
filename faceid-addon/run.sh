@@ -71,9 +71,9 @@ faceid:
   backup_keep: $(cfg '.backup_keep')
   presence_window: $(cfg '.presence_window')
   set_sub_label: $(cfg '.set_sub_label')
-  min_face_px: 48
-  det_size: 640
-  max_attempts: 6
+  min_face_px: $(cfg '.min_face_px')
+  det_size: $(cfg '.det_size')
+  max_attempts: $(cfg '.max_attempts')
   retry_seconds: 2.5
   cameras: [${CAMERAS}]
   discovery_cameras: [${DISCOVERY}]

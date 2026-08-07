@@ -32,6 +32,9 @@ Full documentation: https://github.com/SkyTechNerds/faceid
 | `cameras` | process only these cameras (empty = all) |
 | `discovery_cameras` | cameras that get a Home Assistant sensor |
 | `suggest_threshold` | score at which unknown faces are grouped into a "looks like <person>" suggestion |
+| `min_face_px` | smallest face (pixels wide) FaceID will try to recognise. Lower it if the log keeps saying "largest face NNpx < min_face_px"; below ~40 px ArcFace gets unreliable |
+| `det_size` | detector input size; higher finds smaller/further faces at the cost of CPU |
+| `max_attempts` | recognition attempts per event — more attempts means more chances to catch the moment the face is largest |
 | `max_faces_per_person` | photo cap per person; the most redundant reference is set aside when exceeded (restorable) |
 | `trimmed_keep` | how many set-aside photos to keep per person (0 = delete immediately) |
 | `dedupe_threshold` | default sensitivity for the Settings "Remove duplicates" action |

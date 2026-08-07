@@ -446,6 +446,19 @@ async function copyLog(){
   catch(e){toast('copy failed — select the text manually')}
 }
 
+async function renderBackupList(){
+  let r; try{ r=await j('api/backups'); }catch(e){ return }
+  const el=document.getElementById('bklist'); if(!el)return;
+  const b=r.backups||[];
+  el.innerHTML = b.length
+    ? `<table><tr><th>saved backup</th><th>size</th><th></th></tr>` + b.map(x=>{
+        const d=new Date(x.ts*1000).toLocaleString(undefined,{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});
+        const mb=(x.size/1048576).toFixed(1);
+        return `<tr><td>${d}</td><td>${mb} MB</td><td><a class="ghost" href="api/backups/${encodeURIComponent(x.name)}" download="${esc(x.name)}">download</a></td></tr>`;
+      }).join('') + `</table><span class="stat">stored in ${esc(r.dir)} — kept according to "backups to keep"</span>`
+    : '<span class="stat">no saved backups yet — "backup now" or the daily auto-backup creates them</span>';
+}
+
 async function renderSettings(){
   if(tab!=='settings')return;
   const cfg=await j('api/settings');
@@ -482,6 +495,16 @@ async function renderSettings(){
       <b style="min-width:230px;font:600 13px var(--sans)">Photos averaged per match</b>
       <input id="set-topk" type="number" min="1" max="10" value="${cfg.match_top_k}" style="width:70px">
       <span class="stat">a match score is the mean of this many best-fitting reference photos. Higher resists a single lucky photo, but punishes people whose photos cover many different angles — their score gets dragged down by the less similar ones. Measure with scripts/measure-recognition.py before changing.</span>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <b style="min-width:230px;font:600 13px var(--sans)">Smallest face to recognise</b>
+      <input id="set-minface" type="number" min="16" max="200" value="${cfg.min_face_px}" style="width:70px"><span class="stat">px</span>
+      <span class="stat">if the LOG tab keeps saying "largest face NNpx &lt; min_face_px", this is the limit it means. Below roughly 40 px ArcFace embeddings get unreliable — lowering it buys attempts, not accuracy.</span>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <b style="min-width:230px;font:600 13px var(--sans)">Recognition attempts per event</b>
+      <input id="set-attempts" type="number" min="1" max="20" value="${cfg.max_attempts}" style="width:70px">
+      <span class="stat">FaceID retries while an event is running, so more attempts mean more chances to catch the moment the face is largest. Costs a little CPU per event.</span>
     </div>
     <div class="row" style="margin-top:6px">
       <b style="min-width:230px;font:600 13px var(--sans)">Max auto-learned ignore anchors</b>
@@ -521,11 +544,12 @@ async function renderSettings(){
       <label style="display:flex;gap:6px;align-items:center">folder <input id="bkDir" value="${esc(b.dir)}" placeholder="(data/backups)" size="20"></label>
       <button class="act" onclick="saveBackupCfg()">SAVE</button>
     </div>
-    <div class="stat" style="margin-bottom:16px">runs inside FaceID — no external cron needed. Empty folder = <code>data/backups</code> (survives app updates).</div>
+    <div class="stat" style="margin-bottom:8px">runs inside FaceID — no external cron needed. Empty folder = <code>data/backups</code> (survives app updates).</div>
+    <div id="bklist" style="margin-bottom:16px"><span class="stat">loading saved backups…</span></div>
 
     <h2>Manual backup &amp; restore</h2>
     <div class="row">
-      <a class="act" href="api/backup" title="download persons + ignore anchors as .tar.gz">DOWNLOAD BACKUP</a>
+      <a class="act" href="api/backup" download="faceid-backup.tar.gz" title="download persons + ignore anchors as .tar.gz">DOWNLOAD BACKUP</a>
       <button class="ghost" onclick="backupNow()" title="write a backup into the auto-backup folder now">save to folder now</button>
       <label class="ghost" style="cursor:pointer" title="REPLACES all current persons + ignore anchors">Restore (replace)
         <input type="file" accept=".gz,.tar.gz,application/gzip" style="display:none" onchange="restore(this,false)"></label>
@@ -534,6 +558,7 @@ async function renderSettings(){
     </div>
     <div class="stat">Backup contains only your gallery (persons + ignore anchors) — not the unknown queue.</div>`;
   dedupePreview();
+  renderBackupList();
 }
 async function saveThresholds(){
   const body={};
@@ -542,6 +567,8 @@ async function saveThresholds(){
   const mf=document.getElementById('set-maxfaces'); if(mf)body.max_faces_per_person=+mf.value;
   const topk=document.getElementById('set-topk'); if(topk)body.match_top_k=+topk.value;
   const ic=document.getElementById('set-igncap'); if(ic)body.max_ignore_anchors=+ic.value;
+  const mp=document.getElementById('set-minface'); if(mp)body.min_face_px=+mp.value;
+  const at=document.getElementById('set-attempts'); if(at)body.max_attempts=+at.value;
   const tk=document.getElementById('set-trimkeep'); if(tk)body.trimmed_keep=+tk.value;
   const dt=document.getElementById('set-dedupe_threshold'); if(dt)body.dedupe_threshold=+dt.value;
   const hr=document.getElementById('set-hires'); if(hr)body.hires_enroll=hr.checked;

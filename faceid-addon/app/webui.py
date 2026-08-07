@@ -292,7 +292,8 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     }
     BACKUP_SPEC = {"hires_enroll": bool, "backup_enabled": bool, "backup_hour": (0, 23), "backup_keep": (1, 90), "backup_dir": str}
     INT_SPEC = {"max_faces_per_person": (5, 100), "trimmed_keep": (0, 100),
-                "match_top_k": (1, 10), "max_ignore_anchors": (0, 200)}
+                "match_top_k": (1, 10), "max_ignore_anchors": (0, 200),
+                "min_face_px": (16, 200), "max_attempts": (1, 20)}
     settings_file = data_dir / "settings.json"
 
     def _apply_settings(updates: dict):
@@ -312,6 +313,10 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             gallery.top_k = max(1, int(updates["match_top_k"]))
         if "max_ignore_anchors" in updates:
             gallery.max_ignore_anchors = int(updates["max_ignore_anchors"])
+        if "min_face_px" in updates:
+            processor.min_face_px = int(updates["min_face_px"])
+        if "max_attempts" in updates:
+            processor.max_attempts = int(updates["max_attempts"])
         if "dedupe_threshold" in updates:
             gallery.dedupe_threshold = float(updates["dedupe_threshold"])
         if "hires_enroll" in updates:
@@ -342,6 +347,8 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             "trimmed_keep": int(f.get("trimmed_keep", 10)),
             "match_top_k": int(f.get("match_top_k", 3)),
             "max_ignore_anchors": int(f.get("max_ignore_anchors", 0)),
+            "min_face_px": int(f.get("min_face_px", 48)),
+            "max_attempts": int(f.get("max_attempts", 6)),
             "hires_enroll": bool(f.get("hires_enroll", True)),
         }
 
@@ -380,8 +387,36 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         """Komplette Galerie (persons + ignored) als tar.gz — die einzige unersetzliche
         Datenquelle. Unknown-Queue und Frigate-Vollbilder werden bewusst ausgelassen."""
         ts = time.strftime("%Y%m%d-%H%M%S")
-        return Response(build_backup_gz(data_dir), media_type="application/gzip",
+        # octet-stream statt gzip: Safari (iOS) ignoriert Content-Disposition bei
+        # application/gzip und zeigt den Inhalt als Zeichensalat im Browser an.
+        return Response(build_backup_gz(data_dir), media_type="application/octet-stream",
                         headers={"Content-Disposition": f'attachment; filename="faceid-backup-{ts}.tar.gz"'})
+
+    @app.get("/api/backups")
+    def backups():
+        """Gespeicherte Backups auflisten — wer FaceID als App betreibt, kommt sonst gar
+        nicht an sie heran und sieht auch nicht, ob das Auto-Backup laeuft."""
+        bdir = _P(cfg["faceid"].get("backup_dir") or (data_dir / "backups"))
+        out = []
+        if bdir.is_dir():
+            for f in sorted(bdir.glob("faceid-backup-*.tar.gz"), reverse=True):
+                try:
+                    st = f.stat()
+                except OSError:
+                    continue
+                out.append({"name": f.name, "size": st.st_size, "ts": st.st_mtime})
+        return {"backups": out, "dir": str(bdir)}
+
+    @app.get("/api/backups/{name}")
+    def backup_file(name: str):
+        """Ein bestimmtes gespeichertes Backup ausliefern."""
+        bdir = _P(cfg["faceid"].get("backup_dir") or (data_dir / "backups"))
+        # Kein Verzeichniswechsel ueber den Namen — nur Dateien aus genau diesem Ordner.
+        target = (bdir / Path(name).name)
+        if not target.is_file() or not target.name.startswith("faceid-backup-"):
+            raise HTTPException(404, "no such backup")
+        return FileResponse(target, media_type="application/octet-stream",
+                            filename=target.name)
 
     @app.post("/api/restore")
     async def restore(file: UploadFile, merge: bool = False):
