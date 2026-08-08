@@ -518,6 +518,9 @@ that matter most:
 | `ignore_threshold` (= match_threshold) | similarity at which a face counts as ignored |
 | `ignore_learning` (true) | learn new looks of ignored people as additional anchors (guarded) |
 | `hires_enroll` (true) | fetch new review-queue faces from the recording (sharper references) |
+| `clip_fallback` (true) | when a snapshot yields no face at all, scan the recording — on most setups the single biggest gain, see [above](#when-the-snapshot-has-no-face) |
+| `clip_fallback_frames` (12) | how many frames to sample from the clip |
+| `clip_fallback_min_det` (0.65) | detection score a clip frame must reach — stricter than the snapshot path, because there are twelve frames to choose from |
 | `poll_interval` (0) | seconds; >0 also polls Frigate's event API for events MQTT never announces |
 
 ## License

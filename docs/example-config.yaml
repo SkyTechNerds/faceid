@@ -36,6 +36,15 @@ faceid:
   dedupe_threshold: 0.65               # default sensitivity of the "remove duplicates" action
   hires_enroll: true                   # fetch review-queue faces from the recording instead of
                                        # the detect snapshot — typically twice the face size
+  clip_fallback: true                  # when the snapshot holds no face AT ALL, scan the
+                                       # recording. Frigate picks its snapshot by highest
+                                       # PERSON score, which is often the moment someone
+                                       # turns away — measured here, only ~21% of snapshots
+                                       # had a usable face. Runs once per event, only for
+                                       # events that produced nothing, on its own thread.
+  clip_fallback_frames: 12             # frames sampled across the clip
+  clip_fallback_min_det: 0.65          # stricter than the snapshot path (0.55): with twelve
+                                       # frames to choose from you can afford to be picky
   ignore_threshold: 0.50               # similarity at which a face counts as ignored
                                        # (defaults to match_threshold when unset)
   max_ignore_anchors: 0                # cap on AUTO-learned ignore anchors per group
