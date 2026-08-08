@@ -3,6 +3,13 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.8.1 — 2026-08-08
+
+- **The app has an icon and a logo.** Home Assistant showed the default placeholder until
+  now. The mark is a viewfinder bracket with three markers inside — one of them dimmed,
+  for the face that is *not* identified yet, which is what this project is actually about.
+  Deliberately no face, no eye, no scanning beam. Requested in the community thread.
+
 ## 0.8.0 — 2026-08-08
 
 - **Measure recognition from the UI** (Settings → "Does it actually work?"). Until now the
