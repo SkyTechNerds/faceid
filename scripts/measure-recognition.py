@@ -172,10 +172,10 @@ def load_config(base: Path) -> dict:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--baseline", help="Pfad zu einer aelteren Galerie (entpacktes Backup)")
-    ap.add_argument("--days", type=float, default=2, help="Zeitraum der Praxisprobe (0 = aus)")
+    ap.add_argument("--baseline", help="path to an older gallery (an unpacked backup)")
+    ap.add_argument("--days", type=float, default=2, help="window for the practical probe (0 = off)")
     ap.add_argument("--data", default=str(BASE / "data"))
-    ap.add_argument("--top-k", type=int, help="match_top_k zum Vergleich uebersteuern")
+    ap.add_argument("--top-k", type=int, help="override match_top_k for comparison")
     args = ap.parse_args()
 
     global TOP_K
@@ -188,7 +188,7 @@ def main():
         TOP_K = max(1, int(cfg["faceid"].get("match_top_k", 3)))
     new = load_gallery(Path(args.data) / "persons")
     if not new:
-        print("keine Galerie gefunden", file=sys.stderr)
+        print("no gallery found", file=sys.stderr)
         return 1
     old = None
     if args.baseline:
@@ -196,61 +196,61 @@ def main():
         old = load_gallery(p / "persons" if (p / "persons").is_dir() else p)
 
     def size(g):
-        return f"{len(g)} Personen / {sum(len(e) for _, e in g.values())} Fotos"
+        return f"{len(g)} persons / {sum(len(e) for _, e in g.values())} photos"
 
-    print(f"jetzt:   {size(new)}")
+    print(f"now:      {size(new)}")
     if old:
-        print(f"vorher:  {size(old)}")
-    print(f"Schwelle {thr}, gemittelt ueber {TOP_K} Foto(s)\n")
+        print(f"before:   {size(old)}")
+    print(f"threshold {thr}, averaged over {TOP_K} photo(s)\n")
 
     # 1) Leave-one-out. Testmenge ist die aeltere Galerie, damit keine Seite ihre
     #    eigenen Neuzugaenge benotet.
     test = old or new
     r_new = leave_one_out(test, new, thr)
-    print(f"Leave-one-out ({r_new['n']} Testgesichter)")
-    print(f"{'':22s} {'vorher':>10s} {'jetzt':>10s}" if old else f"{'':22s} {'jetzt':>10s}")
+    print(f"Leave-one-out ({r_new['n']} test faces)")
+    print(f"{'':22s} {'before':>10s} {'now':>10s}" if old else f"{'':22s} {'now':>10s}")
     if old:
         r_old = leave_one_out(test, old, thr)
-        for lbl, k in (("korrekt erkannt", "hit"), ("falsche Person", "wrong"),
-                       ("nicht erkannt", "miss")):
+        for lbl, k in (("recognised correctly", "hit"), ("wrong person", "wrong"),
+                       ("not recognised", "miss")):
             print(f"  {lbl:20s} {r_old[k]:>10d} {r_new[k]:>10d}")
-        print(f"  {'mittlerer Score':20s} {r_old['score']:>10.3f} {r_new['score']:>10.3f}")
+        print(f"  {'mean score':20s} {r_old['score']:>10.3f} {r_new['score']:>10.3f}")
     else:
-        for lbl, k in (("korrekt erkannt", "hit"), ("falsche Person", "wrong"),
-                       ("nicht erkannt", "miss")):
+        for lbl, k in (("recognised correctly", "hit"), ("wrong person", "wrong"),
+                       ("not recognised", "miss")):
             print(f"  {lbl:20s} {r_new[k]:>10d}")
-        print(f"  {'mittlerer Score':20s} {r_new['score']:>10.3f}")
+        print(f"  {'mean score':20s} {r_new['score']:>10.3f}")
 
     if args.days > 0:
         print()
         lp = live_probe(old, new, args.days, thr, cfg)
-        print(f"Praxisprobe ({args.days:g} Tage): {lp['events']} Ereignisse, "
-              f"{lp['faces']} mit verwertbarem Gesicht"
-              + (f" ({lp['selfhits']} Selbsttreffer ausgeschlossen)" if lp["selfhits"] else ""))
+        print(f"Practical probe ({args.days:g} days): {lp['events']} events, "
+              f"{lp['faces']} with a usable face"
+              + (f" ({lp['selfhits']} self-hits excluded)" if lp["selfhits"] else ""))
         f = max(lp["faces"], 1)
         if old:
-            print(f"  erkannt vorher: {lp['old']:3d} ({100*lp['old']//f:3d}%)   "
-                  f"jetzt: {lp['new']:3d} ({100*lp['new']//f:3d}%)")
-            print(f"  beide erkannt, aber anderer Name: {lp['disagree']}")
+            print(f"  recognised before: {lp['old']:3d} ({100*lp['old']//f:3d}%)   "
+                  f"now: {lp['new']:3d} ({100*lp['new']//f:3d}%)")
+            print(f"  recognised by both but under a different name: {lp['disagree']}")
             if lp["gained"]:
-                print(f"  neu erkannt: {dict(lp['gained'])}")
+                print(f"  newly recognised: {dict(lp['gained'])}")
         else:
-            print(f"  erkannt: {lp['new']} ({100*lp['new']//f}%)")
+            print(f"  recognised: {lp['new']} ({100*lp['new']//f}%)")
 
         if lp["per_person"]:
             # Ein Treffer knapp ueber der Schwelle faellt bei schlechterem Licht weg —
             # deshalb zaehlt der Abstand, nicht nur das Ja/Nein.
-            print("\n  Sicherheitsabstand je erkannter Person:")
-            print(f"    {'Person':24s} {'Treffer':>7s} {'Median':>7s} {'min':>6s} {'knapp':>6s}")
+            print("\n  Headroom above the threshold, per recognised person:")
+            print(f"    {'person':24s} {'hits':>7s} {'median':>7s} {'min':>6s} {'tight':>6s}")
             for name, scores in sorted(lp["per_person"].items(),
                                        key=lambda kv: -len(kv[1])):
                 sc = sorted(scores)
-                knapp = sum(1 for v in sc if v < thr + 0.05)
+                tight = sum(1 for v in sc if v < thr + 0.05)
                 mark = " *" if name in FAVORITES else ""
                 print(f"    {(name + mark)[:24]:24s} {len(sc):>7d} "
-                      f"{sc[len(sc)//2]:>7.2f} {sc[0]:>6.2f} {knapp:>6d}")
+                      f"{sc[len(sc)//2]:>7.2f} {sc[0]:>6.2f} {tight:>6d}")
             if FAVORITES:
-                print("    * = Favorit")
+                print("    * = favourite")
     return 0
 
 

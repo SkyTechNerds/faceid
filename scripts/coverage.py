@@ -157,11 +157,11 @@ def main():
                        "sources": meta.get("sources", {})}
 
     if not gal:
-        print("keine Galerie gefunden", file=sys.stderr)
+        print("no gallery found", file=sys.stderr)
         return 1
 
-    print(f"{'Person':22s} {'Fotos':>5s} {'Vielf.':>6s} {'frontal':>7s} {'halb':>5s} "
-          f"{'Profil':>6s} {'S/W':>4s} {'Selbst':>6s}  Kameras")
+    print(f"{'person':22s} {'photos':>6s} {'divers':>6s} {'front':>6s} {'half':>5s} "
+          f"{'profile':>7s} {'grey':>5s} {'self':>5s}  cameras")
     print("-" * 96)
 
     # Welche Kameras nachts ueberhaupt in Graustufen schalten? Das aus der Galerie
@@ -169,7 +169,7 @@ def main():
     # Also bei Frigate nachsehen, wie die Naechte dort tatsaechlich aussehen.
     ir_cams = ir_cameras(cfg)
     if ir_cams:
-        print(f"Kameras mit IR-Nachtmodus: {', '.join(sorted(ir_cams))}\n")
+        print(f"cameras that switch to IR at night: {', '.join(sorted(ir_cams))}\n")
 
     advice = []
     for slug, g in gal.items():
@@ -209,35 +209,35 @@ def main():
         known = {c: k for c, k in cams.items() if c != "?"}
         cam_s = ", ".join(f"{c} {k}" for c, k in sorted(known.items(), key=lambda x: -x[1]))
         if cams.get("?"):
-            cam_s = (cam_s + ", " if cam_s else "") + f"{cams['?']}x unbekannt"
-        print(f"{g['name'][:22]:22s} {n:5d} {div_s:>6s} {front:>7d} {half:>5d} "
-              f"{prof:>6d} {night:>4d} {rate:>5d}%  {cam_s}")
+            cam_s = (cam_s + ", " if cam_s else "") + f"{cams['?']}x unknown"
+        print(f"{g['name'][:22]:22s} {n:6d} {div_s:>6s} {front:>6d} {half:>5d} "
+              f"{prof:>7d} {night:>5d} {rate:>4d}%  {cam_s}")
 
         missing = []
         if n < 5:
-            missing.append("zu wenige Fotos")
+            missing.append("too few photos")
         if not front:
-            missing.append("keine frontale Aufnahme")
+            missing.append("no frontal shot")
         # S/W nur anmahnen, wo ueberhaupt eine Kamera in den IR-Modus schaltet.
         if ir_cams and not night and (known.keys() & ir_cams):
-            missing.append("keine Aufnahme im IR-Nachtmodus")
+            missing.append("no IR night shot")
         if len(known) == 1 and n >= 3:
-            missing.append(f"nur an einer Kamera ({next(iter(known))})")
+            missing.append(f"only one camera ({next(iter(known))})")
         if n > 1 and diversity > 0.55:
-            missing.append(f"Fotos ähneln sich stark ({diversity:.2f})")
+            missing.append(f"photos look very alike ({diversity:.2f})")
         # Der Selbst-Test ist bei kleinen Sammlungen systematisch pessimistisch —
         # als Mangel nur melden, wenn genug Fotos da sind, dass er aussagt.
         if n >= 8 and rate < 40:
-            missing.append(f"Fotos stuetzen einander kaum (Selbst-Test {rate}%)")
+            missing.append(f"photos barely support each other (self test {rate}%)")
         if missing:
             advice.append((rate, g["name"], missing))
 
     if advice:
-        print("\nWas konkret fehlt (schwächste zuerst):")
+        print("\nWhat is concretely missing (weakest first):")
         for rate, name, missing in sorted(advice):
             print(f"  {name}: {', '.join(missing)}")
     else:
-        print("\nAlle Personen sind breit abgedeckt.")
+        print("\nEvery person is broadly covered.")
     return 0
 
 
