@@ -392,6 +392,39 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         return Response(build_backup_gz(data_dir), media_type="application/octet-stream",
                         headers={"Content-Disposition": f'attachment; filename="faceid-backup-{ts}.tar.gz"'})
 
+    analysis_state = {"running": False, "processed": 0, "total": 0, "result": None}
+
+    class AnalysisBody(BaseModel):
+        days: float = 3.0
+
+    @app.post("/api/analysis")
+    def start_analysis(body: AnalysisBody):
+        """Kalibrierungs-Auswertung anstossen — dieselbe Rechnung wie die Skripte,
+        aber ohne Shell, damit App-Nutzer sie ueberhaupt ausfuehren koennen."""
+        if analysis_state["running"]:
+            raise HTTPException(409, "analysis already running")
+        days = max(0.0, min(float(body.days), 30.0))
+        analysis_state.update(running=True, processed=0, total=0, result=None)
+
+        def worker():
+            from . import analysis
+            try:
+                analysis_state["result"] = analysis.run(
+                    data_dir, engine, processor.frigate, cfg, days=days,
+                    progress=lambda i, t: analysis_state.update(processed=i, total=t))
+            except Exception as e:
+                log.exception("analysis failed")
+                analysis_state["result"] = {"error": str(e)}
+            finally:
+                analysis_state["running"] = False
+
+        threading.Thread(target=worker, daemon=True, name="faceid-analysis").start()
+        return {"started": True, "days": days}
+
+    @app.get("/api/analysis")
+    def analysis_status():
+        return dict(analysis_state)
+
     @app.get("/api/backups")
     def backups():
         """Gespeicherte Backups auflisten — wer FaceID als App betreibt, kommt sonst gar

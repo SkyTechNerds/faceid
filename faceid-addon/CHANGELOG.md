@@ -3,6 +3,24 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.8.0 — 2026-08-08
+
+- **Measure recognition from the UI** (Settings → "Does it actually work?"). Until now the
+  calibration analysis lived in `scripts/`, which needs shell access — so Home Assistant
+  app users could change the threshold, `match_top_k` and `min_face_px`, but had no way to
+  see whether it helped. That is the opposite of the advice this project gives everyone
+  else. Closes #7.
+- Two measurements, both without manual labelling: **leave-one-out** over the gallery
+  (each reference photo tested against the gallery it was removed from — real ground
+  truth) and a **probe over recent events** showing how much headroom each recognition
+  has above the threshold.
+- The result states the one number that decides whether the threshold can be lowered:
+  **how high a stranger got**. Ignore anchors and cross-person matches both count. If any
+  misassignment shows up, it says so instead — then the threshold goes up, not down.
+- Events whose face is already in the gallery are excluded from the probe; they score
+  ~1.0 and would flatter a low `top_k`.
+- The analysis now lives in `app/analysis.py`, so UI and CLI compute identical numbers.
+
 ## 0.7.2 — 2026-08-07
 
 - **Fixed: `min_face_px` was hard-coded in the Home Assistant app.** The app wrote a

@@ -459,6 +459,52 @@ async function renderBackupList(){
     : '<span class="stat">no saved backups yet — "backup now" or the daily auto-backup creates them</span>';
 }
 
+let anTimer=null;
+async function renderAnalysis(){
+  let st; try{ st=await j('api/analysis'); }catch(e){ return }
+  const el=document.getElementById('anbox'); if(!el)return;
+  if(st.running){
+    const pct = st.total ? Math.round(100*st.processed/st.total) : 0;
+    el.innerHTML=`<span class="stat">measuring… ${st.processed}/${st.total||'?'} events (${pct}%) — leave-one-out runs first, then real events</span>`;
+    clearTimeout(anTimer); anTimer=setTimeout(renderAnalysis,2000); return;
+  }
+  const r=st.result;
+  if(!r){ el.innerHTML='<span class="stat">not measured yet — the run takes a few minutes, mostly for the event probe</span>'; return }
+  if(r.error){ el.innerHTML=`<span class="stat" style="color:var(--bad)">${esc(r.error)}</span>`; return }
+  const l=r.leave_one_out, p=r.probe;
+  const rate = l.n ? Math.round(100*l.hit/l.n) : 0;
+  // Die eigentliche Entscheidungshilfe: wie weit ist die Schwelle vom hoechsten
+  // je gemessenen Fremdtreffer entfernt?
+  const room = r.headroom;
+  const verdict = l.wrong > 0
+    ? `<b style="color:var(--bad)">${l.wrong} misassignment(s)</b> — do not lower the threshold, raise it or clean up the gallery.`
+    : room >= 0.08
+      ? `No wrong matches, and strangers stayed <b>${r.headroom}</b> below your threshold. There is room to lower it — try steps of 0.05 and measure again.`
+      : `No wrong matches, but only <b>${r.headroom}</b> between your threshold and the highest stranger. Leave it where it is.`;
+  el.innerHTML=`
+    <table>
+      <tr><th>leave-one-out (${l.n} reference photos)</th><th></th></tr>
+      <tr><td>recognised correctly</td><td>${l.hit} (${rate}%)</td></tr>
+      <tr><td>wrong person</td><td${l.wrong?' class="u"':''}>${l.wrong}</td></tr>
+      <tr><td>not recognised</td><td>${l.miss}</td></tr>
+      <tr><td>highest a stranger reached</td><td>${r.stranger_ceiling}</td></tr>
+      <tr><td>your threshold</td><td>${r.threshold} · averaged over ${r.top_k} photo(s)</td></tr>
+    </table>
+    <div class="stat" style="margin:8px 0 12px">${verdict}</div>
+    ${p ? `<table>
+      <tr><th>real events, last ${r.days}d</th><th>hits</th><th>median</th><th>weakest</th><th>close to the line</th></tr>
+      ${p.per_person.map(x=>`<tr><td>${esc(x.name)}</td><td>${x.hits}</td><td>${x.median}</td><td>${x.min}</td><td${x.tight?' class="u"':''}>${x.tight}</td></tr>`).join('')||'<tr><td colspan="5">no recognitions in that window</td></tr>'}
+    </table>
+    <span class="stat">${p.events} events, ${p.faces} with a usable face${p.selfhits?`, ${p.selfhits} skipped (already in the gallery — they would score ~1.0 and measure nothing)`:''}</span>` : ''}`;
+}
+async function runAnalysis(){
+  const d=document.getElementById('andays');
+  try{ await j('api/analysis',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({days:+(d?d.value:3)})}); }
+  catch(e){ return toast('already running') }
+  toast('analysis started'); renderAnalysis();
+}
+
 async function renderSettings(){
   if(tab!=='settings')return;
   const cfg=await j('api/settings');
@@ -536,6 +582,16 @@ async function renderSettings(){
       <span class="stat" id="dedupePrev">sets aside photos similar to one you already have — they add little to recognition. Lower sensitivity = removes more. Camera crops score lower than phone photos, so try ~0.60–0.70. Restorable.</span>
     </div>
 
+    <h2>Does it actually work?</h2>
+    <div class="row">
+      <button class="act" onclick="runAnalysis()">MEASURE RECOGNITION</button>
+      <label style="display:flex;gap:6px;align-items:center" class="stat">probe the last
+        <select id="andays"><option value="0">— gallery only —</option><option value="1">1 day</option><option value="3" selected>3 days</option><option value="7">7 days</option></select>
+      </label>
+      <span class="stat">tests the gallery against itself (real ground truth) and against recent events. Runs in the background; a few minutes.</span>
+    </div>
+    <div id="anbox" style="margin-bottom:18px"></div>
+
     <h2>Automatic backup</h2>
     <div class="row">
       <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="bkEnabled" ${b.enabled?'checked':''}> daily backup</label>
@@ -559,6 +615,7 @@ async function renderSettings(){
     <div class="stat">Backup contains only your gallery (persons + ignore anchors) — not the unknown queue.</div>`;
   dedupePreview();
   renderBackupList();
+  renderAnalysis();
 }
 async function saveThresholds(){
   const body={};

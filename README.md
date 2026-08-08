@@ -283,7 +283,11 @@ Together these lifted recognition on a held-out set of real events from 90% to 1
 moved the weakest favourite's worst match from 0.01 above the cut-off to 0.09 above it —
 without a single misassignment.
 
-Do not copy these numbers. Run the scripts on your own gallery: how far strangers get is
+**In the UI:** Settings → *Does it actually work?* runs the same analysis as a background
+job — no shell needed, which matters if you run FaceID as a Home Assistant app. The
+scripts remain for scripted or comparative runs (`--baseline`, `--top-k`).
+
+Do not copy these numbers. Measure your own gallery: how far strangers get is
 the number that decides how low you can safely go.
 
 ## Measuring instead of guessing
