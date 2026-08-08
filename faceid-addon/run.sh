@@ -1,4 +1,7 @@
-#!/usr/bin/env bashio
+#!/usr/bin/with-contenv bashio
+# with-contenv ist Pflicht: unter s6-overlay v3 erreichen die Container-Variablen
+# (u. a. SUPERVISOR_TOKEN) das Skript sonst nicht — die MQTT-Erkennung ueber den
+# Supervisor scheitert dann, obwohl Mosquitto laeuft und die Rechte stimmen.
 set -e
 
 # Optionen direkt aus /data/options.json lesen — robust gegenüber
@@ -20,6 +23,14 @@ MQTT_PASSWORD=$(cfg '.mqtt_password')
 
 # Kein Broker konfiguriert -> Mosquitto-Add-on über die Supervisor services API beziehen
 TOKEN="${SUPERVISOR_TOKEN:-${HASSIO_TOKEN:-}}"
+if [ -z "${MQTT_HOST}" ] && bashio::services.available "mqtt"; then
+    # Offizieller Weg, wenn der Supervisor den Dienst anbietet.
+    bashio::log.info "Using the MQTT service offered by Home Assistant"
+    MQTT_HOST=$(bashio::services "mqtt" "host")
+    MQTT_PORT=$(bashio::services "mqtt" "port")
+    MQTT_USER=$(bashio::services "mqtt" "username")
+    MQTT_PASSWORD=$(bashio::services "mqtt" "password")
+fi
 if [ -z "${MQTT_HOST}" ] && [ -z "${TOKEN}" ]; then
     bashio::log.warning "No Supervisor token in the container environment - cannot auto-detect MQTT."
 fi

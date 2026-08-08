@@ -3,6 +3,16 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.8.2 — 2026-08-08
+
+- **Fixed: the app refused to start with "No MQTT broker configured" even with Mosquitto
+  running.** The start script used `#!/usr/bin/env bashio`, but under s6-overlay v3 — what
+  current Home Assistant base images use — that shebang does not receive the container's
+  environment, so `SUPERVISOR_TOKEN` was missing and MQTT auto-detection could never work.
+  It now uses `#!/usr/bin/with-contenv bashio` and additionally asks Home Assistant through
+  the official `bashio::services` interface. Setting `mqtt_host` manually was the
+  workaround; it is no longer needed.
+
 ## 0.8.1 — 2026-08-08
 
 - **The app has an icon and a logo.** Home Assistant showed the default placeholder until
