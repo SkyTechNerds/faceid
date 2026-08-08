@@ -48,7 +48,7 @@ class EventProcessor:
         self.hires_enroll = bool(f.get("hires_enroll", True))
         # Frigate waehlt seinen Snapshot nach dem hoechsten Personen-Score, nicht danach,
         # ob ein Gesicht zu sehen ist — das ist oft der Moment, in dem jemand weggeht.
-        # Ueber sieben Tage echter Ereignisse hatten nur 19 % der Snapshots ein
+        # Ueber sieben Tage echter Ereignisse hatten nur 21 % der Snapshots ein
         # verwertbares Gesicht; im Clip fanden sich 9 von 12 doch noch. Deshalb: erst
         # Snapshot (sofort da, kostet nichts), und nur wenn der leer bleibt, die Aufnahme.
         self.clip_fallback = bool(f.get("clip_fallback", True))

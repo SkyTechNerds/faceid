@@ -6,7 +6,7 @@ Umweg über die Aufnahme: dort sind Gesichter typischerweise doppelt so groß.
 
 Die Live-Erkennung arbeitet zuerst auf dem Snapshot — der ist sofort da und kostet
 nichts. Erst wenn der gar kein Gesicht hergibt, lohnt der Blick in die Aufnahme
-(``find_face_in_clip``): gemessen an sieben Tagen echter Ereignisse hatten nur 19 %
+(``find_face_in_clip``): gemessen an sieben Tagen echter Ereignisse hatten nur 21 %
 der Snapshots ein verwertbares Gesicht, der Clip lieferte in 9 von 12 Fällen doch
 noch eines. Frigate wählt seinen Snapshot nach dem höchsten Personen-Score aus, und
 das ist ein anderes Kriterium als "Gesicht sichtbar".

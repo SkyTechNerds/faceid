@@ -11,8 +11,8 @@ update dialog; standalone users can watch GitHub releases.
 
   Frigate picks its snapshot by highest *person* score, which is not the same as "a face
   is visible" — frequently it is the moment someone turns away. Over seven days of real
-  events only **19%** of snapshots held a usable face: 55% had no detectable face at all,
-  14% one below `min_face_px`, 12% one too uncertain to trust.
+  events only **21%** of snapshots held a usable face: 68% had no detectable face at all
+  and 11% one below `min_face_px`.
 
   Re-checking twelve of the failed events against the clip found a good face in **nine**
   (det 0.68–0.87).
@@ -21,8 +21,9 @@ update dialog; standalone users can watch GitHub releases.
   door, at head height, the recording rescued 4 of 4 events; on a high-mounted indoor
   camera and a zoomed garden view it rescued none — there the clip holds no face either.
 
-  Three plausible explanations were measured and ruled out: night (IR failed 11 times,
-  colour 12), distance (not one crop was narrower than 120px), and detection resolution
+  Three plausible explanations were measured and ruled out: night (IR yielded 9 usable
+  faces out of 41 events, colour 4 out of 22 — no disadvantage), distance (not one crop
+  was narrower than 120px), and detection resolution
   (`det_size` 1280 gave results identical to 640 at twice the cost). What remains is the
   viewing angle.
 

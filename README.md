@@ -215,14 +215,14 @@ not a rare edge case. Measured over seven days of real events on a four-camera s
 
 | what the snapshot gave us | events | |
 |---|---|---|
-| no face detected at all | 23 | 55% |
-| face too small (median 34px) | 6 | 14% |
-| detection too uncertain | 5 | 12% |
-| **usable face** | **8** | **19%** |
+| no face detected at all | 43 | 68% |
+| face too small (median 29px) | 7 | 11% |
+| **usable face** | **13** | **21%** |
 
-Two obvious suspects turned out to be innocent. **Night is not the problem** — IR and
-colour failed at almost the same rate (11 vs 12). **Distance is not the problem either** —
-not one crop was narrower than 120px; the people were plenty large in frame.
+Two obvious suspects turned out to be innocent. **Night is not the problem** — relative to
+how many events each produced, IR did no worse than daylight (9 usable out of 41 IR events,
+4 out of 22 in colour). **Distance is not the problem either** — not one crop was narrower
+than 120px; the people were plenty large in frame.
 
 The recording tells a different story. Of twelve failed events re-checked frame by frame,
 **nine had a perfectly good face** (det 0.68–0.87) that the snapshot simply missed.

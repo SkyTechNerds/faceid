@@ -565,7 +565,7 @@ async function renderSettings(){
     <div class="row" style="margin-top:6px">
       <b style="min-width:230px;font:600 13px var(--sans)">Search the recording</b>
       <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="set-clipfallback" ${cfg.clip_fallback?'checked':''}> when the snapshot has no face</label>
-      <span class="stat">Frigate picks its snapshot by highest <em>person</em> score, which is not the same as "face visible" — often that is the moment someone turns away. Measured over 7 days of real events, only 19% of snapshots held a usable face; of the rest, the recording had one in 9 out of 12. How much it gains depends on the camera angle: at a front door at head height it rescued 4 of 4, on a high-mounted indoor camera none. Runs once at the end of an event and only when the snapshot found nothing, so it costs a few seconds of CPU exactly where there was no result anyway.</span>
+      <span class="stat">Frigate picks its snapshot by highest <em>person</em> score, which is not the same as "face visible" — often that is the moment someone turns away. Measured over 7 days of real events, only 21% of snapshots held a usable face; of the rest, the recording had one in 9 out of 12. How much it gains depends on the camera angle: at a front door at head height it rescued 4 of 4, on a high-mounted indoor camera none. Runs once at the end of an event and only when the snapshot found nothing, so it costs a few seconds of CPU exactly where there was no result anyway.</span>
     </div>
     <div class="row" style="margin-top:6px">
       <b style="min-width:230px;font:600 13px var(--sans)">Keep set-aside photos</b>
