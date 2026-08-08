@@ -75,6 +75,7 @@ faceid:
   trimmed_keep: $(cfg '.trimmed_keep')
   dedupe_threshold: $(cfg '.dedupe_threshold')
   hires_enroll: $(cfg '.hires_enroll')
+  clip_fallback: $(cfg '.clip_fallback')
   frigate_topic_prefix: $(cfg '.frigate_topic_prefix')
   poll_interval: $(cfg '.poll_interval')
   backup_enabled: $(cfg '.backup_enabled')

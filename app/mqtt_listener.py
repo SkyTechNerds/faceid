@@ -4,6 +4,9 @@ Pipeline: frigate/events (person) -> Snapshot-Crop -> ArcFace -> Galerie-Match
   - Match  >= match_threshold   -> Person publizieren + Frigate sub_label
   - Match  <  unknown_threshold -> als Unbekannter in die Review-Queue
   - dazwischen                  -> unsicher; nur Review-Queue, keine Meldung
+
+Gibt der Snapshot ueberhaupt kein Gesicht her, wird am Ereignisende die Aufnahme
+abgetastet (clip_fallback) — das ist der haeufigste Fall, nicht die Ausnahme.
 """
 import json
 import logging
@@ -16,7 +19,7 @@ import paho.mqtt.client as mqtt
 import requests
 
 from .engine import FaceEngine, crop_face
-from .hires import upgrade_face
+from .hires import find_face_in_clip, upgrade_face
 
 log = logging.getLogger("faceid.mqtt")
 
@@ -43,6 +46,18 @@ class EventProcessor:
         self.ignore_thr = float(f.get("ignore_threshold", f.get("match_threshold", 0.5)))
         self.ignore_learning = bool(f.get("ignore_learning", True))
         self.hires_enroll = bool(f.get("hires_enroll", True))
+        # Frigate waehlt seinen Snapshot nach dem hoechsten Personen-Score, nicht danach,
+        # ob ein Gesicht zu sehen ist — das ist oft der Moment, in dem jemand weggeht.
+        # Ueber sieben Tage echter Ereignisse hatten nur 19 % der Snapshots ein
+        # verwertbares Gesicht; im Clip fanden sich 9 von 12 doch noch. Deshalb: erst
+        # Snapshot (sofort da, kostet nichts), und nur wenn der leer bleibt, die Aufnahme.
+        self.clip_fallback = bool(f.get("clip_fallback", True))
+        self.clip_frames = int(f.get("clip_fallback_frames", 12))
+        # strenger als beim Snapshot (0.55): aus zwoelf Frames darf man waehlerisch sein
+        self.clip_min_det = float(f.get("clip_fallback_min_det", 0.65))
+        # klein gehalten: bei einem Ereignisschwall lieber welche auslassen als eine
+        # Warteschlange aufbauen, die Minuten hinter der Gegenwart herlaeuft
+        self.clip_queue: "queue.Queue[str]" = queue.Queue(maxsize=20)
         # Ereignisse, die Frigate nicht per MQTT meldet (z. B. per API angelegte
         # Kamera-Meldungen als Zuverlaessigkeits-Bruecke), per Abfrage nachziehen.
         self.poll_interval = float(f.get("poll_interval", 0))
@@ -73,6 +88,11 @@ class EventProcessor:
         self._check_frigate()
         threading.Thread(target=self._worker, daemon=True, name="faceid-worker").start()
         threading.Thread(target=self._finalizer, daemon=True, name="faceid-finalizer").start()
+        # Eigener Thread: ein Clip-Scan dauert Sekunden, im Finalizer wuerde er die
+        # Anwesenheits-Aktualisierung blockieren, im Worker die naechsten Snapshots.
+        # Laeuft unabhaengig von clip_fallback, damit die Option in den Einstellungen
+        # sofort greift statt erst nach einem Neustart — er wartet dann nur an der Queue.
+        threading.Thread(target=self._clip_worker, daemon=True, name="faceid-clip").start()
         if self.poll_interval > 0:
             threading.Thread(target=self._poller, daemon=True, name="faceid-poller").start()
 
@@ -177,6 +197,16 @@ class EventProcessor:
                 log.info("event %s (%s): attempt %d, no face detected in snapshot %dx%d",
                          eid, st["camera"], st["attempts"], w, h)
             return
+        self._handle_face(eid, st, img, face)
+
+    def _handle_face(self, eid: str, st: dict, img, face, source: str = "snapshot"):
+        """Gefundenes Gesicht zuordnen, melden, ablegen.
+
+        Gemeinsam fuer Snapshot und Aufnahme — beide Wege muessen dieselben Schwellen,
+        dieselbe Ignore-Logik und dieselbe Meldung verwenden, sonst haengt das Ergebnis
+        davon ab, welcher Weg zufaellig gegriffen hat.
+        """
+        via = "" if source == "snapshot" else f" (from the {source})"
         emb = face.normed_embedding
         slug, name, score = self.gallery.match(emb)
         ig = self.gallery.match_ignored(emb)
@@ -194,7 +224,8 @@ class EventProcessor:
             log.info("event %s (%s): ignored face (sim %.3f)", eid, st["camera"], ig)
             return
         crop = crop_face(img, face.bbox)
-        log.info("event %s (%s): attempt %d, match %s (%.3f)", eid, st["camera"], st["attempts"], name, score)
+        log.info("event %s (%s): attempt %d, match %s (%.3f)%s", eid, st["camera"],
+                 st["attempts"], name, score, via)
 
         if slug and score >= self.match_thr:
             if score > st["best_score"]:
@@ -209,7 +240,10 @@ class EventProcessor:
             prev = st.get("best_unknown")
             if prev is None or face.det_score > prev["det_score"]:
                 st["best_unknown"] = {"crop": crop, "emb": emb, "det_score": float(face.det_score),
-                                      "guess": name, "guess_score": float(score), "full": img}
+                                      "guess": name, "guess_score": float(score), "full": img,
+                                      # aus der Aufnahme ist bereits das schaerfste Bild —
+                                      # ein zweiter Durchgang durch hires waere derselbe Clip
+                                      "from_clip": source != "snapshot"}
 
     def _poller(self):
         """Frigate-Ereignisse abfragen, die per MQTT nie ankommen.
@@ -259,6 +293,39 @@ class EventProcessor:
                 except queue.Full:
                     log.warning("queue full — dropped polled event %s", eid)
 
+    def _clip_worker(self):
+        """Ereignisse nachbearbeiten, deren Snapshot kein Gesicht hergab."""
+        while True:
+            eid = self.clip_queue.get()
+            try:
+                self._process_clip(eid)
+            except Exception:
+                log.exception("error while scanning the recording of event %s", eid)
+            finally:
+                st = self.events.get(eid)
+                if st is not None:
+                    st["clip_pending"] = False
+
+    def _process_clip(self, eid: str):
+        st = self.events.get(eid)
+        if st is None or st["done"]:
+            return
+        t0 = time.time()
+        hit = find_face_in_clip(self.engine, self.frigate, eid,
+                                max_frames=self.clip_frames,
+                                min_px=self.min_face_px,
+                                min_det=self.clip_min_det)
+        took = time.time() - t0
+        if hit is None:
+            log.info("event %s (%s): no face in the recording either (%d frames, %.1fs)",
+                     eid, st["camera"], self.clip_frames, took)
+            return
+        face, frame = hit
+        log.info("event %s (%s): the recording has a face the snapshot missed "
+                 "(%dpx, det %.2f, %.1fs)", eid, st["camera"],
+                 int(face.bbox[2] - face.bbox[0]), float(face.det_score), took)
+        self._handle_face(eid, st, frame, face, source="recording")
+
     def _finalizer(self):
         """Beendete Events abschließen: Unknown ablegen, 'unbekannt' melden, aufräumen."""
         while True:
@@ -273,10 +340,27 @@ class EventProcessor:
                     continue
                 if now - st["last_try"] < self.retry_secs + 1 and not expired:
                     continue  # letzter Versuch evtl. noch in der Queue
+                # Snapshot hat nichts gefunden -> in der Aufnahme nachsehen, bevor das
+                # Ereignis verworfen wird. Erst hier, weil der Clip erst am Ende steht.
+                if (self.clip_fallback and st["best_person"] is None
+                        and st["best_unknown"] is None and not st.get("clip_tried")):
+                    st["clip_tried"] = True
+                    try:
+                        self.clip_queue.put_nowait(eid)
+                        st["clip_pending"] = True
+                        st["clip_since"] = now
+                        continue
+                    except queue.Full:
+                        log.info("event %s: clip queue full, skipping the recording scan", eid)
+                if st.get("clip_pending"):
+                    if now - st.get("clip_since", now) < 300:
+                        continue      # laeuft noch
+                    log.warning("event %s: recording scan did not finish, closing anyway", eid)
+                    st["clip_pending"] = False
                 if st["best_person"] is None and st["best_unknown"] is not None:
                     u = st["best_unknown"]
                     crop, emb, full = u["crop"], u["emb"], u.get("full")
-                    if self.hires_enroll:
+                    if self.hires_enroll and not u.get("from_clip"):
                         # schärferes Gesicht aus der Aufnahme holen (bessere Referenz)
                         try:
                             hi = upgrade_face(self.engine, self.frigate, st["camera"],

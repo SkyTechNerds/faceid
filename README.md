@@ -204,9 +204,61 @@ is compared against the snapshot face and the best identity match wins — so wi
 people in frame, the wrong face can't be enrolled. When no frame yields a usable face
 (roughly one event in three), the original snapshot is kept.
 
-Live recognition still uses the fast snapshot path; only enrollment takes the slower,
-sharper route (a few seconds and one clip download per event). Needs recordings enabled
-for the camera.
+Live recognition tries the fast snapshot path first; only when that yields nothing does it
+fall back to the recording (see below). Needs recordings enabled for the camera.
+
+## When the snapshot has no face
+
+**Frigate picks its snapshot by highest *person* score — which is not the same as "a face
+is visible".** Often the clearest view *of a person* is the moment they turn away. This is
+not a rare edge case. Measured over seven days of real events on a four-camera setup:
+
+| what the snapshot gave us | events | |
+|---|---|---|
+| no face detected at all | 23 | 55% |
+| face too small (median 34px) | 6 | 14% |
+| detection too uncertain | 5 | 12% |
+| **usable face** | **8** | **19%** |
+
+Two obvious suspects turned out to be innocent. **Night is not the problem** — IR and
+colour failed at almost the same rate (11 vs 12). **Distance is not the problem either** —
+not one crop was narrower than 120px; the people were plenty large in frame.
+
+The recording tells a different story. Of twelve failed events re-checked frame by frame,
+**nine had a perfectly good face** (det 0.68–0.87) that the snapshot simply missed.
+
+So **Settings → Search the recording** (default on) does exactly that: when an event ends
+and the snapshot never produced a face, FaceID samples frames across the clip and takes
+the best one.
+
+**How much it helps depends entirely on where the camera points**, so measure yours rather
+than expecting a number. On the setup above, checked per camera:
+
+| camera | recording rescued |
+|---|---|
+| front door, at head height | 4/4 (and 9/12 in a wider sample) |
+| child's room, mounted high | 0/4 |
+| garden, zoomed | 0/2 |
+
+Where people walk towards the lens, almost every failed snapshot is recoverable. Where the
+camera looks down at people, or catches them side-on at distance, the clip holds no face
+either — no amount of scanning invents one. Raising `det_size` does not change this: at
+1280 instead of 640 the results were identical, at twice the cost (11.1s vs 5.4s per
+event). The limit is the viewing angle, not the resolution.
+
+Three deliberate details:
+
+* **Only when the snapshot found nothing.** Events that already worked cost nothing extra.
+* **Selection is by detection quality, never by gallery similarity.** Picking whichever of
+  twelve frames happens to look most like someone you know would inflate the numbers and
+  invite misassignments. The frame is chosen on image quality; identity is decided
+  afterwards, exactly as on the snapshot path.
+* **Its own thread, short queue.** A clip scan takes seconds. It must not delay live
+  recognition or presence updates, and during a burst of events it skips rather than
+  building a backlog that runs minutes behind reality.
+
+Turn it off if your hardware is tight — the cost is a few seconds of CPU per *otherwise
+failed* event, plus one clip download.
 
 ### Recovering missed events
 
@@ -307,6 +359,18 @@ self test — then names the concrete gap.
 backup from `data/backups`) and adds a practical probe against recent Frigate events,
 including how much headroom each recognition has above the threshold. Events whose face
 is already in the gallery are excluded — they score ~1.0 and measure nothing.
+
+**Running FaceID as a Home Assistant app?** You have no shell, so the part that decides
+your threshold was moved into the UI: Settings → *Does it actually work?* runs the
+leave-one-out test and the practical probe as a background job and reports the one number
+that matters, how high a stranger got. That covers threshold and `match_top_k`.
+
+Two things still need a shell, and neither is required to run FaceID well:
+
+* the **coverage report** (`coverage.py`) — which angles, cameras and IR shots each
+  person is missing
+* **comparing two galleries** (`--baseline`) — useful after a round of enrolling, but the
+  UI analysis already tells you where you stand today
 
 
 ## How training stays healthy

@@ -4,8 +4,12 @@ Frigate erkennt auf einem heruntergerechneten Stream (z. B. 1280x960), zeichnet 
 voller Kameraauflösung auf (z. B. 2560x1920). Für die Galerie lohnt sich deshalb der
 Umweg über die Aufnahme: dort sind Gesichter typischerweise doppelt so groß.
 
-Bewusst nur fürs Enrollment (Review-Queue, Verlaufs-Scan) — die Live-Erkennung bleibt
-schnell auf dem Snapshot.
+Die Live-Erkennung arbeitet zuerst auf dem Snapshot — der ist sofort da und kostet
+nichts. Erst wenn der gar kein Gesicht hergibt, lohnt der Blick in die Aufnahme
+(``find_face_in_clip``): gemessen an sieben Tagen echter Ereignisse hatten nur 19 %
+der Snapshots ein verwertbares Gesicht, der Clip lieferte in 9 von 12 Fällen doch
+noch eines. Frigate wählt seinen Snapshot nach dem höchsten Personen-Score aus, und
+das ist ein anderes Kriterium als "Gesicht sichtbar".
 """
 import logging
 import os
@@ -39,33 +43,29 @@ def _pick(engine, frame, ref_embedding, min_px, identity_min, min_det=0.55):
     return best
 
 
-def _scan_clip(engine, frigate, event_id, ref_embedding, max_frames, min_px, identity_min,
-               min_det):
+def _clip_frames(frigate, event_id, max_frames):
+    """Gleichmäßig über den Clip verteilte Frames — der Generator raeumt selbst auf.
+
+    Wird bewusst immer vollstaendig durchlaufen (kein ``break`` beim Aufrufer), damit
+    das ``finally`` die heruntergeladene Datei sicher wieder loescht.
+    """
     fd, path = tempfile.mkstemp(suffix=".mp4", prefix="faceid-clip-")
     os.close(fd)
     try:
         if not frigate.download_clip(event_id, path):
-            return None
+            return
         cap = cv2.VideoCapture(path)
         try:
             total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
             if total <= 0:
-                return None
-            # Gleichmäßig über den Clip abtasten — Frigate wählt für den Snapshot den
-            # besten Moment, den kennen wir nicht.
-            idxs = np.linspace(0, total - 1, min(max_frames, total)).astype(int)
-            best = None
-            for i in idxs:
+                return
+            # Frigate waehlt fuer den Snapshot den besten Moment nach seinem Kriterium,
+            # den kennen wir nicht — also gleichmaessig abtasten.
+            for i in np.linspace(0, total - 1, min(max_frames, total)).astype(int):
                 cap.set(cv2.CAP_PROP_POS_FRAMES, int(i))
                 ok, frame = cap.read()
-                if not ok or frame is None:
-                    continue
-                cand = _pick(engine, frame, ref_embedding, min_px, identity_min, min_det)
-                if cand is None:
-                    continue
-                if best is None or cand[1] > best[0][1]:
-                    best = (cand, frame)
-            return (best[0][2], best[1]) if best else None
+                if ok and frame is not None:
+                    yield frame
         finally:
             cap.release()
     finally:
@@ -73,6 +73,42 @@ def _scan_clip(engine, frigate, event_id, ref_embedding, max_frames, min_px, ide
             os.unlink(path)
         except OSError:
             pass
+
+
+def _scan_clip(engine, frigate, event_id, ref_embedding, max_frames, min_px, identity_min,
+               min_det):
+    best = None
+    for frame in _clip_frames(frigate, event_id, max_frames):
+        cand = _pick(engine, frame, ref_embedding, min_px, identity_min, min_det)
+        if cand is None:
+            continue
+        if best is None or cand[1] > best[0][1]:
+            best = (cand, frame)
+    return (best[0][2], best[1]) if best else None
+
+
+def find_face_in_clip(engine, frigate, event_id: str, max_frames: int = 12,
+                      min_px: int = 48, min_det: float = 0.65):
+    """Bestes Gesicht im Clip — fuer Ereignisse, deren Snapshot gar keines hergab.
+
+    Ausgewaehlt wird nach det_score, ausdruecklich NICHT nach Galerie-Aehnlichkeit:
+    sonst sucht man sich aus zwoelf Frames denjenigen heraus, der zufaellig am ehesten
+    wie jemand Bekanntes aussieht, und rechnet sich die Erkennung schoen. Kriterium
+    bleibt die Bildqualitaet, die Zuordnung kommt danach — genau wie beim Snapshot.
+
+    -> (face, frame) oder None
+    """
+    best = None
+    for frame in _clip_frames(frigate, event_id, max_frames):
+        for f in engine.faces(frame):
+            w = float(f.bbox[2] - f.bbox[0])
+            h = float(f.bbox[3] - f.bbox[1])
+            if w < min_px or h < min_px or float(f.det_score) < min_det:
+                continue
+            key = (float(f.det_score), w)
+            if best is None or key > best[0]:
+                best = (key, f, frame)
+    return (best[1], best[2]) if best else None
 
 
 def _scan_recordings(engine, frigate, camera, start_time, end_time, ref_embedding,

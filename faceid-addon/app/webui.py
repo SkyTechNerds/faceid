@@ -290,7 +290,7 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         "ignore_threshold": (0.1, 0.9),
         "dedupe_threshold": (0.50, 0.95),
     }
-    BACKUP_SPEC = {"hires_enroll": bool, "backup_enabled": bool, "backup_hour": (0, 23), "backup_keep": (1, 90), "backup_dir": str}
+    BACKUP_SPEC = {"hires_enroll": bool, "clip_fallback": bool, "backup_enabled": bool, "backup_hour": (0, 23), "backup_keep": (1, 90), "backup_dir": str}
     INT_SPEC = {"max_faces_per_person": (5, 100), "trimmed_keep": (0, 100),
                 "match_top_k": (1, 10), "max_ignore_anchors": (0, 200),
                 "min_face_px": (16, 200), "max_attempts": (1, 20)}
@@ -321,6 +321,8 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             gallery.dedupe_threshold = float(updates["dedupe_threshold"])
         if "hires_enroll" in updates:
             processor.hires_enroll = bool(updates["hires_enroll"])
+        if "clip_fallback" in updates:
+            processor.clip_fallback = bool(updates["clip_fallback"])
         # settings.json (nur die editierbaren Keys) persistieren
         keys = set(SETTINGS_SPEC) | set(BACKUP_SPEC) | set(INT_SPEC)
         overlay = {}
@@ -350,6 +352,7 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             "min_face_px": int(f.get("min_face_px", 48)),
             "max_attempts": int(f.get("max_attempts", 6)),
             "hires_enroll": bool(f.get("hires_enroll", True)),
+            "clip_fallback": bool(f.get("clip_fallback", True)),
         }
 
     @app.post("/api/settings")
