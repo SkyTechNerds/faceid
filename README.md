@@ -344,12 +344,20 @@ the number that decides how low you can safely go.
 
 ## Measuring instead of guessing
 
-Two scripts answer the questions that otherwise invite guesswork:
+Three scripts answer the questions that otherwise invite guesswork:
 
 ```bash
-python scripts/coverage.py                 # what is each person missing?
+python scripts/why-no-face.py --days 7 --clip 12   # why do events yield no face?
+python scripts/coverage.py                         # what is each person missing?
 python scripts/measure-recognition.py --baseline /tmp/old --days 3
 ```
+
+Start with `why-no-face.py` if recognition feels rare. It counts *why* events are
+discarded — no face at all, too small, no snapshot — and separates the hopeless cases
+(person too far away) from the recoverable ones (the snapshot moment was bad). With
+`--clip` it re-checks discarded events against the recording, which tells you what
+`clip_fallback` is worth **on your cameras** rather than on mine. Most "it barely
+recognises anyone" reports turn out not to be gallery problems at all.
 
 `coverage.py` reports, per person: photo count, diversity, viewing angles from the
 landmarks, which cameras she was enrolled from, greyscale/IR shots, and a leave-one-out
