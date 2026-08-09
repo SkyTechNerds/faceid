@@ -11,6 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Tags und Historie: die Release-Tag-Pruefung unten vergleicht gegen v<version>
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -82,6 +85,35 @@ jobs:
               print(f"version {version} has no CHANGELOG.md entry"); sys.exit(1)
           print(f"version {version} OK")
           EOF
+
+      # Ein Release, dessen Tag aelter ist als der Code, den seine Notes beschreiben, ist
+      # schlimmer als gar keiner: v0.9.1 wurde veroeffentlicht, danach fiel ein Startup-Bug
+      # auf, der Fix landete auf main — der Tarball am Tag enthielt ihn nie. CI prueft
+      # Commits, nicht ob ein Tag noch auf den Stand zeigt, fuer den er steht.
+      - name: Release tag matches shipped code
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          set -eu
+          version=$(python -c "import yaml;print(yaml.safe_load(open('faceid-addon/config.yaml'))['version'])")
+          tag="v$version"
+          if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "$tag not released yet — nothing to compare"; exit 0
+          fi
+          tag_sha=$(git rev-list -n1 "$tag")
+          if [ "$tag_sha" = "$(git rev-parse HEAD)" ]; then
+            echo "$tag is at HEAD"; exit 0
+          fi
+          # Nur was im Release landet zaehlt — Doku darf sich nachtraeglich aendern.
+          changed=$(git diff --name-only "$tag_sha" HEAD -- app static faceid-addon requirements.txt)
+          if [ -z "$changed" ]; then
+            echo "$tag differs from HEAD, but only in files that are not shipped"; exit 0
+          fi
+          echo "::error::$tag is released, but shipped files changed since then:"
+          echo "$changed" | sed 's/^/  /'
+          echo "Anyone downloading the $tag tarball does not get these changes."
+          echo "Fix: bump the version in faceid-addon/config.yaml (+ CHANGELOG entry),"
+          echo "or move the tag: git tag -f $tag origin/main && git push -f origin $tag"
+          exit 1
 
       - name: Web UI script parses
         run: |
