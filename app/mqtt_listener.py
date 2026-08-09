@@ -52,6 +52,10 @@ class EventProcessor:
         # verwertbares Gesicht; im Clip fanden sich 9 von 12 doch noch. Deshalb: erst
         # Snapshot (sofort da, kostet nichts), und nur wenn der leer bleibt, die Aufnahme.
         self.clip_fallback = bool(f.get("clip_fallback", True))
+        # Der Nutzen haengt am Blickwinkel: eine Kamera auf Kopfhoehe rettet fast jedes
+        # Ereignis, eine hoch montierte keins — dort enthaelt auch die Aufnahme kein
+        # Gesicht und der Scan kostet nur Rechenzeit. Leer = alle Kameras (wie cameras).
+        self.clip_fallback_cameras = set(f.get("clip_fallback_cameras") or [])
         self.clip_frames = int(f.get("clip_fallback_frames", 12))
         # strenger als beim Snapshot (0.55): aus zwoelf Frames darf man waehlerisch sein
         self.clip_min_det = float(f.get("clip_fallback_min_det", 0.65))
@@ -93,6 +97,13 @@ class EventProcessor:
         # Laeuft unabhaengig von clip_fallback, damit die Option in den Einstellungen
         # sofort greift statt erst nach einem Neustart — er wartet dann nur an der Queue.
         threading.Thread(target=self._clip_worker, daemon=True, name="faceid-clip").start()
+        # Einschraenkungen sichtbar machen: sonst sucht man spaeter im Log vergeblich
+        # nach Aufnahme-Scans, die per Konfiguration gar nicht stattfinden sollen.
+        if not self.clip_fallback:
+            log.info("Recording fallback is off — events whose snapshot has no face are dropped")
+        elif self.clip_fallback_cameras:
+            log.info("Recording fallback limited to: %s",
+                     ", ".join(sorted(self.clip_fallback_cameras)))
         if self.poll_interval > 0:
             threading.Thread(target=self._poller, daemon=True, name="faceid-poller").start()
 
@@ -293,6 +304,15 @@ class EventProcessor:
                 except queue.Full:
                     log.warning("queue full — dropped polled event %s", eid)
 
+    def _clip_wanted(self, camera: str) -> bool:
+        """Lohnt der Aufnahme-Rueckgriff bei dieser Kamera?
+
+        Leere Liste = alle, wie bei ``cameras``. Sonst nur die genannten: an hoch
+        montierten Kameras schaut niemand ins Objektiv, dort enthaelt auch die Aufnahme
+        kein Gesicht — der Scan kostet dann Sekunden je Ereignis fuer nichts.
+        """
+        return not self.clip_fallback_cameras or camera in self.clip_fallback_cameras
+
     def _clip_worker(self):
         """Ereignisse nachbearbeiten, deren Snapshot kein Gesicht hergab."""
         while True:
@@ -343,7 +363,8 @@ class EventProcessor:
                 # Snapshot hat nichts gefunden -> in der Aufnahme nachsehen, bevor das
                 # Ereignis verworfen wird. Erst hier, weil der Clip erst am Ende steht.
                 if (self.clip_fallback and st["best_person"] is None
-                        and st["best_unknown"] is None and not st.get("clip_tried")):
+                        and st["best_unknown"] is None and not st.get("clip_tried")
+                        and self._clip_wanted(st["camera"])):
                     st["clip_tried"] = True
                     try:
                         self.clip_queue.put_nowait(eid)

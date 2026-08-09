@@ -565,7 +565,12 @@ async function renderSettings(){
     <div class="row" style="margin-top:6px">
       <b style="min-width:230px;font:600 13px var(--sans)">Search the recording</b>
       <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="set-clipfallback" ${cfg.clip_fallback?'checked':''}> when the snapshot has no face</label>
-      <span class="stat">Frigate picks its snapshot by highest <em>person</em> score, which is not the same as "face visible" — often that is the moment someone turns away. Measured over 7 days of real events, only 21% of snapshots held a usable face; of the rest, the recording had one in 9 out of 12. How much it gains depends on the camera angle: at a front door at head height it rescued 4 of 4, on a high-mounted indoor camera none. Runs once at the end of an event and only when the snapshot found nothing, so it costs a few seconds of CPU exactly where there was no result anyway.</span>
+      <span class="stat">Frigate picks its snapshot by highest <em>person</em> score, which is not the same as "face visible" — often that is the moment someone turns away. Measured over 7 days of real events, only 21% of snapshots held a usable face; of the rest, the recording had one in 9 out of 12. Runs once at the end of an event and only when the snapshot found nothing, so it costs a few seconds of CPU exactly where there was no result anyway.</span>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <b style="min-width:230px;font:600 13px var(--sans)">…only these cameras</b>
+      <input id="set-clipcams" type="text" value="${(cfg.clip_fallback_cameras||[]).join(', ')}" placeholder="empty = all cameras" style="width:260px">
+      <span class="stat">The gain depends almost entirely on the viewing angle. At a front door at head height the recording rescued 4 of 4 events; on a high-mounted indoor camera and a zoomed garden view it rescued none — people never look towards those lenses, so the clip holds no face either and the scan burns CPU for nothing. Run <code>scripts/why-no-face.py --clip 12</code>, or the analysis above, to see which of your cameras are worth it.${(cfg.known_cameras||[]).length?' Known: '+cfg.known_cameras.join(', ')+'.':''}</span>
     </div>
     <div class="row" style="margin-top:6px">
       <b style="min-width:230px;font:600 13px var(--sans)">Keep set-aside photos</b>
@@ -635,6 +640,7 @@ async function saveThresholds(){
   const dt=document.getElementById('set-dedupe_threshold'); if(dt)body.dedupe_threshold=+dt.value;
   const hr=document.getElementById('set-hires'); if(hr)body.hires_enroll=hr.checked;
   const cf=document.getElementById('set-clipfallback'); if(cf)body.clip_fallback=cf.checked;
+  const cc=document.getElementById('set-clipcams'); if(cc)body.clip_fallback_cameras=cc.value.split(',').map(s=>s.trim()).filter(Boolean);
   const r=await j('api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   toast(r.trimmed?`Saved — ${r.trimmed} photo(s) trimmed`:'Settings saved');
   persons=await j('api/persons');

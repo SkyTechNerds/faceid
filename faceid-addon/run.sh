@@ -55,6 +55,7 @@ fi
 
 CAMERAS=$(cfg '.cameras | join(", ")')
 DISCOVERY=$(cfg '.discovery_cameras | join(", ")')
+CLIPCAMS=$(cfg '.clip_fallback_cameras | join(", ")')
 
 cat > /opt/faceid/config.yaml << EOF
 frigate:
@@ -76,6 +77,7 @@ faceid:
   dedupe_threshold: $(cfg '.dedupe_threshold')
   hires_enroll: $(cfg '.hires_enroll')
   clip_fallback: $(cfg '.clip_fallback')
+  clip_fallback_cameras: [${CLIPCAMS}]
   frigate_topic_prefix: $(cfg '.frigate_topic_prefix')
   poll_interval: $(cfg '.poll_interval')
   backup_enabled: $(cfg '.backup_enabled')

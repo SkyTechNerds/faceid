@@ -257,8 +257,15 @@ Three deliberate details:
   recognition or presence updates, and during a burst of events it skips rather than
   building a backlog that runs minutes behind reality.
 
-Turn it off if your hardware is tight — the cost is a few seconds of CPU per *otherwise
-failed* event, plus one clip download.
+Since the gain is so uneven, the fallback can be restricted to the cameras that earn it:
+**Settings → …only these cameras** (`clip_fallback_cameras`, empty = all). On the setup
+above, limiting it to the front door keeps every rescued event and drops roughly two
+thirds of the scans — the ones that were never going to find a face. Measure first with
+`scripts/why-no-face.py --clip 12`, which reports per camera, rather than guessing which
+of yours are worth it.
+
+Turn it off entirely if your hardware is tight — the cost is a few seconds of CPU per
+*otherwise failed* event, plus one clip download.
 
 ### Recovering missed events
 
@@ -519,6 +526,7 @@ that matter most:
 | `ignore_learning` (true) | learn new looks of ignored people as additional anchors (guarded) |
 | `hires_enroll` (true) | fetch new review-queue faces from the recording (sharper references) |
 | `clip_fallback` (true) | when a snapshot yields no face at all, scan the recording — on most setups the single biggest gain, see [above](#when-the-snapshot-has-no-face) |
+| `clip_fallback_cameras` (all) | restrict the fallback to cameras where it actually pays off — see below |
 | `clip_fallback_frames` (12) | how many frames to sample from the clip |
 | `clip_fallback_min_det` (0.65) | detection score a clip frame must reach — stricter than the snapshot path, because there are twelve frames to choose from |
 | `poll_interval` (0) | seconds; >0 also polls Frigate's event API for events MQTT never announces |

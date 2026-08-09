@@ -42,6 +42,14 @@ faceid:
                                        # turns away — measured here, only ~21% of snapshots
                                        # had a usable face. Runs once per event, only for
                                        # events that produced nothing, on its own thread.
+  clip_fallback_cameras: []            # [] = every camera. Restrict it once you know
+                                       # which ones benefit: the gain depends almost
+                                       # entirely on the viewing angle. A camera at head
+                                       # height rescues nearly every failed event; a
+                                       # high-mounted one rescues none, because nobody
+                                       # looks up at it — the clip holds no face either
+                                       # and the scan costs seconds per event for nothing.
+                                       # scripts/why-no-face.py --clip tells you which.
   clip_fallback_frames: 12             # frames sampled across the clip
   clip_fallback_min_det: 0.65          # stricter than the snapshot path (0.55): with twelve
                                        # frames to choose from you can afford to be picky

@@ -3,6 +3,18 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.9.1 — 2026-08-09
+
+- **`clip_fallback` can now be limited to specific cameras** (`clip_fallback_cameras`,
+  empty = all; Settings → *…only these cameras*). 0.9.0 already documented that the gain
+  depends almost entirely on the viewing angle — 4 of 4 events rescued at a front door at
+  head height, 0 of 6 on a high-mounted indoor camera and a zoomed garden view — but there
+  was no way to act on that. Scanning a camera nobody ever looks towards costs several
+  seconds of CPU per event and finds nothing, every time.
+- Restricting it to the cameras that earn it keeps every rescued event while dropping the
+  scans that were never going to succeed. `scripts/why-no-face.py --clip` reports per
+  camera, so the decision can be measured rather than guessed.
+
 ## 0.9.0 — 2026-08-08
 
 - **Recognition now falls back to the recording when the snapshot has no face.** This is
