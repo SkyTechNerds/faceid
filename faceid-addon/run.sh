@@ -53,9 +53,12 @@ if [ -z "${MQTT_HOST}" ]; then
     exit 1
 fi
 
-CAMERAS=$(cfg '.cameras | join(", ")')
-DISCOVERY=$(cfg '.discovery_cameras | join(", ")')
-CLIPCAMS=$(cfg '.clip_fallback_cameras | join(", ")')
+# '// []' MUSS vor die Pipe: cfg() haengt nur '// empty' ans Ende, das bindet dann an
+# join() und faengt eine fehlende Option nicht ab — jq bricht mit "Cannot iterate over
+# null" ab. Passiert, wenn eine Liste neu dazukommt und options.json sie noch nicht hat.
+CAMERAS=$(cfg '.cameras // [] | join(", ")')
+DISCOVERY=$(cfg '.discovery_cameras // [] | join(", ")')
+CLIPCAMS=$(cfg '.clip_fallback_cameras // [] | join(", ")')
 
 cat > /opt/faceid/config.yaml << EOF
 frigate:

@@ -14,6 +14,13 @@ update dialog; standalone users can watch GitHub releases.
 - Restricting it to the cameras that earn it keeps every rescued event while dropping the
   scans that were never going to succeed. `scripts/why-no-face.py --clip` reports per
   camera, so the decision can be measured rather than guessed.
+- Editable both as an app option and live in Settings; the service logs the restriction at
+  startup, so a missing recording scan does not look like a defect.
+- **Fixed a latent crash in the app's start script.** Camera lists were read as
+  `.cameras | join(", ")`, and the `// empty` fallback in the config helper binds to
+  `join()` rather than the lookup — so an option that is absent from `options.json` (which
+  is exactly what happens the moment a new list option ships) aborted jq, and with `set -e`
+  the app never started. All three lists now default before the pipe.
 
 ## 0.9.0 — 2026-08-08
 
