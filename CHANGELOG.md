@@ -3,6 +3,13 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.10.1 — 2026-08-10
+
+- **The header counters now update immediately after an action.** Assigning a cluster left
+  "14 persons · queue 0 · events 0" showing the previous numbers until the 10-second
+  refresh caught up — long enough to look like the assignment had not worked. The counters
+  are refreshed as part of every re-render, so they move the moment anything changes.
+
 ## 0.10.0 — 2026-08-10
 
 - **New: `live_hires_fallback` — recognition while it still matters.** The recording

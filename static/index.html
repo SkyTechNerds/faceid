@@ -132,6 +132,10 @@ function personOptions(sel){
 
 async function render(){
   const t=tab;
+  // Kopfzeile mitziehen: sie haengt sonst am 10s-Intervall und zeigt nach dem Zuweisen
+  // sekundenlang die alten Zahlen — was wie ein Fehler aussieht, obwohl es nur alt ist.
+  // Absichtlich ohne await, die Ansicht soll darauf nicht warten.
+  health();
   persons=await j('api/persons');
   if(t!==tab)return;
   if(tab==='unknowns')return renderUnknowns();
