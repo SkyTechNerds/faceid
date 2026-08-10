@@ -292,6 +292,13 @@ producing a face. Note the full frame is used as-is: cropping it to Frigate's pe
 first sounds obvious but measured *worse*, because the box belongs to one moment and the
 person has moved on.
 
+**Everyone in the frame counts.** A full frame often holds more than one person (5 of 12
+door events here), so every recognised face is published and added to the camera's presence
+sensor — which has always tracked a set of people. Only the largest binds to the Frigate
+event itself, since `sub_label` takes one name. This matters when a group arrives together:
+Frigate raises one event per person, and whoever's snapshot fails would otherwise be lost,
+even though their face is clearly in the frame fetched for someone else.
+
 It is off by default because go2rtc listens on port **1984**, which not every setup
 exposes. FaceID probes it once at startup and says so either way, so you know whether
 switching it on is worth trying.

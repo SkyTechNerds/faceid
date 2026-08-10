@@ -3,6 +3,24 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.11.0 — 2026-08-10
+
+- **The live hi-res frame now recognises everyone in it, not just the largest face.**
+  A full frame frequently holds more than one person — measured, 5 of 12 door events. Until
+  now `best_face()` kept the biggest and discarded the rest, so whoever stood closest won.
+- Frigate creates one event per person, so a group normally still works out. But when one
+  of those events has no usable snapshot, that person was dropped — even though their face
+  is plainly visible in the very frame we just fetched for someone else. Exactly the case
+  from #8: several people arriving together, one recognised late or not at all.
+- Every recognised person is published and counted towards the camera's presence sensor,
+  which has always held a *set* of people. Only the largest face binds to the event
+  (`sub_label` takes a single name, and `best_score` belongs to the person the event is
+  about). Uncertain secondary faces are not queued for review — the queue should show the
+  subject of the event, not passers-by in the background.
+- Fixed along the way: the per-event "already announced" marker held a single name, so two
+  known people in one frame would overwrite each other and be re-announced in turn — the
+  duplicate notifications that marker exists to prevent. It is a set now.
+
 ## 0.10.1 — 2026-08-10
 
 - **The header counters now update immediately after an action.** Assigning a cluster left

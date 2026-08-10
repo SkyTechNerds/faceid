@@ -259,23 +259,40 @@ class EventProcessor:
             log.info("event %s (%s): no live frame from go2rtc — is it reachable?",
                      eid, st["camera"])
             return
-        face = FaceEngine.best_face(self.engine.faces(frame), min_px=self.min_face_px)
         h, w = frame.shape[:2]
-        if face is None:
+        # ALLE Gesichter, nicht nur das groesste: ein Vollbild zeigt oft mehrere Personen
+        # (gemessen in 5 von 12 Tuer-Ereignissen). Frigate legt zwar je Person ein eigenes
+        # Ereignis an, aber wessen Snapshot nichts hergibt, faellt sonst hinten runter —
+        # obwohl das Gesicht hier klar zu sehen ist. Groesstes zuerst: das bindet ans
+        # Ereignis, alle weiteren werden nur gemeldet.
+        faces = sorted((f for f in self.engine.faces(frame)
+                        if (f.bbox[2] - f.bbox[0]) >= self.min_face_px
+                        and (f.bbox[3] - f.bbox[1]) >= self.min_face_px
+                        and float(f.det_score) >= 0.55),
+                       key=lambda f: -(f.bbox[2] - f.bbox[0]))
+        if not faces:
             log.info("event %s (%s): live frame %dx%d has no usable face either (%.1fs)",
                      eid, st["camera"], w, h, time.time() - t0)
             return
-        log.info("event %s (%s): live frame %dx%d has a face the snapshot missed "
-                 "(%dpx, det %.2f, %.1fs)", eid, st["camera"], w, h,
-                 int(face.bbox[2] - face.bbox[0]), float(face.det_score), time.time() - t0)
-        self._handle_face(eid, st, frame, face, source="live frame")
+        log.info("event %s (%s): live frame %dx%d has %d face(s) the snapshot missed "
+                 "(largest %dpx, det %.2f, %.1fs)", eid, st["camera"], w, h, len(faces),
+                 int(faces[0].bbox[2] - faces[0].bbox[0]), float(faces[0].det_score),
+                 time.time() - t0)
+        for i, face in enumerate(faces):
+            self._handle_face(eid, st, frame, face, source="live frame", primary=(i == 0))
 
-    def _handle_face(self, eid: str, st: dict, img, face, source: str = "snapshot"):
+    def _handle_face(self, eid: str, st: dict, img, face, source: str = "snapshot",
+                     primary: bool = True):
         """Gefundenes Gesicht zuordnen, melden, ablegen.
 
         Gemeinsam fuer Snapshot und Aufnahme — beide Wege muessen dieselben Schwellen,
         dieselbe Ignore-Logik und dieselbe Meldung verwenden, sonst haengt das Ergebnis
         davon ab, welcher Weg zufaellig gegriffen hat.
+
+        ``primary=False`` ist eine WEITERE Person im selben Bild: sie wird gemeldet und
+        zaehlt zur Anwesenheit, bindet aber nichts ans Ereignis. Frigates ``sub_label``
+        nimmt nur einen Namen, und ``best_score`` gehoert der Person, um die es in diesem
+        Ereignis geht — Frigate legt je Person ein eigenes an.
         """
         via = "" if source == "snapshot" else f" (from the {source})"
         emb = face.normed_embedding
@@ -299,6 +316,10 @@ class EventProcessor:
                  st["attempts"], name, score, via)
 
         if slug and score >= self.match_thr:
+            if not primary:
+                # Nur melden und zur Anwesenheit zaehlen; kein sub_label, kein best_score.
+                self._publish_recognition(eid, st, name, score)
+                return
             if score > st["best_score"]:
                 st["best_score"], st["best_person"] = score, name
                 self._publish_recognition(eid, st, name, score)
@@ -307,6 +328,10 @@ class EventProcessor:
             if score >= self.match_thr + 0.1:
                 st["done"] = True  # sehr sicherer Treffer -> keine weiteren Versuche
         else:
+            if not primary:
+                # Unsichere Zweitgesichter nicht in die Review-Queue: die Queue soll die
+                # Person des Ereignisses zeigen, nicht jeden Passanten im Hintergrund.
+                return
             # bestes unsicheres/unbekanntes Gesicht des Events merken, Ablage erst beim Event-Ende
             prev = st.get("best_unknown")
             if prev is None or face.det_score > prev["det_score"]:
@@ -477,9 +502,13 @@ class EventProcessor:
         }
         self.recent.appendleft(payload)
         # faceid/event genau einmal pro (Event, Person) — Score-Verbesserungen lösen keine
-        # erneute Meldung aus (sonst mehrere Notifications für dieselbe Sichtung)
-        if self.client and st.get("announced") != name:
-            st["announced"] = name
+        # erneute Meldung aus (sonst mehrere Notifications für dieselbe Sichtung).
+        # Eine MENGE, kein einzelner Name: in einem Vollbild koennen mehrere Bekannte
+        # stehen, die sich sonst gegenseitig ueberschreiben und abwechselnd neu gemeldet
+        # wuerden — genau die Doppelmeldung, die diese Stelle verhindern soll.
+        announced = st.setdefault("announced", set())
+        if self.client and name not in announced:
+            announced.add(name)
             self.client.publish(f"{self.prefix}/event", json.dumps(payload, ensure_ascii=False))
         self.present.setdefault(st["camera"], {})[name] = time.time()
         self._publish_presence(st["camera"], last=payload)
