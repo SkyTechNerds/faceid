@@ -59,6 +59,15 @@ faceid:
                                        # always exposed); the startup log says whether it
                                        # answers. Runs once per event, snapshot path first.
   live_hires_fallback_cameras: []      # [] = every camera
+  live_hires_mode: fallback            # fallback = only when the snapshot found nothing.
+                                       # always = scan the full frame on every event, with
+                                       # Frigate acting only as the trigger. Catches people
+                                       # Frigate never tracked as their own object (someone
+                                       # partly hidden). Measure first: over 7 days here,
+                                       # 0 of 15 groups held more faces than Frigate
+                                       # reported events, so it only added cost.
+  live_hires_cooldown: 2               # seconds; collapses the burst of events one group
+                                       # produces into a single full-frame scan
   clip_fallback_frames: 12             # frames sampled across the clip
   clip_fallback_min_det: 0.65          # stricter than the snapshot path (0.55): with twelve
                                        # frames to choose from you can afford to be picky

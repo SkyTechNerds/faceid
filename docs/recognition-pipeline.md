@@ -130,6 +130,34 @@ event itself, since `sub_label` takes one name. This matters when a group arrive
 Frigate raises one event per person, and whoever's snapshot fails would otherwise be lost,
 even though their face is clearly in the frame fetched for someone else.
 
+### Trigger mode: fallback or always
+
+By default the live frame is a *fallback* — it runs only when the snapshot found nothing.
+`live_hires_mode: always` turns it into the first step instead: Frigate merely signals
+"someone is on this camera", and FaceID decides from the full frame how many faces are
+actually there.
+
+The case for it, raised in #8: if three people arrive and Frigate only tracks two because
+one is partly hidden, the third never gets an event of their own. Both snapshots succeed,
+the fallback never fires, and that person stays invisible — although their face is in the
+frame.
+
+**Measure before switching it on.** Over seven days on a front-door camera here: 59 events
+in 31 groups, and in **0 of 15** analysable groups did the full frame hold more faces than
+Frigate had reported events. The ratio ran the other way — five events for one visible
+face — because Frigate re-tracks the same person as a new object when a track breaks. On
+that setup `always` would have cost ~31 extra frame fetches a week and found nobody. Your
+cameras may differ; a busier entrance with real groups is exactly where it could pay off.
+
+Two safeguards:
+
+* **A cooldown** (`live_hires_cooldown`, default 2s) per camera. One group produces a burst
+  of events, and the frame would be practically identical for each — so it is fetched once.
+* **Nothing found this way is bound to the Frigate event.** In `always` the scan runs
+  *before* the snapshot has established who the event is about, so the largest face in the
+  frame may well be somebody else. Those recognitions are published and counted towards
+  presence, but `sub_label` and the event's own score stay with the snapshot.
+
 It is off by default because go2rtc listens on port **1984**, which not every setup
 exposes. FaceID probes it once at startup and says so either way:
 

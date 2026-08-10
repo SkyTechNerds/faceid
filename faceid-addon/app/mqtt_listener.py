@@ -63,6 +63,17 @@ class EventProcessor:
         # erreichbar ist; der Startcheck sagt, ob es sich lohnt.
         self.live_hires = bool(f.get("live_hires_fallback", False))
         self.live_hires_cameras = set(f.get("live_hires_fallback_cameras") or [])
+        # "always": Frigate ist nur noch der Ausloeser ("da ist wer"), FaceID sieht im
+        # Vollbild selbst nach, wie viele Gesichter da sind. Gedacht fuer Gruppen, bei
+        # denen Frigate eine verdeckte Person gar nicht erst trackt (Issue #8) — auf
+        # sieben Tagen hiesiger Daten kam das nie vor (0 von 15 Gruppen), auf anderen
+        # Kameras kann es anders aussehen. Deshalb Option, nicht Standard.
+        mode = str(f.get("live_hires_mode", "fallback")).strip().lower()
+        self.live_hires_mode = mode if mode in ("fallback", "always") else "fallback"
+        # Eine Gruppe erzeugt mehrere Ereignisse fast gleichzeitig — ohne Sperre liefe
+        # der teure Scan mehrfach fuer dasselbe Bild.
+        self.live_cooldown = float(f.get("live_hires_cooldown", 2))
+        self._live_last: dict[str, float] = {}    # Kamera -> letzter Vollbild-Scan
         self.clip_frames = int(f.get("clip_fallback_frames", 12))
         # strenger als beim Snapshot (0.55): aus zwoelf Frames darf man waehlerisch sein
         self.clip_min_det = float(f.get("clip_fallback_min_det", 0.65))
@@ -219,6 +230,10 @@ class EventProcessor:
         if st is None or st["done"]:
             return
         st["attempts"] += 1
+        if self.live_hires_mode == "always":
+            # Zuerst das Vollbild — der Snapshot laeuft danach trotzdem, denn nur er
+            # sagt, WER zu diesem Ereignis gehoert.
+            self._try_live_hires(eid, st, always=True)
         img = self.frigate.snapshot(eid, crop=True)
         if img is None:
             log.info("event %s (%s): no snapshot from Frigate", eid, st["camera"])
@@ -244,7 +259,7 @@ class EventProcessor:
             return
         self._handle_face(eid, st, img, face)
 
-    def _try_live_hires(self, eid: str, st: dict):
+    def _try_live_hires(self, eid: str, st: dict, always: bool = False):
         """Der Snapshot gab nichts her — sofort einen Haupt-Stream-Frame nachschieben.
 
         Bewusst nur EINMAL je Ereignis: der Abruf kostet rund eine Sekunde, und bei
@@ -255,6 +270,11 @@ class EventProcessor:
             return
         if self.live_hires_cameras and st["camera"] not in self.live_hires_cameras:
             return
+        if always:
+            last = self._live_last.get(st["camera"], 0.0)
+            if time.time() - last < self.live_cooldown:
+                return          # dieselbe Gruppe, das Bild waere praktisch dasselbe
+            self._live_last[st["camera"]] = time.time()
         st["live_tried"] = True
         t0 = time.time()
         frame = self.frigate.live_frame(st["camera"])
@@ -282,7 +302,11 @@ class EventProcessor:
                  int(faces[0].bbox[2] - faces[0].bbox[0]), float(faces[0].det_score),
                  time.time() - t0)
         for i, face in enumerate(faces):
-            self._handle_face(eid, st, frame, face, source="live frame", primary=(i == 0))
+            # Im always-Modus bindet NICHTS ans Ereignis: der Scan laeuft, bevor der
+            # Snapshot geklaert hat, wer gemeint ist — das groesste Gesicht im Vollbild
+            # kann jemand ganz anderes sein. Melden und Anwesenheit ja, sub_label nein.
+            self._handle_face(eid, st, frame, face, source="live frame",
+                              primary=(i == 0 and not always))
 
     def _handle_face(self, eid: str, st: dict, img, face, source: str = "snapshot",
                      primary: bool = True):

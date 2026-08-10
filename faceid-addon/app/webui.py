@@ -290,7 +290,7 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         "ignore_threshold": (0.1, 0.9),
         "dedupe_threshold": (0.50, 0.95),
     }
-    BACKUP_SPEC = {"hires_enroll": bool, "clip_fallback": bool, "clip_fallback_cameras": list, "live_hires_fallback": bool, "live_hires_fallback_cameras": list, "backup_enabled": bool, "backup_hour": (0, 23), "backup_keep": (1, 90), "backup_dir": str}
+    BACKUP_SPEC = {"hires_enroll": bool, "clip_fallback": bool, "clip_fallback_cameras": list, "live_hires_fallback": bool, "live_hires_fallback_cameras": list, "live_hires_mode": str, "backup_enabled": bool, "backup_hour": (0, 23), "backup_keep": (1, 90), "backup_dir": str}
     INT_SPEC = {"max_faces_per_person": (5, 100), "trimmed_keep": (0, 100),
                 "match_top_k": (1, 10), "max_ignore_anchors": (0, 200),
                 "min_face_px": (16, 200), "max_attempts": (1, 20)}
@@ -329,6 +329,9 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             processor.live_hires = bool(updates["live_hires_fallback"])
         if "live_hires_fallback_cameras" in updates:
             processor.live_hires_cameras = set(updates["live_hires_fallback_cameras"])
+        if "live_hires_mode" in updates:
+            m = str(updates["live_hires_mode"]).strip().lower()
+            processor.live_hires_mode = m if m in ("fallback", "always") else "fallback"
         # settings.json (nur die editierbaren Keys) persistieren
         keys = set(SETTINGS_SPEC) | set(BACKUP_SPEC) | set(INT_SPEC)
         overlay = {}
@@ -362,6 +365,7 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             "clip_fallback_cameras": list(f.get("clip_fallback_cameras") or []),
             "live_hires_fallback": bool(f.get("live_hires_fallback", False)),
             "live_hires_fallback_cameras": list(f.get("live_hires_fallback_cameras") or []),
+            "live_hires_mode": str(f.get("live_hires_mode", "fallback")),
             "known_cameras": sorted(processor._announced or set(f.get("cameras") or [])),
         }
 

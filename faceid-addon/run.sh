@@ -84,6 +84,8 @@ faceid:
   clip_fallback_cameras: [${CLIPCAMS}]
   live_hires_fallback: $(cfg '.live_hires_fallback')
   live_hires_fallback_cameras: [${LIVECAMS}]
+  live_hires_mode: $(cfg '.live_hires_mode')
+  live_hires_cooldown: $(cfg '.live_hires_cooldown')
   frigate_topic_prefix: $(cfg '.frigate_topic_prefix')
   poll_interval: $(cfg '.poll_interval')
   backup_enabled: $(cfg '.backup_enabled')

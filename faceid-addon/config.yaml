@@ -1,5 +1,5 @@
 name: FaceID
-version: "0.11.1"
+version: "0.12.0"
 slug: faceid
 description: Face recognition for Frigate — trainable gallery, clustered unknown review, HA sensors
 url: https://github.com/SkyTechNerds/faceid
@@ -44,6 +44,8 @@ options:
   clip_fallback_cameras: []
   live_hires_fallback: false
   live_hires_fallback_cameras: []
+  live_hires_mode: fallback
+  live_hires_cooldown: 2
   frigate_topic_prefix: frigate
   poll_interval: 0
   backup_enabled: false
@@ -77,6 +79,8 @@ schema:
   live_hires_fallback: bool
   live_hires_fallback_cameras:
     - str
+  live_hires_mode: list(fallback|always)
+  live_hires_cooldown: float(0,60)
   frigate_topic_prefix: str?
   poll_interval: int(0,3600)
   backup_enabled: bool

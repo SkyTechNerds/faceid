@@ -493,6 +493,7 @@ that matter most:
 | `clip_fallback_cameras` (all) | restrict the fallback to cameras where it actually pays off — the gain depends on the camera angle |
 | `live_hires_fallback` (false) | on a failed snapshot, ask go2rtc for a full-resolution frame right away instead of waiting for the event to end ([details](docs/recognition-pipeline.md)) |
 | `live_hires_fallback_cameras` (all) | restrict that to specific cameras |
+| `live_hires_mode` (fallback) | `always` scans the full frame on every event instead of only after a failed snapshot — measure first, it found nothing extra here |
 | `clip_fallback_frames` (12) | how many frames to sample from the clip |
 | `clip_fallback_retries` (3) | retries when the clip is not finalised yet — without them roughly one scan in four is lost |
 | `clip_fallback_min_det` (0.65) | detection score a clip frame must reach — stricter than the snapshot path, because there are twelve frames to choose from |

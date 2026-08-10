@@ -3,6 +3,26 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.12.0 — 2026-08-10
+
+- **New: `live_hires_mode: always`** — Frigate becomes only the trigger ("someone is on
+  this camera") and FaceID decides from the full frame how many faces are present, instead
+  of waiting for a snapshot to fail. Suggested in #8 for a case the fallback structurally
+  cannot reach: if one of three arrivals is partly hidden, Frigate never tracks them as
+  their own object, both other snapshots succeed, and that person stays invisible.
+- **Measured before shipping, and the numbers argue against making it the default.** Seven
+  days on a front-door camera: 59 events in 31 groups, and in **0 of 15** analysable groups
+  did the full frame hold more faces than Frigate had reported events. It ran the other way
+  — five events for a single visible face — because Frigate re-tracks a person as a new
+  object when a track breaks. So `fallback` stays the default; `always` is there for setups
+  where a busy entrance makes the case.
+- A per-camera cooldown (`live_hires_cooldown`, default 2s) collapses the burst of events
+  one group produces into a single frame fetch.
+- In `always`, nothing found in the frame is bound to the Frigate event: the scan runs
+  before the snapshot has established who the event is about, so the largest face may be
+  someone else entirely. Those people are published and counted towards presence, while
+  `sub_label` and the event score stay with the snapshot.
+
 ## 0.11.1 — 2026-08-10
 
 - **Fixed: a recording scan that found nothing because the clip did not exist yet was
