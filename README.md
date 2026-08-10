@@ -205,103 +205,31 @@ people in frame, the wrong face can't be enrolled. When no frame yields a usable
 (roughly one event in three), the original snapshot is kept.
 
 Live recognition tries the fast snapshot path first; only when that yields nothing does it
-fall back to the recording (see below). Needs recordings enabled for the camera.
+fall back to a full-resolution frame — see
+[docs/recognition-pipeline.md](docs/recognition-pipeline.md). Needs recordings enabled for
+the camera.
 
 ## When the snapshot has no face
 
-**Frigate picks its snapshot by highest *person* score — which is not the same as "a face
-is visible".** Often the clearest view *of a person* is the moment they turn away. This is
-not a rare edge case. Measured over seven days of real events on a four-camera setup:
+Frigate picks its snapshot by highest *person* score, which is not the same as "a face is
+visible" — often it is the moment someone turns away. Measured over seven days of real
+events, only **21%** of snapshots held a usable face.
 
-| what the snapshot gave us | events | |
-|---|---|---|
-| no face detected at all | 43 | 68% |
-| face too small (median 29px) | 7 | 11% |
-| **usable face** | **13** | **21%** |
+FaceID therefore falls back, in order, and only when the step before found nothing:
 
-Two obvious suspects turned out to be innocent. **Night is not the problem** — relative to
-how many events each produced, IR did no worse than daylight (9 usable out of 41 IR events,
-4 out of 22 in colour). **Distance is not the problem either** — not one crop was narrower
-than 120px; the people were plenty large in frame.
+| | source | when | cost |
+|---|---|---|---|
+| ① | Frigate snapshot | every event | already there |
+| ② | live full-resolution frame via go2rtc | immediately, opt-in (`live_hires_fallback`) | ~1s |
+| ③ | scan of the event recording | at event end (`clip_fallback`, on by default) | ~5–7s |
 
-The recording tells a different story. Of twelve failed events re-checked frame by frame,
-**nine had a perfectly good face** (det 0.68–0.87) that the snapshot simply missed.
+On the setup measured here this lifts usable events from a fifth to about four in five —
+but the gain depends almost entirely on the **camera angle**, both fallbacks can be
+limited per camera, and the live one needs go2rtc reachable on port 1984.
 
-So **Settings → Search the recording** (default on) does exactly that: when an event ends
-and the snapshot never produced a face, FaceID samples frames across the clip and takes
-the best one.
-
-**How much it helps depends entirely on where the camera points**, so measure yours rather
-than expecting a number. On the setup above, checked per camera:
-
-| camera | recording rescued |
-|---|---|
-| front door, at head height | 4/4 (and 9/12 in a wider sample) |
-| child's room, mounted high | 0/4 |
-| garden, zoomed | 0/2 |
-
-Where people walk towards the lens, almost every failed snapshot is recoverable. Where the
-camera looks down at people, or catches them side-on at distance, the clip holds no face
-either — no amount of scanning invents one. Raising `det_size` does not change this: at
-1280 instead of 640 the results were identical, at twice the cost (11.1s vs 5.4s per
-event). The limit is the viewing angle, not the resolution.
-
-Three deliberate details:
-
-* **Only when the snapshot found nothing.** Events that already worked cost nothing extra.
-* **Selection is by detection quality, never by gallery similarity.** Picking whichever of
-  twelve frames happens to look most like someone you know would inflate the numbers and
-  invite misassignments. The frame is chosen on image quality; identity is decided
-  afterwards, exactly as on the snapshot path.
-* **Its own thread, short queue.** A clip scan takes seconds. It must not delay live
-  recognition or presence updates, and during a burst of events it skips rather than
-  building a backlog that runs minutes behind reality.
-
-Since the gain is so uneven, the fallback can be restricted to the cameras that earn it:
-**Settings → …only these cameras** (`clip_fallback_cameras`, empty = all). On the setup
-above, limiting it to the front door keeps every rescued event and drops roughly two
-thirds of the scans — the ones that were never going to find a face. Measure first with
-`scripts/why-no-face.py --clip 12`, which reports per camera, rather than guessing which
-of yours are worth it. Once set, the startup log states the restriction
-(`Recording fallback limited to: entrance`) — so a missing recording scan reads as a
-setting rather than a fault.
-
-Turn it off entirely if your hardware is tight — the cost is a few seconds of CPU per
-*otherwise failed* event, plus one clip download.
-
-### When you need the answer *now*
-
-The recording fallback has one hard limit: it can only run once an event has **ended**, and
-a recorded moment is not retrievable until roughly **45 seconds** after it happened
-(measured). For "turn on the light when a known face arrives" that is far too late.
-
-**Settings → Live hi-res retry** (`live_hires_fallback`, off by default) closes that gap.
-When the snapshot yields nothing, FaceID asks **go2rtc** — which ships with Frigate — for a
-current frame of the *main* stream, in about a second. Frigate's own `latest.jpg` does not
-help here: it comes from the detect stream and is exactly as small as the snapshot.
-
-Measured on a 2560x1920 camera, against the detect snapshot for the same events:
-
-| source | events with a usable face | face size |
-|---|---|---|
-| detect snapshot | 5/8 | 50–105px |
-| full-resolution frame | 7/8 | 104–212px |
-
-Faces come out roughly twice as large, and events that produced nothing at all start
-producing a face. Note the full frame is used as-is: cropping it to Frigate's person box
-first sounds obvious but measured *worse*, because the box belongs to one moment and the
-person has moved on.
-
-**Everyone in the frame counts.** A full frame often holds more than one person (5 of 12
-door events here), so every recognised face is published and added to the camera's presence
-sensor — which has always tracked a set of people. Only the largest binds to the Frigate
-event itself, since `sub_label` takes one name. This matters when a group arrives together:
-Frigate raises one event per person, and whoever's snapshot fails would otherwise be lost,
-even though their face is clearly in the frame fetched for someone else.
-
-It is off by default because go2rtc listens on port **1984**, which not every setup
-exposes. FaceID probes it once at startup and says so either way, so you know whether
-switching it on is worth trying.
+**→ [docs/recognition-pipeline.md](docs/recognition-pipeline.md)** covers the whole thing:
+the measurements behind each stage, why cropping to the person box makes things *worse*,
+how several people in one frame are handled, what it costs, and how to read the log.
 
 ### Recovering missed events
 
@@ -561,9 +489,9 @@ that matter most:
 | `ignore_threshold` (= match_threshold) | similarity at which a face counts as ignored |
 | `ignore_learning` (true) | learn new looks of ignored people as additional anchors (guarded) |
 | `hires_enroll` (true) | fetch new review-queue faces from the recording (sharper references) |
-| `clip_fallback` (true) | when a snapshot yields no face at all, scan the recording — on most setups the single biggest gain, see [above](#when-the-snapshot-has-no-face) |
-| `clip_fallback_cameras` (all) | restrict the fallback to cameras where it actually pays off — see [When the snapshot has no face](#when-the-snapshot-has-no-face) |
-| `live_hires_fallback` (false) | on a failed snapshot, ask go2rtc for a full-resolution frame right away instead of waiting for the event to end |
+| `clip_fallback` (true) | when a snapshot yields no face at all, scan the recording — on most setups the single biggest gain, see [the pipeline doc](docs/recognition-pipeline.md) |
+| `clip_fallback_cameras` (all) | restrict the fallback to cameras where it actually pays off — the gain depends on the camera angle |
+| `live_hires_fallback` (false) | on a failed snapshot, ask go2rtc for a full-resolution frame right away instead of waiting for the event to end ([details](docs/recognition-pipeline.md)) |
 | `live_hires_fallback_cameras` (all) | restrict that to specific cameras |
 | `clip_fallback_frames` (12) | how many frames to sample from the clip |
 | `clip_fallback_min_det` (0.65) | detection score a clip frame must reach — stricter than the snapshot path, because there are twelve frames to choose from |
