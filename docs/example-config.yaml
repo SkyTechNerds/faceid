@@ -62,6 +62,10 @@ faceid:
   clip_fallback_frames: 12             # frames sampled across the clip
   clip_fallback_min_det: 0.65          # stricter than the snapshot path (0.55): with twelve
                                        # frames to choose from you can afford to be picky
+  clip_fallback_retries: 3             # Frigate finalises the clip a moment after the event
+                                       # ends; without a retry the event is discarded because
+                                       # of a file that exists seconds later (~1 scan in 4)
+  clip_fallback_retry_seconds: 10      # wait between those retries
   ignore_threshold: 0.50               # similarity at which a face counts as ignored
                                        # (defaults to match_threshold when unset)
   max_ignore_anchors: 0                # cap on AUTO-learned ignore anchors per group

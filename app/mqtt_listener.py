@@ -66,6 +66,9 @@ class EventProcessor:
         self.clip_frames = int(f.get("clip_fallback_frames", 12))
         # strenger als beim Snapshot (0.55): aus zwoelf Frames darf man waehlerisch sein
         self.clip_min_det = float(f.get("clip_fallback_min_det", 0.65))
+        # Frigate braucht nach dem Ereignis einen Moment, bis der Clip abrufbar ist
+        self.clip_retries_max = int(f.get("clip_fallback_retries", 3))
+        self.clip_retry_secs = float(f.get("clip_fallback_retry_seconds", 10))
         # klein gehalten: bei einem Ereignisschwall lieber welche auslassen als eine
         # Warteschlange aufbauen, die Minuten hinter der Gegenwart herlaeuft
         self.clip_queue: "queue.Queue[str]" = queue.Queue(maxsize=20)
@@ -416,14 +419,32 @@ class EventProcessor:
         if st is None or st["done"]:
             return
         t0 = time.time()
+        stats: dict = {}
         hit = find_face_in_clip(self.engine, self.frigate, eid,
                                 max_frames=self.clip_frames,
                                 min_px=self.min_face_px,
-                                min_det=self.clip_min_det)
+                                min_det=self.clip_min_det, stats=stats)
         took = time.time() - t0
+        if hit is None and not stats.get("frames"):
+            # Kein einziger Frame gelesen: Frigate stellt den Clip erst nach dem
+            # Ereignis fertig, der Finalizer greift aber direkt danach zu. Das als
+            # "kein Gesicht" zu verbuchen verwirft ein Ereignis wegen einer Datei,
+            # die es Sekunden spaeter gibt — gemessen rund jeder vierte Scan.
+            tries = st.get("clip_retries", 0) + 1
+            st["clip_retries"] = tries
+            if tries <= self.clip_retries_max:
+                st["clip_tried"] = False               # erneut einreihen erlauben
+                st["clip_retry_after"] = time.time() + self.clip_retry_secs
+                log.info("event %s (%s): recording not ready yet, retry %d/%d in %ds",
+                         eid, st["camera"], tries, self.clip_retries_max,
+                         int(self.clip_retry_secs))
+            else:
+                log.info("event %s (%s): recording still not available after %d tries",
+                         eid, st["camera"], tries)
+            return
         if hit is None:
             log.info("event %s (%s): no face in the recording either (%d frames, %.1fs)",
-                     eid, st["camera"], self.clip_frames, took)
+                     eid, st["camera"], stats.get("frames", 0), took)
             return
         face, frame = hit
         log.info("event %s (%s): the recording has a face the snapshot missed "
@@ -449,6 +470,7 @@ class EventProcessor:
                 # Ereignis verworfen wird. Erst hier, weil der Clip erst am Ende steht.
                 if (self.clip_fallback and st["best_person"] is None
                         and st["best_unknown"] is None and not st.get("clip_tried")
+                        and now >= st.get("clip_retry_after", 0)
                         and self._clip_wanted(st["camera"])):
                     st["clip_tried"] = True
                     try:

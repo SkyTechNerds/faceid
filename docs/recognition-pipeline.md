@@ -71,6 +71,13 @@ Since the gain is so uneven, restrict it to the cameras that earn it:
 `clip_fallback_cameras` (empty = all). On the setup above, limiting it to the front door
 keeps every rescued event and drops roughly two thirds of the scans.
 
+**The clip is not ready the instant an event ends.** Frigate finalises it a moment later,
+while the finaliser reaches for it immediately — measured here, about one scan in four came
+back with zero frames read. That used to be logged as "no face" and the event was dropped
+because of a file that existed seconds later. A failed download is now retried
+(`clip_fallback_retries`, default 3, every `clip_fallback_retry_seconds`, default 10);
+a clip that *was* read and simply holds no face is not retried.
+
 Three deliberate details:
 
 * **Only when the snapshot found nothing.** Events that already worked cost nothing extra.

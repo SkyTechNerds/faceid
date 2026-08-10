@@ -3,6 +3,20 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.11.1 — 2026-08-10
+
+- **Fixed: a recording scan that found nothing because the clip did not exist yet was
+  counted as "no face".** Frigate finalises the clip a moment after an event ends, while
+  the finaliser reaches for it immediately. The download then failed, `find_face_in_clip`
+  returned empty-handed, and the event was discarded — over a file that would have been
+  there seconds later.
+- Visible in the log as an impossible duration: `no face in the recording either (12
+  frames, 0.0s)`. A real scan takes 5–7s. Roughly **one scan in four** ended this way here,
+  including the one that would have been the last chance to recognise someone at the door.
+- The scan now reports how many frames it actually read, so "clip not ready" and "clip has
+  no face" are told apart. The first is retried (`clip_fallback_retries`, default 3, every
+  `clip_fallback_retry_seconds`, default 10); the second is not — it is a real answer.
+
 ## 0.11.0 — 2026-08-10
 
 - **The live hi-res frame now recognises everyone in it, not just the largest face.**

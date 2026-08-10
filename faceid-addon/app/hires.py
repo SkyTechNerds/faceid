@@ -88,7 +88,7 @@ def _scan_clip(engine, frigate, event_id, ref_embedding, max_frames, min_px, ide
 
 
 def find_face_in_clip(engine, frigate, event_id: str, max_frames: int = 12,
-                      min_px: int = 48, min_det: float = 0.65):
+                      min_px: int = 48, min_det: float = 0.65, stats: dict | None = None):
     """Bestes Gesicht im Clip — fuer Ereignisse, deren Snapshot gar keines hergab.
 
     Ausgewaehlt wird nach det_score, ausdruecklich NICHT nach Galerie-Aehnlichkeit:
@@ -96,10 +96,18 @@ def find_face_in_clip(engine, frigate, event_id: str, max_frames: int = 12,
     wie jemand Bekanntes aussieht, und rechnet sich die Erkennung schoen. Kriterium
     bleibt die Bildqualitaet, die Zuordnung kommt danach — genau wie beim Snapshot.
 
+    ``stats`` wird, wenn uebergeben, mit ``frames`` befuellt: wie viele Frames wirklich
+    gelesen wurden. Null bedeutet, dass die Aufnahme noch gar nicht abrufbar war —
+    Frigate stellt den Clip erst nach dem Ereignis fertig. Ohne diese Unterscheidung
+    sieht "Clip noch nicht da" genauso aus wie "Clip enthaelt kein Gesicht", und der
+    Aufrufer verwirft ein Ereignis, das Sekunden spaeter zu retten waere.
+
     -> (face, frame) oder None
     """
     best = None
+    seen = 0
     for frame in _clip_frames(frigate, event_id, max_frames):
+        seen += 1
         for f in engine.faces(frame):
             w = float(f.bbox[2] - f.bbox[0])
             h = float(f.bbox[3] - f.bbox[1])
@@ -108,6 +116,8 @@ def find_face_in_clip(engine, frigate, event_id: str, max_frames: int = 12,
             key = (float(f.det_score), w)
             if best is None or key > best[0]:
                 best = (key, f, frame)
+    if stats is not None:
+        stats["frames"] = seen
     return (best[1], best[2]) if best else None
 
 
