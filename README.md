@@ -269,6 +269,33 @@ setting rather than a fault.
 Turn it off entirely if your hardware is tight — the cost is a few seconds of CPU per
 *otherwise failed* event, plus one clip download.
 
+### When you need the answer *now*
+
+The recording fallback has one hard limit: it can only run once an event has **ended**, and
+a recorded moment is not retrievable until roughly **45 seconds** after it happened
+(measured). For "turn on the light when a known face arrives" that is far too late.
+
+**Settings → Live hi-res retry** (`live_hires_fallback`, off by default) closes that gap.
+When the snapshot yields nothing, FaceID asks **go2rtc** — which ships with Frigate — for a
+current frame of the *main* stream, in about a second. Frigate's own `latest.jpg` does not
+help here: it comes from the detect stream and is exactly as small as the snapshot.
+
+Measured on a 2560x1920 camera, against the detect snapshot for the same events:
+
+| source | events with a usable face | face size |
+|---|---|---|
+| detect snapshot | 5/8 | 50–105px |
+| full-resolution frame | 7/8 | 104–212px |
+
+Faces come out roughly twice as large, and events that produced nothing at all start
+producing a face. Note the full frame is used as-is: cropping it to Frigate's person box
+first sounds obvious but measured *worse*, because the box belongs to one moment and the
+person has moved on.
+
+It is off by default because go2rtc listens on port **1984**, which not every setup
+exposes. FaceID probes it once at startup and says so either way, so you know whether
+switching it on is worth trying.
+
 ### Recovering missed events
 
 Sometimes the detect snapshot holds no usable face at all and the event is skipped
@@ -529,6 +556,8 @@ that matter most:
 | `hires_enroll` (true) | fetch new review-queue faces from the recording (sharper references) |
 | `clip_fallback` (true) | when a snapshot yields no face at all, scan the recording — on most setups the single biggest gain, see [above](#when-the-snapshot-has-no-face) |
 | `clip_fallback_cameras` (all) | restrict the fallback to cameras where it actually pays off — see [When the snapshot has no face](#when-the-snapshot-has-no-face) |
+| `live_hires_fallback` (false) | on a failed snapshot, ask go2rtc for a full-resolution frame right away instead of waiting for the event to end |
+| `live_hires_fallback_cameras` (all) | restrict that to specific cameras |
 | `clip_fallback_frames` (12) | how many frames to sample from the clip |
 | `clip_fallback_min_det` (0.65) | detection score a clip frame must reach — stricter than the snapshot path, because there are twelve frames to choose from |
 | `poll_interval` (0) | seconds; >0 also polls Frigate's event API for events MQTT never announces |

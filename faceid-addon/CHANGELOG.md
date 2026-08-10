@@ -3,6 +3,27 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.10.0 — 2026-08-10
+
+- **New: `live_hires_fallback` — recognition while it still matters.** The recording
+  fallback from 0.9.0 can only run once an event has ended, and Frigate does not hand out
+  a recorded moment until roughly **45 seconds** after it happened (measured). For
+  automations that greet someone at the door, that is too late — reported in #8, where one
+  person in a group was recognised promptly and another only long after.
+- When the snapshot yields no usable face, FaceID now optionally asks **go2rtc** (which
+  ships with Frigate) for a current main-stream frame — about **1 second**, at full camera
+  resolution. Frigate's `latest.jpg` is no substitute: it comes from the detect stream and
+  is exactly as small as the snapshot.
+- Measured against the detect snapshot on the same events: usable faces went from **5/8 to
+  7/8**, face size from 50–105px to 104–212px.
+- The frame is used whole. Cropping it to Frigate's person box first — the obvious idea,
+  and the one the issue suggested — measured **worse** (3/8): `data.box` describes a single
+  moment, and by the time a frame is fetched the person has moved out of it.
+- Off by default, because go2rtc listens on port 1984 and not every setup exposes it.
+  FaceID probes it once at startup and logs the result either way, so the option is not a
+  guess. Runs once per event, snapshot path first, and can be limited per camera
+  (`live_hires_fallback_cameras`).
+
 ## 0.9.1 — 2026-08-09
 
 - **`clip_fallback` can now be limited to specific cameras** (`clip_fallback_cameras`,

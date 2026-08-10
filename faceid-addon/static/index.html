@@ -573,6 +573,16 @@ async function renderSettings(){
       <span class="stat">The gain depends almost entirely on the viewing angle. At a front door at head height the recording rescued 4 of 4 events; on a high-mounted indoor camera and a zoomed garden view it rescued none — people never look towards those lenses, so the clip holds no face either and the scan burns CPU for nothing. Run <code>scripts/why-no-face.py --clip 12</code>, or the analysis above, to see which of your cameras are worth it.${(cfg.known_cameras||[]).length?' Known: '+cfg.known_cameras.join(', ')+'.':''}</span>
     </div>
     <div class="row" style="margin-top:6px">
+      <b style="min-width:230px;font:600 13px var(--sans)">Live hi-res retry</b>
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="set-livehires" ${cfg.live_hires_fallback?'checked':''}> ask go2rtc for a full-resolution frame</label>
+      <span class="stat">For automations that must react <em>while</em> someone is at the door. Searching the recording only works once an event has ended, and a recorded moment is not retrievable for about 45s — too late to greet anyone. go2rtc serves the main stream instead, in roughly a second. Requires go2rtc reachable on port 1984 (it ships with Frigate, but is not always exposed) — the startup log says whether it answers here. Runs once per event, only when the snapshot found nothing.</span>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <b style="min-width:230px;font:600 13px var(--sans)">…only these cameras</b>
+      <input id="set-livecams" type="text" value="${(cfg.live_hires_fallback_cameras||[]).join(', ')}" placeholder="empty = all cameras" style="width:260px">
+      <span class="stat">Same idea as above: restrict it to cameras where faces actually appear.${(cfg.known_cameras||[]).length?' Known: '+cfg.known_cameras.join(', ')+'.':''}</span>
+    </div>
+    <div class="row" style="margin-top:6px">
       <b style="min-width:230px;font:600 13px var(--sans)">Keep set-aside photos</b>
       <input id="set-trimkeep" type="number" min="0" max="100" value="${cfg.trimmed_keep}" style="width:70px">
       <span class="stat">how many trimmed photos to keep per person for review/restore (0 = delete immediately). Stops the set-aside pile from growing forever.</span>
@@ -641,6 +651,8 @@ async function saveThresholds(){
   const hr=document.getElementById('set-hires'); if(hr)body.hires_enroll=hr.checked;
   const cf=document.getElementById('set-clipfallback'); if(cf)body.clip_fallback=cf.checked;
   const cc=document.getElementById('set-clipcams'); if(cc)body.clip_fallback_cameras=cc.value.split(',').map(s=>s.trim()).filter(Boolean);
+  const lh=document.getElementById('set-livehires'); if(lh)body.live_hires_fallback=lh.checked;
+  const lc=document.getElementById('set-livecams'); if(lc)body.live_hires_fallback_cameras=lc.value.split(',').map(s=>s.trim()).filter(Boolean);
   const r=await j('api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   toast(r.trimmed?`Saved — ${r.trimmed} photo(s) trimmed`:'Settings saved');
   persons=await j('api/persons');

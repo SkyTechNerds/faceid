@@ -50,6 +50,15 @@ faceid:
                                        # looks up at it — the clip holds no face either
                                        # and the scan costs seconds per event for nothing.
                                        # scripts/why-no-face.py --clip tells you which.
+  live_hires_fallback: false           # for automations that must react WHILE someone is
+                                       # at the door. clip_fallback only runs once an event
+                                       # has ended, and a recorded moment is not retrievable
+                                       # for ~45s — too late to greet anyone. go2rtc serves
+                                       # the main stream in about a second instead. Needs
+                                       # go2rtc on port 1984 (ships with Frigate, but is not
+                                       # always exposed); the startup log says whether it
+                                       # answers. Runs once per event, snapshot path first.
+  live_hires_fallback_cameras: []      # [] = every camera
   clip_fallback_frames: 12             # frames sampled across the clip
   clip_fallback_min_det: 0.65          # stricter than the snapshot path (0.55): with twelve
                                        # frames to choose from you can afford to be picky

@@ -56,6 +56,13 @@ class EventProcessor:
         # Ereignis, eine hoch montierte keins — dort enthaelt auch die Aufnahme kein
         # Gesicht und der Scan kostet nur Rechenzeit. Leer = alle Kameras (wie cameras).
         self.clip_fallback_cameras = set(f.get("clip_fallback_cameras") or [])
+        # Der Clip-Rueckgriff greift erst am Ereignisende — fuer Automationen, die beim
+        # Betreten reagieren sollen, zu spaet (Issue #8). go2rtc liefert denselben
+        # Haupt-Stream sofort (~1 s gemessen), die Aufnahme gaebe einen Zeitpunkt erst
+        # nach rund 45 s her. Standardmaessig aus, weil Port 1984 nicht ueberall
+        # erreichbar ist; der Startcheck sagt, ob es sich lohnt.
+        self.live_hires = bool(f.get("live_hires_fallback", False))
+        self.live_hires_cameras = set(f.get("live_hires_fallback_cameras") or [])
         self.clip_frames = int(f.get("clip_fallback_frames", 12))
         # strenger als beim Snapshot (0.55): aus zwoelf Frames darf man waehlerisch sein
         self.clip_min_det = float(f.get("clip_fallback_min_det", 0.65))
@@ -104,6 +111,29 @@ class EventProcessor:
         elif self.clip_fallback_cameras:
             log.info("Recording fallback limited to: %s",
                      ", ".join(sorted(self.clip_fallback_cameras)))
+        self._check_go2rtc()
+
+    def _check_go2rtc(self):
+        """Einmal beim Start pruefen, ob der Live-Rueckgriff moeglich waere.
+
+        Ohne diese Zeile bliebe die Option ein Ratespiel: go2rtc laeuft auf einem
+        eigenen Port, den nicht jedes Setup freigibt — und ob er erreichbar ist, merkt
+        man sonst erst am naechsten Ereignis, das nichts findet.
+        """
+        cams = sorted(self.live_hires_cameras) or sorted(self._frigate_cameras())
+        if not cams:
+            return
+        img = self.frigate.live_frame(cams[0], timeout=4.0)
+        if img is not None:
+            h, w = img.shape[:2]
+            if self.live_hires:
+                log.info("Live hi-res fallback active via go2rtc (%dx%d)", w, h)
+            else:
+                log.info("go2rtc reachable (%dx%d) — 'live_hires_fallback' would work here", w, h)
+        elif self.live_hires:
+            log.warning("Live hi-res fallback is on, but go2rtc at %s did not answer — "
+                        "recognition falls back to the recording at the end of an event",
+                        self.frigate.go2rtc)
         if self.poll_interval > 0:
             threading.Thread(target=self._poller, daemon=True, name="faceid-poller").start()
 
@@ -207,8 +237,38 @@ class EventProcessor:
             else:
                 log.info("event %s (%s): attempt %d, no face detected in snapshot %dx%d",
                          eid, st["camera"], st["attempts"], w, h)
+            self._try_live_hires(eid, st)
             return
         self._handle_face(eid, st, img, face)
+
+    def _try_live_hires(self, eid: str, st: dict):
+        """Der Snapshot gab nichts her — sofort einen Haupt-Stream-Frame nachschieben.
+
+        Bewusst nur EINMAL je Ereignis: der Abruf kostet rund eine Sekunde, und bei
+        ``max_attempts`` Versuchen waere das sonst das Vielfache, ohne mehr zu finden —
+        die Kamera liefert in dieser Zeit kaum ein anderes Bild.
+        """
+        if not self.live_hires or st.get("live_tried") or st["done"]:
+            return
+        if self.live_hires_cameras and st["camera"] not in self.live_hires_cameras:
+            return
+        st["live_tried"] = True
+        t0 = time.time()
+        frame = self.frigate.live_frame(st["camera"])
+        if frame is None:
+            log.info("event %s (%s): no live frame from go2rtc — is it reachable?",
+                     eid, st["camera"])
+            return
+        face = FaceEngine.best_face(self.engine.faces(frame), min_px=self.min_face_px)
+        h, w = frame.shape[:2]
+        if face is None:
+            log.info("event %s (%s): live frame %dx%d has no usable face either (%.1fs)",
+                     eid, st["camera"], w, h, time.time() - t0)
+            return
+        log.info("event %s (%s): live frame %dx%d has a face the snapshot missed "
+                 "(%dpx, det %.2f, %.1fs)", eid, st["camera"], w, h,
+                 int(face.bbox[2] - face.bbox[0]), float(face.det_score), time.time() - t0)
+        self._handle_face(eid, st, frame, face, source="live frame")
 
     def _handle_face(self, eid: str, st: dict, img, face, source: str = "snapshot"):
         """Gefundenes Gesicht zuordnen, melden, ablegen.

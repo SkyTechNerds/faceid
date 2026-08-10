@@ -59,6 +59,7 @@ fi
 CAMERAS=$(cfg '.cameras // [] | join(", ")')
 DISCOVERY=$(cfg '.discovery_cameras // [] | join(", ")')
 CLIPCAMS=$(cfg '.clip_fallback_cameras // [] | join(", ")')
+LIVECAMS=$(cfg '.live_hires_fallback_cameras // [] | join(", ")')
 
 cat > /opt/faceid/config.yaml << EOF
 frigate:
@@ -81,6 +82,8 @@ faceid:
   hires_enroll: $(cfg '.hires_enroll')
   clip_fallback: $(cfg '.clip_fallback')
   clip_fallback_cameras: [${CLIPCAMS}]
+  live_hires_fallback: $(cfg '.live_hires_fallback')
+  live_hires_fallback_cameras: [${LIVECAMS}]
   frigate_topic_prefix: $(cfg '.frigate_topic_prefix')
   poll_interval: $(cfg '.poll_interval')
   backup_enabled: $(cfg '.backup_enabled')

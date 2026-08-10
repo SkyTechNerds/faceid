@@ -18,8 +18,18 @@ log = logging.getLogger("faceid.frigate")
 
 class FrigateAPI:
     def __init__(self, base_url: str, timeout: float = 6.0, user: str | None = None,
-                 password: str | None = None, verify_tls: bool = False):
+                 password: str | None = None, verify_tls: bool = False,
+                 go2rtc_url: str | None = None):
         self.base = base_url.rstrip("/")
+        # go2rtc laeuft neben Frigate auf einem eigenen Port und ist nicht hinter dessen
+        # API erreichbar (/api/go2rtc/... antwortet 404) — daher gleicher Host, Port 1984,
+        # ueberschreibbar fuer Setups, die es woanders betreiben.
+        if go2rtc_url:
+            self.go2rtc = go2rtc_url.rstrip("/")
+        else:
+            from urllib.parse import urlparse
+            u = urlparse(self.base)
+            self.go2rtc = f"http://{u.hostname}:1984"
         self.timeout = timeout
         self.session = requests.Session()
         self.user = user or None
@@ -88,6 +98,29 @@ class FrigateAPI:
             log.debug("recording frame %s@%s failed: %s", camera, ts, e)
             return None
 
+    def live_frame(self, camera: str, timeout: float = 3.0) -> np.ndarray | None:
+        """Aktueller Frame in voller Aufloesung — ueber go2rtc, nicht ueber Frigate.
+
+        Warum nicht die Aufnahme: die gibt einen Zeitpunkt erst nach rund 45 s her
+        (gemessen), taugt fuer eine Live-Erkennung also nicht. Frigates ``latest.jpg``
+        wiederum kommt vom Detect-Stream und ist damit genauso klein wie der Snapshot.
+        go2rtc liefert den Haupt-Stream und braucht dafuer ~1 s.
+
+        go2rtc gehoert zu Frigate, laeuft aber auf einem eigenen Port (1984) und ist
+        nicht in jedem Setup erreichbar — der Aufrufer muss damit rechnen, dass hier
+        dauerhaft nichts kommt.
+        """
+        try:
+            r = self.session.get(f"{self.go2rtc}/api/frame.jpeg",
+                                 params={"src": camera}, timeout=timeout)
+            if r.status_code != 200 or not r.content:
+                log.debug("go2rtc frame %s: HTTP %s", camera, r.status_code)
+                return None
+            return cv2.imdecode(np.frombuffer(r.content, np.uint8), cv2.IMREAD_COLOR)
+        except requests.RequestException as e:
+            log.debug("go2rtc frame %s failed: %s", camera, e)
+            return None
+
     def download_clip(self, event_id: str, dest: str, max_bytes: int = 80_000_000) -> bool:
         """Ereignis-Clip (volle Aufnahme-Auflösung) nach ``dest`` streamen.
 
@@ -152,4 +185,5 @@ def frigate_client(cfg: dict, timeout: float = 6.0) -> FrigateAPI:
     """FrigateAPI aus der Konfiguration — mit Anmeldung, falls Zugangsdaten gesetzt sind."""
     f = cfg["frigate"]
     return FrigateAPI(f["url"], timeout=timeout, user=f.get("user"),
-                      password=f.get("password"), verify_tls=bool(f.get("verify_tls", False)))
+                      password=f.get("password"), verify_tls=bool(f.get("verify_tls", False)),
+                      go2rtc_url=f.get("go2rtc_url"))
