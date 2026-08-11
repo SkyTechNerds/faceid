@@ -3,6 +3,19 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.12.1 — 2026-08-10
+
+- **Fixed: uploading a photo with several people in it could enrol the wrong face.** The
+  upload took the *largest* face in the image, so a family photo where somebody else stood
+  closer to the camera put **their** face into the person's gallery — silently, with the UI
+  reporting a successful add. The effect is the opposite of what uploading is for: it makes
+  two people harder to tell apart rather than easier.
+- When more than one face is present, FaceID now picks the one that best matches the
+  person's existing reference photos instead of the biggest. If that person has no
+  references yet, or none of the faces resembles them (below 0.35), the photo is skipped
+  with a message saying to crop it first — better than guessing.
+- Single-face photos are unaffected, which is the normal case.
+
 ## 0.12.0 — 2026-08-10
 
 - **New: `live_hires_mode: always`** — Frigate becomes only the trigger ("someone is on

@@ -154,7 +154,9 @@ log with `journalctl -u faceid -f` until you see `MQTT verbunden (Success)`, the
    for context.
 3. Once a few people exist, use **"apply suggestions"** to bulk-assign everything the
    gallery already recognizes with ≥ 50 % similarity. Repeat as the gallery grows.
-4. Optionally upload 5–10 clear photos per person (Persons tab) as clean anchors, or
+4. Optionally upload 5–10 clear photos per person (Persons tab) as clean anchors. Photos
+   with several people are handled: FaceID picks the face matching that person's existing
+   references rather than the largest one, and skips the photo if none of them does. Or
    enroll a folder: `venv/bin/python -m app.enroll "Alice" /path/to/photos`.
 
 ## Ignoring people

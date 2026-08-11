@@ -139,6 +139,29 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             if face is None:
                 skipped.append(f"{uf.filename}: no face found")
                 continue
+            # Mehrere Personen im Bild? find_face_padded liefert das GROESSTE Gesicht —
+            # auf einem Familienfoto also womoeglich das der falschen Person, und die
+            # landet dann still in dieser Galerie. Genau der Fall, der zwei Menschen
+            # anschliessend verwechselbar macht.
+            others = [f for f in engine.faces(img)
+                      if (f.bbox[2] - f.bbox[0]) >= 60
+                      and not np.array_equal(f.bbox, face.bbox)]
+            if others:
+                ref = gallery.embeddings(slug)
+                if ref is None or not len(ref):
+                    skipped.append(f"{uf.filename}: {len(others) + 1} faces in the photo and "
+                                   f"no reference for this person yet — crop it to one face first")
+                    continue
+                # Das Gesicht nehmen, das am besten zu den vorhandenen Fotos passt,
+                # nicht das groesste.
+                cands = [face] + others
+                sims = [float(np.max(ref @ f.normed_embedding)) for f in cands]
+                best_i = int(np.argmax(sims))
+                if sims[best_i] < 0.35:
+                    skipped.append(f"{uf.filename}: {len(cands)} faces, none resembling this "
+                                   f"person (best {sims[best_i]:.2f}) — crop it first")
+                    continue
+                face = cands[best_i]
             gallery.add_face(slug, crop_face(img, face.bbox), face.normed_embedding,
                              source={"camera": "upload"})
             added += 1

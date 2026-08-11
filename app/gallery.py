@@ -258,6 +258,18 @@ class Gallery:
                 for slug, e in self._cache.items()
             }
 
+    def embeddings(self, slug: str):
+        """Referenz-Embeddings einer Person (NxD) oder None.
+
+        Wird gebraucht, wenn ein Bild mehrere Gesichter enthaelt und entschieden werden
+        muss, welches gemeint ist — das groesste ist es nicht zwangslaeufig.
+        """
+        with self._lock:
+            e = self._cache.get(slug)
+            if not e or not len(e["files"]):
+                return None
+            return e["emb"].copy()
+
     def set_favorite(self, slug: str, fav: bool) -> bool:
         with self._lock:
             entry = self._cache.get(slug)
