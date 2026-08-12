@@ -72,6 +72,18 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     class FavBody(BaseModel):
         favorite: bool
 
+    @app.post("/api/persons/{slug}/rename")
+    def rename_person(slug: str, body: dict):
+        """Nur der Anzeigename — Fotos, Embeddings und Zuordnungen bleiben unberuehrt."""
+        try:
+            name = gallery.rename(slug, str(body.get("name", "")))
+        except KeyError:
+            raise HTTPException(404, "Unknown person")
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        log.info("person %s renamed to %r", slug, name)
+        return {"ok": True, "slug": slug, "name": name}
+
     @app.post("/api/persons/{slug}/favorite")
     def set_favorite(slug: str, body: FavBody):
         return {"ok": gallery.set_favorite(slug, body.favorite)}

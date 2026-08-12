@@ -3,6 +3,19 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.13.0 — 2026-08-12
+
+- **A person can be renamed.** Click the name on their card in the Persons tab. Until now a
+  misspelling could only be fixed by deleting the person and starting over, which threw
+  away every reference photo and every assignment made so far — a steep price for a typo.
+  Reported in the community thread.
+- Only the display name changes; photos, embeddings and assignments stay untouched. The
+  internal folder keeps its original slug on purpose: it is referenced by stored files and
+  image URLs, and a typo is no reason to move data around. The name is what is actually
+  visible — in the UI, in the presence sensor and in the Frigate `sub_label`.
+- Renaming to a name another person already has is refused with that reason, as is an empty
+  name.
+
 ## 0.12.1 — 2026-08-10
 
 - **Fixed: uploading a photo with several people in it could enrol the wrong face.** The

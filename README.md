@@ -45,7 +45,8 @@ click, or scan your camera history to bootstrap the gallery:
 
 ![Unknown review with auto-clustered faces](docs/screenshot-unknowns.png)
 
-**Persons** — your gallery; upload photos or send faces back to review:
+**Persons** — your gallery; upload photos, rename a person by clicking their name, or send
+faces back to review:
 
 ![Person gallery](docs/screenshot-persons.png)
 

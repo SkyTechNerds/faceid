@@ -258,6 +258,27 @@ class Gallery:
                 for slug, e in self._cache.items()
             }
 
+    def rename(self, slug: str, new_name: str) -> str:
+        """Anzeigenamen einer Person aendern.
+
+        Der Ordner (slug) bleibt absichtlich, wie er ist: er steckt in Datei-Referenzen
+        und Bild-URLs, und ein Tippfehler im Namen ist kein Grund, Daten zu verschieben.
+        Sichtbar ist ohnehin nur der Name — in der UI, im Anwesenheitssensor und im
+        Frigate-sub_label.
+        """
+        name = (new_name or "").strip()
+        if not name:
+            raise ValueError("empty name")
+        with self._lock:
+            if slug not in self._cache:
+                raise KeyError(slug)
+            for other, e in self._cache.items():
+                if other != slug and e["name"].casefold() == name.casefold():
+                    raise ValueError(f"'{name}' already exists")
+            self._cache[slug]["name"] = name
+            self._persist(slug)
+            return name
+
     def embeddings(self, slug: str):
         """Referenz-Embeddings einer Person (NxD) oder None.
 

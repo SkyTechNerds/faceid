@@ -722,7 +722,7 @@ function personCard(slug,p){
     <div class="person" id="p-${slug}">
       <div class="head">
         <button class="fav${p.favorite?' on':''}" title="${p.favorite?'remove from favorites':'mark as favorite'}" onclick="toggleFav('${slug}',${p.favorite?0:1})">${p.favorite?'★':'☆'}</button>
-        <b>${esc(p.name)}</b><span class="n">${p.count} faces</span>
+        <b title="click to rename" style="cursor:text" onclick="renamePerson('${slug}',this.textContent)">${esc(p.name)}</b><span class="n">${p.count} faces</span>
         <span style="flex:1"></span>
         <label class="ghost" style="cursor:pointer" title="enroll photos (e.g. from your photo library) — faces are extracted automatically">Upload photos
           <input type="file" multiple accept="image/*" style="display:none" onchange="upload('${slug}',this)">
@@ -781,6 +781,16 @@ async function restoreTrimmed(slug,file){
 async function deleteTrimmed(slug,file){
   await j(`api/persons/${slug}/trimmed/${file}`,{method:'DELETE'});
   persons=await j('api/persons');if(tab==='persons')renderPersons();
+}
+async function renamePerson(slug,current){
+  const name=prompt('Rename person',current);
+  if(name===null)return;                       // abgebrochen
+  if(!name.trim()||name.trim()===current)return;
+  try{
+    const r=await j(`api/persons/${slug}/rename`,{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name.trim()})});
+    toast(`renamed to ${r.name}`);render();
+  }catch(e){toast(String(e.message||e).slice(0,140))}
 }
 async function toggleFav(slug,fav){
   await j(`api/persons/${slug}/favorite`,{method:'POST',headers:{'Content-Type':'application/json'},
