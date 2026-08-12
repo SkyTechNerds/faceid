@@ -29,6 +29,9 @@ jobs:
       - name: Byte-compile all sources
         run: python -m compileall -q app
 
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+
       - name: Import-consistency check (local imports must exist in their module)
         run: |
           python - << 'EOF'
