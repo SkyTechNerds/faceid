@@ -291,7 +291,7 @@ be expensive. Measure yours rather than guessing — `scripts/measure-recognitio
 
 On a 128-photo household gallery the separation was far wider than the defaults assume:
 
-| | correct person | different person |
+| | correct person | someone else in the gallery |
 |---|---|---|
 | best match score | median 0.50 | median 0.18, **max 0.31** |
 
@@ -313,8 +313,32 @@ without a single misassignment.
 job — no shell needed, which matters if you run FaceID as a Home Assistant app. The
 scripts remain for scripted or comparative runs (`--baseline`, `--top-k`).
 
-Do not copy these numbers. Measure your own gallery: how far strangers get is
-the number that decides how low you can safely go.
+### Strangers are rarely the limit — the people you enrolled are
+
+The obvious question is "how close does a stranger get?", and it is the wrong one to stop
+at. Two numbers matter, and the **higher** of them sets your floor:
+
+| | measured here |
+|---|---|
+| highest score a **stranger** reaches | 0.195 |
+| highest score between two **enrolled** people | **0.411** |
+
+Going by strangers alone, 0.25 would look safe. It is not: at 0.25 the two people in this
+household who resemble each other most become interchangeable — a father and daughter whose
+galleries overlap at 0.411. And a *wrong known name* is worse than no name at all, because
+automations act on it, while "unknown" can simply be ignored.
+
+This is why the analysis reports both, and why lowering the threshold because someone is
+not being recognised is usually the wrong move. (One case where no threshold helps: **small
+children** — a toddler's face is about half the size of an adult's and falls below
+`min_face_px` at the same distance. See
+[the pipeline doc](docs/recognition-pipeline.md#small-children-are-a-hard-case-not-a-tuning-problem).) If a person sits just below the line, the
+fix is more reference photos of the situations they are actually seen in — that raises
+*their* score without moving anyone else closer.
+
+Do not copy any of these numbers. Measure your own gallery: Settings → *Does it actually
+work?* reports the ceiling for both cases, and refuses to suggest lowering anything if it
+finds a misassignment.
 
 ## Measuring instead of guessing
 

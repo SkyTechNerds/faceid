@@ -169,6 +169,33 @@ If instead it reports no answer, check that port 1984 is reachable from the Face
 container and that the camera name matches go2rtc's `src`. Use `go2rtc_url` under
 `frigate:` if it runs somewhere else.
 
+## Small children are a hard case, not a tuning problem
+
+Worth stating plainly, because no amount of threshold tuning fixes it: **a toddler's face
+is roughly half the size of an adult's**. At the same distance from the camera it lands
+below `min_face_px` while everyone else clears it comfortably. Measured on one household,
+the rejected faces of a two-year-old clustered at **32–41px** against a limit of 48.
+
+Three things compound:
+
+* **Size.** The obvious one, and the reason `min_face_px` alone cannot be the answer —
+  lowering it globally admits unreliable embeddings for everybody. Faces below roughly
+  40px produce weak ArcFace vectors regardless of who they belong to.
+* **Frigate rarely tracks them separately.** Small children are usually carried or walking
+  right beside an adult, so they often do not get an event of their own. Over 195 events in
+  one household, a two-year-old appeared as a candidate exactly twice.
+* **The model was not trained for them.** ArcFace is built on adult faces. Toddler
+  proportions differ, and at that age the face changes noticeably within months — reference
+  photos go stale faster than you can collect them.
+
+What actually helps is the **live hi-res frame**: it delivers faces roughly twice as large
+as the detect snapshot, which is precisely the gap a small child falls into. Uploading
+phone photos helps less than it does for adults, because a close-up portrait is not what
+the camera sees from four metres away.
+
+Set expectations accordingly. A two-year-old will not reach the reliability of an adult in
+the same household, and that is a property of the problem rather than of the configuration.
+
 ## What it costs
 
 Only failed events pay anything, and each stage runs at most once per event. With 63
