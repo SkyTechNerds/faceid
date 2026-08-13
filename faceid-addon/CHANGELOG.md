@@ -3,6 +3,27 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.13.1 — 2026-08-13
+
+Three fixes from a detailed field report in #8 — all of them in the log rather than in
+recognition itself, but a log that misleads is worse than a terse one.
+
+- **"largest face 54px < min_face_px 48" was a contradiction, and it was ours.** The
+  message only ever reported the *width*, while `best_face()` also requires the height and
+  a minimum detection score. A 54x40px face failed on height, a 54x54px face with score
+  0.40 failed on the score — both were reported as "too small". The line now names the
+  actual reason: `largest face 54x40px, needs 48px on both sides`, or `is big enough, but
+  detection score 0.40 < 0.55`.
+- **A match below the threshold read like a recognition.** `match Kirill (0.251)` is
+  written *before* the threshold is checked, so a weak candidate looked like a false
+  identification — worrying if you drive automations off it. Nothing was ever published
+  below `match_threshold`, but the log did not say so. It now ends in either `published` or
+  `below threshold 0.45, NOT published — review queue`.
+- **The occasional go2rtc miss is retried once.** Single failures were seen in two
+  independent setups while the requests before and after went through; go2rtc has to grab a
+  frame from a running stream, and a request landing between keyframes comes back empty.
+  Dropping an event over that is a waste when a second attempt costs a fraction of a second.
+
 ## 0.13.0 — 2026-08-12
 
 - **A person can be renamed.** Click the name on their card in the Persons tab. Until now a

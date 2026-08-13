@@ -18,7 +18,7 @@ from collections import deque
 import paho.mqtt.client as mqtt
 import requests
 
-from .engine import FaceEngine, crop_face
+from .engine import FaceEngine, crop_face, reject_reason
 from .hires import find_face_in_clip, upgrade_face
 
 log = logging.getLogger("faceid.mqtt")
@@ -247,14 +247,9 @@ class EventProcessor:
             # zu klein deutet auf Frigates snapshots.height oder Kameraabstand,
             # gar keins eher auf Blickwinkel oder Licht.
             h, w = img.shape[:2]
-            if found:
-                big = max(int(f.bbox[2] - f.bbox[0]) for f in found)
-                log.info("event %s (%s): attempt %d, largest face %dpx < min_face_px "
-                         "%d (Snapshot %dx%d)", eid, st["camera"], st["attempts"], big,
-                         self.min_face_px, w, h)
-            else:
-                log.info("event %s (%s): attempt %d, no face detected in snapshot %dx%d",
-                         eid, st["camera"], st["attempts"], w, h)
+            log.info("event %s (%s): attempt %d, %s (snapshot %dx%d)",
+                     eid, st["camera"], st["attempts"],
+                     reject_reason(found, self.min_face_px), w, h)
             self._try_live_hires(eid, st)
             return
         self._handle_face(eid, st, img, face)
@@ -339,8 +334,13 @@ class EventProcessor:
             log.info("event %s (%s): ignored face (sim %.3f)", eid, st["camera"], ig)
             return
         crop = crop_face(img, face.bbox)
-        log.info("event %s (%s): attempt %d, match %s (%.3f)%s", eid, st["camera"],
-                 st["attempts"], name, score, via)
+        # Ausdruecklich dazuschreiben, ob der Treffer die Schwelle nimmt. Ohne das liest
+        # sich "match X (0.251)" wie eine Zuordnung — und ein zu schwacher Kandidat sieht
+        # aus wie eine falsche Erkennung, obwohl nichts publiziert wird (aus der Community).
+        verdict = ("published" if (slug and score >= self.match_thr)
+                   else f"below threshold {self.match_thr:.2f}, NOT published — review queue")
+        log.info("event %s (%s): attempt %d, best match %s (%.3f)%s — %s", eid, st["camera"],
+                 st["attempts"], name, score, via, verdict)
 
         if slug and score >= self.match_thr:
             if not primary:

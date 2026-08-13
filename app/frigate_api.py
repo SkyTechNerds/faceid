@@ -110,16 +110,23 @@ class FrigateAPI:
         nicht in jedem Setup erreichbar — der Aufrufer muss damit rechnen, dass hier
         dauerhaft nichts kommt.
         """
-        try:
-            r = self.session.get(f"{self.go2rtc}/api/frame.jpeg",
-                                 params={"src": camera}, timeout=timeout)
-            if r.status_code != 200 or not r.content:
-                log.debug("go2rtc frame %s: HTTP %s", camera, r.status_code)
-                return None
-            return cv2.imdecode(np.frombuffer(r.content, np.uint8), cv2.IMREAD_COLOR)
-        except requests.RequestException as e:
-            log.debug("go2rtc frame %s failed: %s", camera, e)
-            return None
+        # Ein zweiter Versuch: der Abruf scheitert gelegentlich einzeln, waehrend die
+        # Aufrufe davor und danach durchgehen (in zwei unabhaengigen Setups beobachtet).
+        # go2rtc muss den Frame aus einem laufenden Stream greifen — kommt die Anfrage
+        # zwischen zwei Keyframes, geht sie leer aus. Ein Ereignis deswegen zu verwerfen
+        # waere schade, der zweite Anlauf kostet einen Sekundenbruchteil.
+        for attempt in (1, 2):
+            try:
+                r = self.session.get(f"{self.go2rtc}/api/frame.jpeg",
+                                     params={"src": camera}, timeout=timeout)
+                if r.status_code == 200 and r.content:
+                    return cv2.imdecode(np.frombuffer(r.content, np.uint8), cv2.IMREAD_COLOR)
+                log.debug("go2rtc frame %s: HTTP %s (attempt %d)", camera, r.status_code, attempt)
+            except requests.RequestException as e:
+                log.debug("go2rtc frame %s failed: %s (attempt %d)", camera, e, attempt)
+            if attempt == 1:
+                time.sleep(0.4)
+        return None
 
     def download_clip(self, event_id: str, dest: str, max_bytes: int = 80_000_000) -> bool:
         """Ereignis-Clip (volle Aufnahme-Auflösung) nach ``dest`` streamen.

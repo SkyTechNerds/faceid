@@ -36,6 +36,26 @@ class FaceEngine:
         return best
 
 
+def reject_reason(faces, min_px: int = 48, min_det: float = 0.55) -> str:
+    """Warum hat ``best_face`` nichts geliefert? — als Klartext fuer das Log.
+
+    ``best_face`` prueft Breite UND Hoehe UND det_score. Eine Meldung, die nur die
+    Breite nennt und "< min_face_px" behauptet, ist dann schlicht falsch: bei 54x40 px
+    scheitert es an der Hoehe, bei 54x54 px mit det 0.40 am Score. Genau das wurde als
+    "largest face 54px < min_face_px 48" gemeldet — ein Widerspruch, der einen bei der
+    Fehlersuche in die falsche Richtung schickt (gemeldet aus der Community).
+    """
+    if not len(faces):
+        return "no face detected"
+    widest = max(faces, key=lambda f: f.bbox[2] - f.bbox[0])
+    w = int(widest.bbox[2] - widest.bbox[0])
+    h = int(widest.bbox[3] - widest.bbox[1])
+    det = float(widest.det_score)
+    if w < min_px or h < min_px:
+        return f"largest face {w}x{h}px, needs {min_px}px on both sides"
+    return f"largest face {w}x{h}px is big enough, but detection score {det:.2f} < {min_det}"
+
+
 def find_face_padded(engine: "FaceEngine", bgr: np.ndarray, min_px: int = 60):
     """Detection mit Fallback für formatfüllende Porträts (SCRFD übersieht extreme
     Close-ups) — bei Bedarf mit Rand gepolstert erneut suchen.
