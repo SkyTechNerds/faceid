@@ -82,10 +82,49 @@ never leave your machine.
 
 - Frigate 0.16+ (snapshot + sub_label APIs), reachable over HTTP
 - An MQTT broker (the one Frigate already uses is fine)
-- A CPU with AVX (any Intel/AMD from the last decade; ~1.5 GB RAM; no GPU needed).
+- A CPU with AVX (any Intel/AMD from the last decade; no GPU needed).
   **Running HAOS/your host in a VM?** The default virtual CPU model (e.g. Proxmox `kvm64`)
   hides AVX — set the VM CPU type to `host` and cold-restart the VM, or the recognition
   runtime will refuse to start.
+
+### What it actually uses
+
+Measured on an idle-to-normal household setup (4 cameras, ~60 events a week):
+
+| | |
+|---|---|
+| RAM, steady state | **~650 MB** |
+| RAM, peak | ~1.0 GB |
+| CPU per snapshot | ~0.2 s at `det_size: 640` |
+| Disk | ~300 MB models + your gallery (a few MB) |
+
+**Most of that RAM is the recognition model, and it is not tunable.** Loading `buffalo_l`
+accounts for **572 MB** of it — the libraries themselves (Python, numpy, opencv,
+onnxruntime) come to only 64 MB. Within that, the ArcFace model `w600k_r50` alone costs
+**333 MB**: it is a ResNet-50 whose ~25M parameters are unpacked into memory as float32.
+FaceID already skips the three model files it does not need (3D landmarks, 106-point
+landmarks, gender/age), which would add another ~140 MB.
+
+Things that sound like they should help but were measured and do **not**: thread count
+(`OMP_NUM_THREADS` 1/2/4), `det_size`, and disabling onnxruntime's CPU memory arena. All
+three left the figure unchanged. Anyone reporting ~1 GB is seeing normal behaviour, and
+tools built on the same models (Immich, CompreFace) sit in the same range.
+
+**`det_size` is the CPU lever, not a RAM lever.** Same memory, very different speed:
+
+| `det_size` | time per image |
+|---|---|
+| 640 (default) | ~185 ms |
+| 480 | ~107 ms |
+| 320 | ~60 ms |
+
+Lower values find small and distant faces less reliably, so trade it against
+`scripts/why-no-face.py` rather than by feel.
+
+If ~650 MB is genuinely too much, the only real reduction is a smaller model family
+(`buffalo_s`, MobileFaceNet instead of ResNet-50, roughly a third of the memory) at the
+cost of recognition quality — and switching would invalidate every stored embedding, so
+the whole gallery would need re-enrolling.
 
 ## Install as a Home Assistant app (recommended for HAOS)
 
