@@ -41,6 +41,12 @@ def main():
     gallery.trimmed_keep = int(cfg["faceid"].get("trimmed_keep", 10))
     gallery.max_ignore_anchors = int(cfg["faceid"].get("max_ignore_anchors", 0))
     gallery.dedupe_threshold = float(cfg["faceid"].get("dedupe_threshold", 0.65))
+    # Riskante Referenzen: relativ zur Entscheidungsgrenze, damit die Grenze mitwandert,
+    # wenn jemand match_threshold aendert. 0 (oder margin < 0) schaltet es ab.
+    _margin = float(cfg["faceid"].get("cross_risk_margin", 0.05))
+    gallery.cross_risk_threshold = (
+        max(0.0, float(cfg["faceid"].get("match_threshold", 0.5)) - _margin)
+        if _margin >= 0 else 0.0)
     frigate = frigate_client(cfg)
     processor = EventProcessor(cfg, engine, gallery, frigate)
     processor.start()

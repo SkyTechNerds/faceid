@@ -3,6 +3,32 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.14.0 — 2026-08-14
+
+- **New: references that make two people confusable are set aside automatically.** A hard
+  profile, a blown-out IR shot, a steeply tilted head — such photos carry little real
+  facial information, and ArcFace turns them into *generic* embeddings. Generic embeddings
+  resemble each other regardless of who is in them, so keeping one for each of two people
+  makes exactly those two harder to tell apart.
+- This is not theoretical. On the gallery here the closest pair sat at **0.411** against a
+  threshold of 0.45, and one of the two was in fact published under the other's name.
+  Setting aside three photos (two IR night shots, one hard profile) dropped it to **0.368**
+  and widened the margin from 0.039 to 0.052.
+- Checked when a photo is added *and* on demand for the existing gallery
+  (Settings → *Keeping the gallery clean* → **check gallery now**). The scan is iterative:
+  after each removal the rest is re-scored, so it sets aside as few as possible — here 3
+  rather than the 4 an isolated look suggested.
+- **Nothing is deleted.** Photos move to the person's set-aside pile carrying the name they
+  clash with and the reason, are marked there, and can be restored in one click. The
+  judgement is statistical, not visual: a photo scoring 0.41 against someone else may still
+  be a good likeness you have reason to keep, so the trade-off stays visible and reversible.
+- The limit follows the threshold (`match_threshold - cross_risk_margin`, default margin
+  0.05); `cross_risk_margin: -1` switches it off.
+- **The Settings tab is grouped into sub-tabs** — Matching, No face?, Gallery, Does it
+  work?, Backup. It had grown to eight sections in one column. The grouping happens after
+  rendering, keyed on the section headings, so adding a setting still means writing one row
+  and nothing else. The chosen tab is remembered.
+
 ## 0.13.1 — 2026-08-13
 
 Three fixes from a detailed field report in #8 — all of them in the log rather than in

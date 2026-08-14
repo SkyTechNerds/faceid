@@ -72,6 +72,16 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     class FavBody(BaseModel):
         favorite: bool
 
+    @app.post("/api/gallery/cross-risk-scan")
+    def cross_risk_scan():
+        """Bestehende Galerie auf Referenzen pruefen, die zwei Personen verwechselbar machen."""
+        thr = gallery.cross_risk_threshold
+        if thr <= 0:
+            raise HTTPException(400, "cross-risk check is disabled (cross_risk_margin < 0)")
+        removed = gallery.cross_risk_scan(thr)
+        log.info("cross-risk scan: %d reference(s) set aside (threshold %.2f)", len(removed), thr)
+        return {"ok": True, "threshold": round(thr, 3), "removed": removed}
+
     @app.post("/api/persons/{slug}/rename")
     def rename_person(slug: str, body: dict):
         """Nur der Anzeigename — Fotos, Embeddings und Zuordnungen bleiben unberuehrt."""

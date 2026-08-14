@@ -70,6 +70,13 @@ td.p{color:var(--acc)} td.u{color:var(--warn)}
 .tile.simlow{outline:2px solid var(--dim);outline-offset:-2px}
 .tile .simscore{position:absolute;top:0;left:0;background:var(--bg);color:var(--fg);font:10px var(--mono);padding:1px 4px;z-index:2}
 .tile.simhi img{filter:none;opacity:1}
+.tile.crossrisk{outline:2px solid var(--warn);outline-offset:-2px}
+/* unten, nicht oben: oben sitzen die Knoepfe zum Zurueckholen und Loeschen, das Band
+   hat sie sonst verdeckt. z-index bleibt niedriger als der der Knoepfe. */
+.tile .crosstag{position:absolute;bottom:0;left:0;right:0;background:var(--warn);color:oklch(20% .02 60);
+  font:600 9px var(--mono);padding:1px 3px;z-index:1;text-align:center;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile button.u,.tile button.x{z-index:3}
 .trimlabel{display:inline-block;font:600 10px var(--mono);letter-spacing:.1em;color:var(--warn);border:1px solid var(--warn);border-radius:3px;padding:1px 6px;margin-bottom:4px}
 #lightbox{position:fixed;inset:0;background:color-mix(in oklab,var(--bg) 88%,transparent);
   display:none;align-items:center;justify-content:center;z-index:10;cursor:zoom-out;flex-direction:column;gap:8px}
@@ -546,6 +553,8 @@ async function renderSettings(){
       <input id="set-topk" type="number" min="1" max="10" value="${cfg.match_top_k}" style="width:70px">
       <span class="stat">a match score is the mean of this many best-fitting reference photos. Higher resists a single lucky photo, but punishes people whose photos cover many different angles — their score gets dragged down by the less similar ones. Measure with scripts/measure-recognition.py before changing.</span>
     </div>
+    <h2 style="margin-top:22px">Detection</h2>
+    <div class="stat" style="margin:-4px 0 6px">What counts as a usable face at all — before any matching happens.</div>
     <div class="row" style="margin-top:6px">
       <b style="min-width:230px;font:600 13px var(--sans)">Smallest face to recognise</b>
       <input id="set-minface" type="number" min="16" max="200" value="${cfg.min_face_px}" style="width:70px"><span class="stat">px</span>
@@ -561,6 +570,8 @@ async function renderSettings(){
       <input id="set-igncap" type="number" min="0" max="200" value="${cfg.max_ignore_anchors}" style="width:70px">
       <span class="stat">per ignore group; 0 = unlimited. When exceeded, the most redundant <em>auto-learned</em> anchor is dropped — manually added ones are never touched. Deleting by age instead would let ignored people resurface, which is the opposite of what the list is for.</span>
     </div>
+    <h2 style="margin-top:22px">When a snapshot has no face</h2>
+    <div class="stat" style="margin:-4px 0 6px">Frigate picks its snapshot by highest <em>person</em> score, which is not the same as "face visible" — on most setups only about a fifth of snapshots hold a usable face. These are the ways back in. <a href="https://github.com/SkyTechNerds/faceid/blob/main/docs/recognition-pipeline.md" target="_blank" rel="noopener" style="color:var(--acc)">How it works ↗</a></div>
     <div class="row" style="margin-top:6px">
       <b style="min-width:230px;font:600 13px var(--sans)">Sharper reference photos</b>
       <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="set-hires" ${cfg.hires_enroll?'checked':''}> use recordings</label>
@@ -594,13 +605,20 @@ async function renderSettings(){
       <input id="set-livecams" type="text" value="${(cfg.live_hires_fallback_cameras||[]).join(', ')}" placeholder="empty = all cameras" style="width:260px">
       <span class="stat">Same idea as above: restrict it to cameras where faces actually appear.${(cfg.known_cameras||[]).length?' Known: '+cfg.known_cameras.join(', ')+'.':''}</span>
     </div>
+    <h2 style="margin-top:22px">Keeping the gallery clean</h2>
+    <div class="stat" style="margin:-4px 0 6px">Bad reference photos do not just fail to help — they actively make people harder to tell apart.</div>
+    <div class="row" style="margin-top:6px">
+      <b style="min-width:230px;font:600 13px var(--sans)">Ambiguous references</b>
+      <button class="ghost" onclick="crossRiskScan()">check gallery now</button>
+      <span class="stat">A photo with little real facial information — a hard profile, a blown-out IR shot, a steeply tilted head — produces a generic embedding, and generic embeddings resemble each other regardless of who is in them. Those are the references that make two people confusable. New photos are checked automatically as they are added; this button re-checks everything already in the gallery. Nothing is deleted: matches are moved to the person's set-aside pile with the reason and the name they clash with, and you can restore any of them from there.</span>
+    </div>
     <div class="row" style="margin-top:6px">
       <b style="min-width:230px;font:600 13px var(--sans)">Keep set-aside photos</b>
       <input id="set-trimkeep" type="number" min="0" max="100" value="${cfg.trimmed_keep}" style="width:70px">
       <span class="stat">how many trimmed photos to keep per person for review/restore (0 = delete immediately). Stops the set-aside pile from growing forever.</span>
     </div>
-    <div class="row"><button class="act" onclick="saveThresholds()">SAVE SETTINGS</button>
-      <span class="stat">saves the thresholds AND the photo limit above · applies live and persists (overrides config / app options)</span></div>
+    <div class="row" id="savebar"><button class="act" onclick="saveThresholds()">SAVE SETTINGS</button>
+      <span class="stat">saves every setting on this tab · applies live and persists (overrides config / app options)</span></div>
 
     <h2>Remove duplicate photos</h2>
     <div class="row">
@@ -645,9 +663,67 @@ async function renderSettings(){
         <input type="file" accept=".gz,.tar.gz,application/gzip" style="display:none" onchange="restore(this,true)"></label>
     </div>
     <div class="stat">Backup contains only your gallery (persons + ignore anchors) — not the unknown queue.</div>`;
+  groupSettings();
   dedupePreview();
   renderBackupList();
   renderAnalysis();
+}
+
+// Die Einstellungen sind ueber die Zeit auf acht Abschnitte gewachsen — als eine lange
+// Spalte findet man darin nichts mehr. Statt das Markup umzubauen (und jede kuenftige
+// Aenderung an zwei Stellen pflegen zu muessen), werden die <h2>-Abschnitte hier nach
+// dem Rendern zu Unter-Reitern gebuendelt. Versteckt wird per display:none, nicht durch
+// Entfernen — dedupePreview(), renderBackupList() und renderAnalysis() greifen ihre
+// Elemente per ID und brauchen sie im DOM.
+const SETTINGS_TABS=[
+  ['matching','Matching',['Matching thresholds','Detection']],
+  ['fallback','No face?',['When a snapshot has no face']],
+  ['gallery','Gallery',['Keeping the gallery clean','Remove duplicate photos']],
+  ['check','Does it work?',['Does it actually work?']],
+  ['backup','Backup',['Automatic backup','Manual backup & restore']],
+];
+let settingsTab=localStorage.getItem('faceid.settingsTab')||'matching';
+
+function groupSettings(){
+  const kids=[...main.children], groups=[];
+  let cur=null;
+  for(const n of kids){
+    if(n.tagName==='H2'){cur={title:n.textContent.trim(),nodes:[n]};groups.push(cur)}
+    else if(cur)cur.nodes.push(n);
+  }
+  if(groups.length<2)return;
+  const save=document.getElementById('savebar');
+  const nav=document.createElement('nav');
+  nav.style.cssText='margin:0 0 4px;border-bottom:1px solid var(--line)';
+  const sections={};
+  for(const [id,label,titles] of SETTINGS_TABS){
+    const sec=document.createElement('div');
+    sec.dataset.s=id;
+    for(const g of groups){
+      if(!titles.includes(g.title))continue;
+      for(const n of g.nodes){if(n!==save)sec.appendChild(n)}
+    }
+    if(!sec.children.length)continue;
+    sections[id]=sec;
+    const b=document.createElement('button');
+    b.textContent=label; b.dataset.s=id;
+    b.onclick=()=>{settingsTab=id;localStorage.setItem('faceid.settingsTab',id);showSettingsTab(sections,nav)};
+    nav.appendChild(b);
+  }
+  if(!Object.keys(sections).length)return;
+  main.prepend(nav);
+  for(const id in sections)main.appendChild(sections[id]);
+  if(save)main.appendChild(save);          // gilt fuer alles, bleibt immer sichtbar
+  if(!sections[settingsTab])settingsTab=Object.keys(sections)[0];
+  showSettingsTab(sections,nav);
+}
+
+function showSettingsTab(sections,nav){
+  for(const id in sections)sections[id].style.display=id===settingsTab?'':'none';
+  nav.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.s===settingsTab));
+  // SAVE nur zeigen, wo es etwas zu speichern gibt
+  const save=document.getElementById('savebar');
+  if(save)save.style.display=(settingsTab==='matching'||settingsTab==='fallback'||settingsTab==='gallery')?'':'none';
 }
 async function saveThresholds(){
   const body={};
@@ -739,9 +815,9 @@ function personCard(slug,p){
       ${(p.trimmed&&p.trimmed.length)?`
       <div style="margin-top:10px;border-top:1px dashed var(--line);padding-top:10px">
         <span class="trimlabel">✂︎ SET ASIDE · ${p.trimmed.length}</span> <button class="ghost" style="font-size:10px;padding:1px 8px" title="delete all set-aside photos for this person" onclick="clearTrimmed('${slug}','${esc(p.name)}')">clear all</button>
-        <div class="stat">Set aside as duplicates or over the photo limit. <b>Hover a photo</b> to mark its closest matches above — <span style="color:var(--acc)">bright green</span> = the photo it duplicates, <span style="color:var(--dim)">grey outline + %</span> = merely its closest matches (same person, different angle — these are kept on purpose). ↩ restore or × delete. <a href="https://github.com/SkyTechNerds/faceid/blob/main/docs/trimming.md" target="_blank" rel="noopener" style="color:var(--acc)">Learn more ↗</a></div>
+        <div class="stat">Set aside as duplicates, over the photo limit, or <b style="color:var(--warn)">too close to another person</b> (those carry the name they clash with — restoring one makes the two harder to tell apart again). <b>Hover a photo</b> to mark its closest matches above — <span style="color:var(--acc)">bright green</span> = the photo it duplicates, <span style="color:var(--dim)">grey outline + %</span> = merely its closest matches (same person, different angle — these are kept on purpose). ↩ restore or × delete. <a href="https://github.com/SkyTechNerds/faceid/blob/main/docs/trimming.md" target="_blank" rel="noopener" style="color:var(--acc)">Learn more ↗</a></div>
         <div class="grid trimgrid" style="margin-top:6px">${p.trimmed.map(t=>`
-          <div class="tile" onmouseenter="hiliteSimilar('${slug}',${JSON.stringify(t.similar||[]).replace(/"/g,'&quot;')})" onmouseleave="hiliteSimilar('${slug}',[])"><img src="data/persons/${slug}/_trimmed/${t.file}" loading="lazy" title="${t.kind==='same_image'?'Same image as the photo highlighted above.':t.kind==='near_dup'?'Near-duplicate of the photo highlighted above.':'Set aside because of the photo limit — highlighted above are its closest matches with their similarity. They are the same person from other angles, not duplicates.'} · ${fmtTs(t.ts)}">
+          <div class="tile${t.kind==='cross'?' crossrisk':''}" onmouseenter="hiliteSimilar('${slug}',${JSON.stringify(t.similar||[]).replace(/"/g,'&quot;')})" onmouseleave="hiliteSimilar('${slug}',[])">${t.kind==='cross'?`<span class="crosstag" title="${esc(t.reason)}">↔ ${esc(t.partner||'')}</span>`:''}<img src="data/persons/${slug}/_trimmed/${t.file}" loading="lazy" title="${t.kind==='same_image'?'Same image as the photo highlighted above.':t.kind==='near_dup'?'Near-duplicate of the photo highlighted above.':t.kind==='cross'?esc(t.reason)+' — restoring it makes those two harder to tell apart again.':'Set aside because of the photo limit — highlighted above are its closest matches with their similarity. They are the same person from other angles, not duplicates.'} · ${fmtTs(t.ts)}">
             <button class="u" title="restore this photo" onclick="restoreTrimmed('${slug}','${t.file}')">↩</button>
             <button class="x" title="delete permanently" onclick="deleteTrimmed('${slug}','${t.file}')">×</button></div>`).join('')}
         </div>
@@ -781,6 +857,17 @@ async function restoreTrimmed(slug,file){
 async function deleteTrimmed(slug,file){
   await j(`api/persons/${slug}/trimmed/${file}`,{method:'DELETE'});
   persons=await j('api/persons');if(tab==='persons')renderPersons();
+}
+async function crossRiskScan(){
+  if(!confirm('Check every reference photo against the other people in your gallery?\n\nAnything too similar to someone else is moved to that person\'s set-aside pile — with the reason — and can be restored from there.'))return;
+  try{
+    const r=await j('api/gallery/cross-risk-scan',{method:'POST'});
+    if(!r.removed.length){toast(`nothing ambiguous found (limit ${r.threshold})`);return}
+    const lines=r.removed.map(x=>`${x.person}: ${x.file.slice(0,20)} — ${x.similarity} to ${x.partner}`);
+    alert(`${r.removed.length} reference(s) set aside (limit ${r.threshold}):\n\n`+lines.join('\n')+
+          '\n\nThey are in each person\'s set-aside pile and can be restored.');
+    render();
+  }catch(e){toast(String(e.message||e).slice(0,140))}
 }
 async function renamePerson(slug,current){
   const name=prompt('Rename person',current);

@@ -38,6 +38,9 @@ class Gallery:
         self.max_ignore_anchors = 0
         self.max_per_person = int(max_per_person)  # 0 = unbegrenzt
         self.trimmed_keep = 10  # wie viele beiseitegelegte Fotos je Person aufgehoben werden
+        # Ab welcher Aehnlichkeit zu einer ANDEREN Person gilt eine Referenz als riskant?
+        # Wird vom Dienst auf match_threshold - cross_risk_margin gesetzt; 0 = aus.
+        self.cross_risk_threshold = 0.0
         self.dedupe_threshold = 0.65  # ab hier gilt ein Foto als Duplikat (Hover-Highlight + Dedup)
         self._lock = threading.Lock()
         self._cache = {}  # slug -> {"name":..., "emb": np.ndarray, "files": [...]}
@@ -192,6 +195,9 @@ class Gallery:
                         "partner": partner,
                         "kind": ("same_image" if "same image" in e.get("reason", "")
                                  else "near_dup" if "near-duplicate" in e.get("reason", "")
+                                 # eigener Fall: nicht wegen Menge aussortiert, sondern
+                                 # weil die Referenz zwei Personen verwechselbar macht
+                                 else "cross" if "too close to" in e.get("reason", "")
                                  else "limit")})
         return out
 
@@ -257,6 +263,59 @@ class Gallery:
                        "trimmed": self.trimmed(slug)}
                 for slug, e in self._cache.items()
             }
+
+    def _cross_max(self, slug: str, emb) -> tuple[float, str]:
+        """Wie nah kommt dieses Embedding der Galerie einer ANDEREN Person?
+
+        -> (hoechste Aehnlichkeit, deren Name). Aufrufer haelt bereits das Lock.
+        """
+        best, who = 0.0, ""
+        for other, e in self._cache.items():
+            if other == slug or not len(e["files"]):
+                continue
+            sim = float(np.max(e["emb"] @ emb))
+            if sim > best:
+                best, who = sim, e["name"]
+        return best, who
+
+    def cross_risk_scan(self, threshold: float) -> list:
+        """Bestehende Galerie durchgehen und Fotos aussortieren, die einer FREMDEN
+        Person zu nahe kommen.
+
+        Hintergrund: Ein Foto mit wenig echter Gesichtsinformation — starkes Profil,
+        ueberbelichtete IR-Aufnahme, stark geneigter Kopf — erzeugt ein generisches
+        Embedding. Generische Embeddings aehneln einander, unabhaengig davon, wer
+        abgebildet ist. Solche Referenzen machen die Galerie nicht robuster, sondern
+        verwaschener, und sie sind es, die zwei Menschen verwechselbar machen.
+
+        Nicht geloescht, sondern nach _trimmed/ verschoben — mit Begruendung, und
+        jederzeit zurueckholbar.
+        """
+        removed = []
+        with self._lock:
+            for slug in list(self._cache):
+                while True:
+                    entry = self._cache[slug]
+                    if not len(entry["files"]):
+                        break
+                    risks = [self._cross_max(slug, entry["emb"][i])
+                             for i in range(len(entry["files"]))]
+                    worst = max(range(len(risks)), key=lambda i: risks[i][0]) if risks else None
+                    if worst is None or risks[worst][0] < threshold:
+                        break
+                    sim, who = risks[worst]
+                    fname = entry["files"][worst]
+                    self._trim_face(slug, fname, entry["emb"][worst], sim,
+                                    reason=f"too close to {who} ({sim:.3f}) — a reference "
+                                           f"this ambiguous makes the two confusable",
+                                    partner=who)
+                    entry.get("sources", {}).pop(fname, None)
+                    entry["files"].pop(worst)
+                    entry["emb"] = np.delete(entry["emb"], worst, axis=0)
+                    removed.append({"person": entry["name"], "file": fname,
+                                    "similarity": round(sim, 3), "partner": who})
+                self._persist(slug)
+        return removed
 
     def rename(self, slug: str, new_name: str) -> str:
         """Anzeigenamen einer Person aendern.
@@ -329,6 +388,23 @@ class Gallery:
             if source:
                 entry.setdefault("sources", {})[fname] = {
                     k: v for k, v in source.items() if v is not None}
+            # Neues Foto, das einer FREMDEN Person zu nahe kommt, gar nicht erst behalten:
+            # es wuerde die beiden verwechselbar machen, statt diese Person zu staerken.
+            # Aussortiert, nicht geloescht — mit Begruendung und zurueckholbar.
+            if self.cross_risk_threshold > 0:
+                sim, who = self._cross_max(slug, embedding.astype(np.float32))
+                if sim >= self.cross_risk_threshold:
+                    self._trim_face(slug, fname, embedding.astype(np.float32), sim,
+                                    reason=f"too close to {who} ({sim:.3f}) — a reference "
+                                           f"this ambiguous makes the two confusable",
+                                    partner=who)
+                    entry.get("sources", {}).pop(fname, None)
+                    entry["files"].pop()
+                    entry["emb"] = np.delete(entry["emb"], len(entry["emb"]) - 1, axis=0)
+                    self._persist(slug)
+                    log.info("%s: new photo set aside — too close to %s (%.3f)",
+                             entry["name"], who, sim)
+                    return fname
             if self.max_per_person and len(entry["files"]) > self.max_per_person:
                 # redundanteste Referenz aussortieren (höchste mittlere Ähnlichkeit zu den
                 # übrigen = Dublette). Nicht löschen, sondern nach _trimmed/ verschieben,

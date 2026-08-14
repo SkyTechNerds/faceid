@@ -513,6 +513,7 @@ that matter most:
 | `cluster_eps` (0.55) | raise to merge unknown clusters more aggressively, lower if different people land in one cluster |
 | `match_top_k` (3) | a person's score is the mean of their top-k reference similarities — dampens photo-count bias (1 = raw max) |
 | `max_faces_per_person` (40) | soft cap; adding more drops the most redundant reference (0 = unlimited) |
+| `cross_risk_margin` (0.05) | a reference closer than `match_threshold` minus this to **another** person is set aside — such photos make two people confusable ([details](docs/trimming.md#references-that-make-two-people-confusable)); `-1` disables the check |
 | `ignore_threshold` (= match_threshold) | similarity at which a face counts as ignored |
 | `ignore_learning` (true) | learn new looks of ignored people as additional anchors (guarded) |
 | `hires_enroll` (true) | fetch new review-queue faces from the recording (sharper references) |

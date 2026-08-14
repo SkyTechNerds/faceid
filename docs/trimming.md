@@ -57,6 +57,41 @@ Lowering the cap in Settings trims everyone down to the new number **immediately
 you can see exactly what moved and undo any choice you disagree with. Raising the cap
 does *not* auto-restore — bring photos back yourself, so nothing reappears unexpectedly.
 
+## References that make two people confusable
+
+A photo can be worse than useless: it can actively make recognition *worse*.
+
+A hard profile, a blown-out IR shot, a steeply tilted head — these carry little real facial
+information, and what ArcFace produces from them is a **generic** embedding. Generic
+embeddings resemble each other regardless of who is in the picture. Keep two such photos of
+two different people, and those two become measurably harder to tell apart.
+
+This is not theoretical. On one household gallery the two most similar people sat at
+**0.411** against a threshold of 0.45 — a margin of 0.039. Removing three photos (two IR
+night shots, one hard profile) dropped it to **0.368**, widening the margin to 0.052.
+Before that, one of the two was in fact published under the other's name.
+
+FaceID therefore checks every reference against the *other* people in your gallery:
+
+* **When a photo is added** — from review, from upload, from the history scan. Anything too
+  close to someone else is set aside immediately rather than enrolled.
+* **On demand for the existing gallery** — Settings → *Keeping the gallery clean* →
+  **check gallery now**. It works iteratively: after each removal the remaining photos are
+  re-scored, so it only sets aside as many as it has to.
+
+The limit follows your threshold: `match_threshold - cross_risk_margin` (default margin
+0.05, so 0.45 → 0.40). Change the threshold and the limit moves with it. Set
+`cross_risk_margin: -1` to switch the check off.
+
+Set-aside photos of this kind are marked with the name they clash with and carry the
+reason, e.g. *"too close to Eli (0.411) — a reference this ambiguous makes the two
+confusable"*. Restoring one is a click away, and the tooltip says what it costs you.
+
+**Why not just delete them?** Because the judgement is statistical, not visual. A photo
+that scores 0.41 against another person may still be a perfectly good likeness that you
+have a reason to keep. Setting it aside makes the trade-off visible and reversible;
+deleting would make it silent and final.
+
 ## Practical tips
 
 - **Poor recognition from one angle?** Add a photo taken from *that* angle. Being unusual,
