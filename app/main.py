@@ -47,6 +47,16 @@ def main():
     gallery.cross_risk_threshold = (
         max(0.0, float(cfg["faceid"].get("match_threshold", 0.5)) - _margin)
         if _margin >= 0 else 0.0)
+    _ratio = float(cfg["faceid"].get("self_outlier_ratio", 0.25))
+    gallery.self_outlier_ratio = _ratio if _ratio > 0 else 0.0
+    # Beim Start einmal durchsehen. Referenzen altern nicht, aber die Pruefungen werden
+    # besser — und wer eine Fehlerkennung hatte, soll die Ursache nicht selbst suchen
+    # muessen. Es wird nichts geloescht, nur beiseitegelegt und protokolliert.
+    if gallery.self_outlier_ratio > 0 or gallery.cross_risk_threshold > 0:
+        for r in gallery.quality_scan(gallery.cross_risk_threshold):
+            log.info("reference check: %s / %s set aside (%s)", r["person"], r["file"],
+                     f"too close to {r['partner']}, {r['similarity']}" if r["kind"] == "cross"
+                     else f"{r['mean_sim']} where {r['median']} is normal for this person")
     frigate = frigate_client(cfg)
     processor = EventProcessor(cfg, engine, gallery, frigate)
     processor.start()

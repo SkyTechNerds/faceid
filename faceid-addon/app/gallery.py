@@ -41,6 +41,10 @@ class Gallery:
         # Ab welcher Aehnlichkeit zu einer ANDEREN Person gilt eine Referenz als riskant?
         # Wird vom Dienst auf match_threshold - cross_risk_margin gesetzt; 0 = aus.
         self.cross_risk_threshold = 0.0
+        # Zweites Kriterium: Wie weit darf eine Referenz hinter dem zurueckbleiben, was
+        # bei DIESER Person ueblich ist? Anteil am Median; 0 = aus. Siehe _self_outlier.
+        self.self_outlier_ratio = 0.0
+        self.self_outlier_min_photos = 5  # darunter ist der Median nicht belastbar
         self.dedupe_threshold = 0.65  # ab hier gilt ein Foto als Duplikat (Hover-Highlight + Dedup)
         self._lock = threading.Lock()
         self._cache = {}  # slug -> {"name":..., "emb": np.ndarray, "files": [...]}
@@ -198,6 +202,8 @@ class Gallery:
                                  # eigener Fall: nicht wegen Menge aussortiert, sondern
                                  # weil die Referenz zwei Personen verwechselbar macht
                                  else "cross" if "too close to" in e.get("reason", "")
+                                 # ... oder weil sie zur eigenen Person nicht passt
+                                 else "outlier" if "barely resembles" in e.get("reason", "")
                                  else "limit")})
         return out
 
@@ -278,44 +284,126 @@ class Gallery:
                 best, who = sim, e["name"]
         return best, who
 
+    def _self_outlier(self, entry) -> tuple | None:
+        """Das Foto einer Person, das am wenigsten zu ihren UEBRIGEN Fotos passt —
+        sofern es deutlich aus der Reihe faellt. -> (index, mittelwert, median) oder None.
+
+        Hintergrund: Eine Referenz mit wenig echter Gesichtsinformation — Hinterkopf,
+        ueberstrahltes IR-Bild, Gesicht zum Boden — erzeugt ein generisches Embedding.
+        Sie aehnelt der eigenen Person kaum, zieht aber fremde Gesichter an, weil
+        generische Embeddings zu jedem ein bisschen passen.
+
+        Das ist das schaerfere Kriterium: es braucht keine zweite Person zum Vergleich
+        und sieht einer Referenz schon an, dass sie nichts taugt. Die Kreuzpruefung kann
+        denselben Fall verfehlen, weil sie Galerie gegen Galerie misst — ein LEBENDES
+        Gesicht kommt deutlich naeher als jedes gespeicherte Foto derselben Person.
+
+        Gemessen wird relativ zum Median der Person, nicht absolut: wie aehnlich sich die
+        Fotos einer Person normalerweise sind, haengt stark davon ab, wie verschieden die
+        Aufnahmen sind (hier je nach Person zwischen 0.23 und 0.47).
+        """
+        n = len(entry["files"])
+        if self.self_outlier_ratio <= 0 or n < self.self_outlier_min_photos:
+            return None
+        sims = entry["emb"] @ entry["emb"].T
+        np.fill_diagonal(sims, np.nan)
+        mean = np.nanmean(sims, axis=1)
+        median = float(np.median(mean))
+        worst = int(np.argmin(mean))
+        if median <= 0 or float(mean[worst]) >= median * self.self_outlier_ratio:
+            return None
+        return worst, float(mean[worst]), median
+
+    def _self_outlier_reason(self, name: str, mean_sim: float, median: float) -> str:
+        return (f"barely resembles the other photos of {name} ({mean_sim:.3f} where "
+                f"{median:.3f} is normal for this person) — a reference with this little "
+                f"face information attracts strangers instead of its own person")
+
+    def _drop(self, slug: str, entry, idx: int, mean_sim: float, reason: str, partner: str = ""):
+        """Foto aus der aktiven Galerie nehmen und nach _trimmed/ legen (Lock beim Aufrufer)."""
+        fname = entry["files"][idx]
+        self._trim_face(slug, fname, entry["emb"][idx], mean_sim, reason=reason, partner=partner)
+        entry.get("sources", {}).pop(fname, None)
+        entry["files"].pop(idx)
+        entry["emb"] = np.delete(entry["emb"], idx, axis=0)
+        return fname
+
+    def _self_outlier_sweep(self) -> list:
+        """Alle Personen auf Selbst-Ausreisser pruefen (Lock beim Aufrufer).
+
+        Iterativ, weil sich der Median mit jedem entfernten Foto verschiebt: erst wenn der
+        schlimmste Fall weg ist, zeigt sich, ob der naechste noch aus der Reihe faellt.
+        """
+        removed = []
+        for slug in list(self._cache):
+            changed = False
+            while True:
+                entry = self._cache[slug]
+                hit = self._self_outlier(entry)
+                if hit is None:
+                    break
+                idx, mean_sim, median = hit
+                reason = self._self_outlier_reason(entry["name"], mean_sim, median)
+                fname = self._drop(slug, entry, idx, mean_sim, reason)
+                removed.append({"person": entry["name"], "file": fname, "kind": "outlier",
+                                "mean_sim": round(mean_sim, 3), "median": round(median, 3)})
+                changed = True
+                log.info("%s: %s set aside — barely resembles its own person (%.3f vs %.3f)",
+                         entry["name"], fname, mean_sim, median)
+            if changed:
+                self._persist(slug)
+        return removed
+
+    def _cross_risk_sweep(self, threshold: float) -> list:
+        """Alle Personen auf Referenzen pruefen, die einer FREMDEN Person zu nahe kommen
+        (Lock beim Aufrufer)."""
+        removed = []
+        for slug in list(self._cache):
+            changed = False
+            while True:
+                entry = self._cache[slug]
+                if not len(entry["files"]):
+                    break
+                risks = [self._cross_max(slug, entry["emb"][i])
+                         for i in range(len(entry["files"]))]
+                worst = max(range(len(risks)), key=lambda i: risks[i][0]) if risks else None
+                if worst is None or risks[worst][0] < threshold:
+                    break
+                sim, who = risks[worst]
+                fname = self._drop(slug, entry, worst, sim,
+                                   reason=f"too close to {who} ({sim:.3f}) — a reference "
+                                          f"this ambiguous makes the two confusable",
+                                   partner=who)
+                removed.append({"person": entry["name"], "file": fname, "kind": "cross",
+                                "similarity": round(sim, 3), "partner": who})
+                changed = True
+            if changed:
+                self._persist(slug)
+        return removed
+
     def cross_risk_scan(self, threshold: float) -> list:
         """Bestehende Galerie durchgehen und Fotos aussortieren, die einer FREMDEN
         Person zu nahe kommen.
 
-        Hintergrund: Ein Foto mit wenig echter Gesichtsinformation — starkes Profil,
-        ueberbelichtete IR-Aufnahme, stark geneigter Kopf — erzeugt ein generisches
-        Embedding. Generische Embeddings aehneln einander, unabhaengig davon, wer
-        abgebildet ist. Solche Referenzen machen die Galerie nicht robuster, sondern
-        verwaschener, und sie sind es, die zwei Menschen verwechselbar machen.
-
         Nicht geloescht, sondern nach _trimmed/ verschoben — mit Begruendung, und
         jederzeit zurueckholbar.
         """
-        removed = []
         with self._lock:
-            for slug in list(self._cache):
-                while True:
-                    entry = self._cache[slug]
-                    if not len(entry["files"]):
-                        break
-                    risks = [self._cross_max(slug, entry["emb"][i])
-                             for i in range(len(entry["files"]))]
-                    worst = max(range(len(risks)), key=lambda i: risks[i][0]) if risks else None
-                    if worst is None or risks[worst][0] < threshold:
-                        break
-                    sim, who = risks[worst]
-                    fname = entry["files"][worst]
-                    self._trim_face(slug, fname, entry["emb"][worst], sim,
-                                    reason=f"too close to {who} ({sim:.3f}) — a reference "
-                                           f"this ambiguous makes the two confusable",
-                                    partner=who)
-                    entry.get("sources", {}).pop(fname, None)
-                    entry["files"].pop(worst)
-                    entry["emb"] = np.delete(entry["emb"], worst, axis=0)
-                    removed.append({"person": entry["name"], "file": fname,
-                                    "similarity": round(sim, 3), "partner": who})
-                self._persist(slug)
-        return removed
+            return self._cross_risk_sweep(threshold)
+
+    def quality_scan(self, cross_threshold: float) -> list:
+        """Beide Pruefungen in einem Durchgang — der Anwender muss nicht wissen, welche
+        von beiden seinen Fall findet.
+
+        Reihenfolge mit Absicht: erst die Selbst-Ausreisser. Referenzen ohne verwertbares
+        Gesicht verzerren auch den Kreuzvergleich, also fliegen sie zuerst raus, und die
+        Kreuzpruefung laeuft danach auf einer sauberen Galerie.
+        """
+        with self._lock:
+            out = self._self_outlier_sweep()
+            if cross_threshold > 0:
+                out += self._cross_risk_sweep(cross_threshold)
+        return out
 
     def rename(self, slug: str, new_name: str) -> str:
         """Anzeigenamen einer Person aendern.
@@ -394,17 +482,26 @@ class Gallery:
             if self.cross_risk_threshold > 0:
                 sim, who = self._cross_max(slug, embedding.astype(np.float32))
                 if sim >= self.cross_risk_threshold:
-                    self._trim_face(slug, fname, embedding.astype(np.float32), sim,
-                                    reason=f"too close to {who} ({sim:.3f}) — a reference "
-                                           f"this ambiguous makes the two confusable",
-                                    partner=who)
-                    entry.get("sources", {}).pop(fname, None)
-                    entry["files"].pop()
-                    entry["emb"] = np.delete(entry["emb"], len(entry["emb"]) - 1, axis=0)
+                    self._drop(slug, entry, len(entry["files"]) - 1, sim,
+                               reason=f"too close to {who} ({sim:.3f}) — a reference "
+                                      f"this ambiguous makes the two confusable",
+                               partner=who)
                     self._persist(slug)
                     log.info("%s: new photo set aside — too close to %s (%.3f)",
                              entry["name"], who, sim)
                     return fname
+            # Zweites Kriterium: passt das neue Foto ueberhaupt zu dieser Person? Nur das
+            # NEUE wird hier geprueft — der Bestand bleibt dem Durchlauf ueberlassen,
+            # damit ein einzelner Upload nicht die halbe Galerie umraeumt.
+            hit = self._self_outlier(entry)
+            if hit is not None and hit[0] == len(entry["files"]) - 1:
+                _, mean_sim, median = hit
+                self._drop(slug, entry, len(entry["files"]) - 1, mean_sim,
+                           reason=self._self_outlier_reason(entry["name"], mean_sim, median))
+                self._persist(slug)
+                log.info("%s: new photo set aside — barely resembles its own person "
+                         "(%.3f vs %.3f)", entry["name"], mean_sim, median)
+                return fname
             if self.max_per_person and len(entry["files"]) > self.max_per_person:
                 # redundanteste Referenz aussortieren (höchste mittlere Ähnlichkeit zu den
                 # übrigen = Dublette). Nicht löschen, sondern nach _trimmed/ verschieben,

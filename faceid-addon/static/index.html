@@ -608,9 +608,9 @@ async function renderSettings(){
     <h2 style="margin-top:22px">Keeping the gallery clean</h2>
     <div class="stat" style="margin:-4px 0 6px">Bad reference photos do not just fail to help — they actively make people harder to tell apart.</div>
     <div class="row" style="margin-top:6px">
-      <b style="min-width:230px;font:600 13px var(--sans)">Ambiguous references</b>
+      <b style="min-width:230px;font:600 13px var(--sans)">Weak references</b>
       <button class="ghost" onclick="crossRiskScan()">check gallery now</button>
-      <span class="stat">A photo with little real facial information — a hard profile, a blown-out IR shot, a steeply tilted head — produces a generic embedding, and generic embeddings resemble each other regardless of who is in them. Those are the references that make two people confusable. New photos are checked automatically as they are added; this button re-checks everything already in the gallery. Nothing is deleted: matches are moved to the person's set-aside pile with the reason and the name they clash with, and you can restore any of them from there.</span>
+      <span class="stat">A photo with little real facial information — a hard profile, a blown-out IR shot, a steeply tilted head — produces a generic embedding, and generic embeddings resemble each other regardless of who is in them. Two checks find those. The first compares each reference with the <b>other people</b> in your gallery. The second compares it with the <b>rest of that person's own photos</b>: a reference that barely resembles the person it belongs to holds nothing worth matching, and it will attract strangers — this catches photos the first check cannot see, because a live face comes far closer than any stored photo does. Both run automatically on new photos and at startup; this button re-checks everything now. Nothing is deleted — matches move to the person's set-aside pile with the reason, and can be restored from there.</span>
     </div>
     <div class="row" style="margin-top:6px">
       <b style="min-width:230px;font:600 13px var(--sans)">Keep set-aside photos</b>
@@ -815,9 +815,9 @@ function personCard(slug,p){
       ${(p.trimmed&&p.trimmed.length)?`
       <div style="margin-top:10px;border-top:1px dashed var(--line);padding-top:10px">
         <span class="trimlabel">✂︎ SET ASIDE · ${p.trimmed.length}</span> <button class="ghost" style="font-size:10px;padding:1px 8px" title="delete all set-aside photos for this person" onclick="clearTrimmed('${slug}','${esc(p.name)}')">clear all</button>
-        <div class="stat">Set aside as duplicates, over the photo limit, or <b style="color:var(--warn)">too close to another person</b> (those carry the name they clash with — restoring one makes the two harder to tell apart again). <b>Hover a photo</b> to mark its closest matches above — <span style="color:var(--acc)">bright green</span> = the photo it duplicates, <span style="color:var(--dim)">grey outline + %</span> = merely its closest matches (same person, different angle — these are kept on purpose). ↩ restore or × delete. <a href="https://github.com/SkyTechNerds/faceid/blob/main/docs/trimming.md" target="_blank" rel="noopener" style="color:var(--acc)">Learn more ↗</a></div>
+        <div class="stat">Set aside as duplicates, over the photo limit, <b style="color:var(--warn)">too close to another person</b> (those carry the name they clash with — restoring one makes the two harder to tell apart again), or <b style="color:var(--warn)">not resembling this person at all</b> (⚠ — a photo with almost no face in it, which matches strangers just as well). <b>Hover a photo</b> to mark its closest matches above — <span style="color:var(--acc)">bright green</span> = the photo it duplicates, <span style="color:var(--dim)">grey outline + %</span> = merely its closest matches (same person, different angle — these are kept on purpose). ↩ restore or × delete. <a href="https://github.com/SkyTechNerds/faceid/blob/main/docs/trimming.md" target="_blank" rel="noopener" style="color:var(--acc)">Learn more ↗</a></div>
         <div class="grid trimgrid" style="margin-top:6px">${p.trimmed.map(t=>`
-          <div class="tile${t.kind==='cross'?' crossrisk':''}" onmouseenter="hiliteSimilar('${slug}',${JSON.stringify(t.similar||[]).replace(/"/g,'&quot;')})" onmouseleave="hiliteSimilar('${slug}',[])">${t.kind==='cross'?`<span class="crosstag" title="${esc(t.reason)}">↔ ${esc(t.partner||'')}</span>`:''}<img src="data/persons/${slug}/_trimmed/${t.file}" loading="lazy" title="${t.kind==='same_image'?'Same image as the photo highlighted above.':t.kind==='near_dup'?'Near-duplicate of the photo highlighted above.':t.kind==='cross'?esc(t.reason)+' — restoring it makes those two harder to tell apart again.':'Set aside because of the photo limit — highlighted above are its closest matches with their similarity. They are the same person from other angles, not duplicates.'} · ${fmtTs(t.ts)}">
+          <div class="tile${(t.kind==='cross'||t.kind==='outlier')?' crossrisk':''}" onmouseenter="hiliteSimilar('${slug}',${JSON.stringify(t.similar||[]).replace(/"/g,'&quot;')})" onmouseleave="hiliteSimilar('${slug}',[])">${t.kind==='cross'?`<span class="crosstag" title="${esc(t.reason)}">↔ ${esc(t.partner||'')}</span>`:t.kind==='outlier'?`<span class="crosstag" title="${esc(t.reason)}">⚠ doesn't fit</span>`:''}<img src="data/persons/${slug}/_trimmed/${t.file}" loading="lazy" title="${t.kind==='same_image'?'Same image as the photo highlighted above.':t.kind==='near_dup'?'Near-duplicate of the photo highlighted above.':t.kind==='cross'?esc(t.reason)+' — restoring it makes those two harder to tell apart again.':t.kind==='outlier'?esc(t.reason)+' — restoring it puts back a photo that matches other people as readily as this one.':'Set aside because of the photo limit — highlighted above are its closest matches with their similarity. They are the same person from other angles, not duplicates.'} · ${fmtTs(t.ts)}">
             <button class="u" title="restore this photo" onclick="restoreTrimmed('${slug}','${t.file}')">↩</button>
             <button class="x" title="delete permanently" onclick="deleteTrimmed('${slug}','${t.file}')">×</button></div>`).join('')}
         </div>
@@ -859,12 +859,14 @@ async function deleteTrimmed(slug,file){
   persons=await j('api/persons');if(tab==='persons')renderPersons();
 }
 async function crossRiskScan(){
-  if(!confirm('Check every reference photo against the other people in your gallery?\n\nAnything too similar to someone else is moved to that person\'s set-aside pile — with the reason — and can be restored from there.'))return;
+  if(!confirm('Check every reference photo twice — against the other people in your gallery, and against the rest of that person\'s own photos?\n\nA photo too similar to someone else makes the two confusable. A photo that barely resembles its own person holds almost no face information, and those attract strangers.\n\nBoth kinds move to the person\'s set-aside pile with the reason, and can be restored.'))return;
   try{
-    const r=await j('api/gallery/cross-risk-scan',{method:'POST'});
-    if(!r.removed.length){toast(`nothing ambiguous found (limit ${r.threshold})`);return}
-    const lines=r.removed.map(x=>`${x.person}: ${x.file.slice(0,20)} — ${x.similarity} to ${x.partner}`);
-    alert(`${r.removed.length} reference(s) set aside (limit ${r.threshold}):\n\n`+lines.join('\n')+
+    const r=await j('api/gallery/quality-scan',{method:'POST'});
+    if(!r.removed.length){toast('every reference photo passed both checks');return}
+    const lines=r.removed.map(x=>x.kind==='outlier'
+      ?`${x.person}: ${x.file.slice(0,20)} — ${x.mean_sim} to its own person, ${x.median} is normal`
+      :`${x.person}: ${x.file.slice(0,20)} — ${x.similarity} to ${x.partner}`);
+    alert(`${r.removed.length} reference(s) set aside:\n\n`+lines.join('\n')+
           '\n\nThey are in each person\'s set-aside pile and can be restored.');
     render();
   }catch(e){toast(String(e.message||e).slice(0,140))}

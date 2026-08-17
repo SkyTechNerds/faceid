@@ -3,6 +3,38 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.15.0 — 2026-08-17
+
+- **New: references that do not resemble their own person are set aside automatically.**
+  Version 0.14 checked every reference against the *other* people in the gallery. That
+  check has a blind spot, and it cost a misidentification here five days later.
+- What happened: one photo in my own gallery — taken from above, showing mostly the back of
+  a head — was published under my name when a *different* person walked in. It reached
+  **0.576** against her live face, well past the threshold of 0.45.
+- The cross-check had seen that photo and let it pass at **0.368**, just under its limit.
+  It was not wrong; it measures gallery against gallery, and a *live* face comes far closer
+  than any stored photo of the same person does. Gallery-vs-gallery is a lower bound, and
+  this case shows by how much.
+- The stronger signal was there all along: that photo's average similarity to my own other
+  49 photos was **−0.011**, where **0.265** is normal for me. It was the single
+  worst-fitting photo in my own gallery, and needed no second person to be recognised as
+  worthless. A reference that barely resembles the person it belongs to holds almost no
+  face information — and an embedding without face information matches strangers as
+  readily as its owner.
+- FaceID now applies both checks in one pass: on new photos, once at startup, and on demand
+  (Settings → *Keeping the gallery clean* → **check gallery now**). Verified against the
+  real event: with the photo set aside, that same face no longer matches me at all — I drop
+  out of the top three — and it is correctly recognised as the right person at 0.460.
+- Measured relative to each person, not by a fixed number: how alike someone's photos
+  normally are varies a lot with how varied the shots are (0.23 to 0.47 across the people
+  here). A photo falls when it stays below `self_outlier_ratio` (default 0.25) of that
+  person's median, and only for people with at least 5 photos, where the median means
+  something. Across 188 photos of 13 people it set aside 3 — the culprit above, one
+  blown-out IR frame, one more head seen from above.
+- `self_outlier_ratio: -1` switches it off. As always nothing is deleted: photos move to
+  the person's set-aside pile marked ⚠ with the numbers behind the decision, and one click
+  restores them.
+
 ## 0.14.0 — 2026-08-14
 
 - **New: references that make two people confusable are set aside automatically.** A hard

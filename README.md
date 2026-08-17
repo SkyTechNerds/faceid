@@ -553,6 +553,7 @@ that matter most:
 | `match_top_k` (3) | a person's score is the mean of their top-k reference similarities — dampens photo-count bias (1 = raw max) |
 | `max_faces_per_person` (40) | soft cap; adding more drops the most redundant reference (0 = unlimited) |
 | `cross_risk_margin` (0.05) | a reference closer than `match_threshold` minus this to **another** person is set aside — such photos make two people confusable ([details](docs/trimming.md#references-that-make-two-people-confusable)); `-1` disables the check |
+| `self_outlier_ratio` (0.25) | a reference whose average similarity to the **same person's** other photos falls below this share of that person's median is set aside — such a photo holds almost no face information and attracts strangers ([details](docs/trimming.md#references-that-do-not-resemble-their-own-person)); needs ≥5 photos, `-1` disables |
 | `ignore_threshold` (= match_threshold) | similarity at which a face counts as ignored |
 | `ignore_learning` (true) | learn new looks of ignored people as additional anchors (guarded) |
 | `hires_enroll` (true) | fetch new review-queue faces from the recording (sharper references) |

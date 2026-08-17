@@ -72,14 +72,20 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     class FavBody(BaseModel):
         favorite: bool
 
-    @app.post("/api/gallery/cross-risk-scan")
-    def cross_risk_scan():
-        """Bestehende Galerie auf Referenzen pruefen, die zwei Personen verwechselbar machen."""
+    @app.post("/api/gallery/quality-scan")
+    @app.post("/api/gallery/cross-risk-scan")  # Name bis v0.14 — bleibt gueltig
+    def quality_scan():
+        """Referenzen pruefen: solche, die zwei Personen verwechselbar machen, und solche,
+        die zur eigenen Person gar nicht passen."""
         thr = gallery.cross_risk_threshold
-        if thr <= 0:
-            raise HTTPException(400, "cross-risk check is disabled (cross_risk_margin < 0)")
-        removed = gallery.cross_risk_scan(thr)
-        log.info("cross-risk scan: %d reference(s) set aside (threshold %.2f)", len(removed), thr)
+        if thr <= 0 and gallery.self_outlier_ratio <= 0:
+            raise HTTPException(400, "reference check is disabled "
+                                     "(cross_risk_margin < 0 and self_outlier_ratio <= 0)")
+        removed = gallery.quality_scan(thr)
+        n_out = sum(1 for r in removed if r["kind"] == "outlier")
+        log.info("reference check: %d set aside — %d ambiguous (threshold %.2f), "
+                 "%d not resembling their own person", len(removed), len(removed) - n_out,
+                 thr, n_out)
         return {"ok": True, "threshold": round(thr, 3), "removed": removed}
 
     @app.post("/api/persons/{slug}/rename")

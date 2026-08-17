@@ -92,10 +92,69 @@ that scores 0.41 against another person may still be a perfectly good likeness t
 have a reason to keep. Setting it aside makes the trade-off visible and reversible;
 deleting would make it silent and final.
 
+## References that do not resemble their own person
+
+The check above has a blind spot, and it cost a misidentification here five days after it
+shipped.
+
+A photo in my own gallery — taken from above, showing mostly the back of a head — was
+published under my name when a **different** person walked through the door. Against her
+live face it reached **0.576**, well past the threshold of 0.45.
+
+The cross-check had seen that photo and let it pass at **0.368**, just under its limit. It
+was not wrong. It compares *stored photo against stored photo*, and a **live** face comes
+far closer than any stored photo of the same person does. Gallery-vs-gallery is a lower
+bound on the real risk, and this case shows by how much: 0.368 measured, 0.576 in reality.
+
+The stronger signal needed no second person at all. That photo's average similarity to my
+own other 49 photos was **−0.011**, where **0.265** is normal for me — the single
+worst-fitting photo in my own gallery:
+
+| | |
+|---|---|
+| average similarity to its own person | **−0.011** |
+| normal for that person (median) | 0.265 |
+| rank among that person's 49 photos | **0 — last** |
+| similarity to the stranger it matched | 0.576 |
+
+That is the whole mechanism in four numbers. A reference that barely resembles the person
+it belongs to contains almost no face information, and an embedding without face
+information matches **everyone** a little. It cannot help its own person — it can only
+attract other people's faces.
+
+So FaceID also checks each reference against **the rest of that person's own photos**,
+in the same pass and at the same three moments (on add, at startup, and via *check gallery
+now*).
+
+**Why a ratio rather than a fixed number.** How alike a person's photos normally are
+depends entirely on how varied the shots are — across the people in one household gallery
+the median ran from 0.23 to 0.47. A photo is set aside when it falls below
+`self_outlier_ratio` (default **0.25**) of *that person's* median, and only for people with
+at least **5** photos, below which a median means nothing. `self_outlier_ratio: -1` turns
+the check off.
+
+**This does not punish unusual angles** — that distinction is the whole reason the default
+sits at 0.25. A genuinely useful photo from an awkward angle still lands around 0.10–0.20
+(≈40–60 % of its person's median) and is kept, deliberately, because it covers a pose
+nothing else does. What falls out is the range below a quarter of the median: overexposed
+IR frames, heads seen from above, faces pointed at the floor. On the gallery here, 3 of 188
+photos across 13 people.
+
+Set-aside photos of this kind are marked ⚠ and carry the numbers, e.g. *"barely resembles
+the other photos of Christian (−0.011 where 0.265 is normal for this person)"*.
+
+**Does it actually fix anything?** Replayed against the real event: with that one photo set
+aside, the same face no longer matches me at all — I drop out of the top three entirely —
+and it is correctly recognised as the right person at 0.460. One reference photo, one wrong
+identification.
+
 ## Practical tips
 
 - **Poor recognition from one angle?** Add a photo taken from *that* angle. Being unusual,
-  it scores low similarity to the rest and is automatically kept.
+  it scores low similarity to the rest and is automatically kept — as long as a face is
+  actually visible in it. A shot where the face is turned away carries nothing to match
+  and is set aside instead (see above); an unusual *view of a face* is exactly what you
+  want, an unusual *absence of a face* is not.
 - **Want more/fewer references per person?** Change **Max photos per person** in Settings.
   Higher keeps more variety but costs a little RAM/CPU; the default of 40 is plenty for
   a household.
