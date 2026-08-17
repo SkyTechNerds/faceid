@@ -35,3 +35,48 @@
         channel: FaceID
         tag: faceid-{{ trigger.payload_json.person | lower }}
         image: '{{ frigate_url }}/api/events/{{ trigger.payload_json.event_id }}/snapshot.jpg'
+
+# Example: alert only for STRANGERS, and only in the zone you care about.
+#
+# Every faceid/event carries `zones` — the Frigate zones that person entered
+# during the event. Unknown faces are published as person: unknown, so one topic
+# covers both cases: notify for strangers in the driveway, stay silent for the
+# street, and never notify for people you know.
+#
+# IMPORTANT: an empty `zones` is not "outside every zone". It looks the same
+# whether the camera has no zones at all or Frigate never registered the person
+# in one — which happens more often than you would expect (12 of 28 correct
+# recognitions on one zoned camera here carried no zone). This automation
+# therefore requires the zone to be PRESENT rather than testing that it is
+# absent, so an unknown location stays quiet instead of alerting. Flip that if
+# you would rather get a false alarm than miss someone.
+#
+# If you want strict zone gating, do it in Frigate instead:
+#   snapshots: { required_zones: [driveway] }
+# FaceID only acts on events that have a snapshot, so those never reach it at all.
+
+- alias: 'FaceID: stranger in the driveway'
+  id: faceid_stranger_driveway
+  mode: queued
+  triggers:
+  - trigger: mqtt
+    topic: faceid/event
+    value_template: '{{ value_json.person }}'
+    payload: unknown
+  conditions:
+  - condition: template
+    value_template: "{{ 'driveway' in (trigger.payload_json.zones | default([])) }}"
+  variables:
+    frigate_url: http://192.168.1.10:5000
+  actions:
+  - action: notify.mobile_app_your_phone
+    data:
+      title: Unknown person in the driveway
+      message: >-
+        Someone FaceID does not recognize
+        ({{ ((trigger.payload_json.score | default(0)) * 100) | round(0) | int }} % to the
+        closest known face).
+      data:
+        channel: FaceID
+        tag: faceid-stranger-{{ trigger.payload_json.camera }}
+        image: '{{ frigate_url }}/api/events/{{ trigger.payload_json.event_id }}/snapshot.jpg'
