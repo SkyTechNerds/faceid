@@ -3,6 +3,24 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.16.0 — 2026-08-17
+
+- **`faceid/event` now carries the Frigate zones** the person entered during that event,
+  and so does the `last` attribute on the presence sensor. Asked for in the forum by
+  someone who wants notifications for strangers in the driveway but silence for the street.
+- Deliberately *data*, not a filter. The obvious feature — "only scan events in zone X" —
+  would have thrown away **12 of 28** correct recognitions on the one zoned camera here,
+  because Frigate had registered no zone for them at all. Publishing the zones costs no
+  recognition and lets an automation express rules no config option could: different
+  handling for known and unknown people, per zone.
+- Both publishing paths carry it, so a stranger alert can be zone-aware just like a
+  known-person one. Events picked up by the poller carry the complete list, since those
+  events are already finished.
+- ⚠️ An empty list is *unknown*, not *elsewhere*: it looks identical whether the camera has
+  no zones or Frigate simply never placed the person in one. Documented in the README next
+  to the payload, together with the stricter alternative — Frigate's own
+  `snapshots: required_zones:`, which keeps such events away from FaceID entirely.
+
 ## 0.15.0 — 2026-08-17
 
 - **New: references that do not resemble their own person are set aside automatically.**

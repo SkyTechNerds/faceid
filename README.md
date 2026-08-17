@@ -520,6 +520,26 @@ For automations, trigger on the `faceid/event` topic — one JSON message per
 (Frigate event, person): see [docs/ha-automation-example.yaml](docs/ha-automation-example.yaml)
 for a phone-notification automation with the Frigate snapshot attached.
 
+```json
+{"person": "Alice", "score": 0.612, "camera": "driveway",
+ "event_id": "1786945313.350301-xiec8d", "ts": 1786945318.4,
+ "zones": ["driveway_zone"]}
+```
+
+`zones` lists the Frigate zones the person entered during that event, so an automation can
+tell *where* someone was seen — notify for strangers in the driveway, stay quiet for the
+street, ignore known faces anywhere. The same payload appears as the `last` attribute on
+the presence sensor.
+
+⚠️ **An empty `zones` does not mean "outside every zone".** It also appears when the camera
+has no zones at all, and when Frigate never registered the person in one — being *visible*
+in a region and being *counted as in a zone* are different things (the zone test uses the
+object's anchor point and has its own timing rules). On the gallery here, 12 of 28 correct
+recognitions on a zoned camera carried no zone. Treat empty as *unknown*, not as *elsewhere*,
+and decide deliberately what your automation does with it. If you want zone gating to be
+strict, do it in Frigate instead — `snapshots: required_zones:` stops the event from ever
+reaching FaceID, because FaceID only acts on events that have a snapshot.
+
 ## Updates
 
 - **Home Assistant app:** you get notified automatically when a new version is available

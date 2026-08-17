@@ -200,9 +200,16 @@ class EventProcessor:
             eid,
             {"camera": cam, "attempts": 0, "best_score": 0.0, "best_person": None,
              "best_unknown": None, "last_try": 0.0, "done": False, "ended": False,
-             "created": time.time(),
+             "created": time.time(), "zones": [],
              "start_time": after.get("start_time") or time.time(), "end_time": None},
         )
+        # Zonen aus jedem Update mitschreiben: beim Veroeffentlichen liegt der
+        # Frigate-Payload laengst nicht mehr vor. `entered_zones` ist kumulativ und
+        # beantwortet genau die Frage, die Automationen stellen — war die Person in
+        # Zone X? Nur uebernehmen, wenn gefuellt, damit ein spaeteres Update die
+        # Angabe nicht wieder ausloescht.
+        if after.get("entered_zones"):
+            st["zones"] = list(after["entered_zones"])
         if etype == "end":
             st["ended"] = True
             st["end_time"] = after.get("end_time") or time.time()
@@ -406,6 +413,8 @@ class EventProcessor:
                     "camera": cam, "attempts": 0, "best_score": 0.0, "best_person": None,
                     "best_unknown": None, "last_try": 0.0, "done": False, "ended": True,
                     "created": time.time(), "polled": True,
+                    # hier sogar vollstaendig: das Ereignis ist abgeschlossen
+                    "zones": list(ev.get("zones") or []),
                     "start_time": ev.get("start_time") or time.time(),
                     "end_time": ev.get("end_time"),
                 }
@@ -545,6 +554,11 @@ class EventProcessor:
         payload = {
             "person": name, "score": round(float(score), 3), "camera": st["camera"],
             "event_id": eid, "ts": time.time(),
+            # Frigate-Zonen, die die Person in diesem Ereignis betreten hat. Leer, wenn
+            # die Kamera keine Zonen hat ODER Frigate die Person keiner zugeordnet hat —
+            # beides sieht gleich aus, deshalb in Automationen nie auf "leer heisst
+            # ausserhalb" bauen.
+            "zones": list(st.get("zones") or []),
         }
         self.recent.appendleft(payload)
         # faceid/event genau einmal pro (Event, Person) — Score-Verbesserungen lösen keine
