@@ -529,7 +529,9 @@ for a phone-notification automation with the Frigate snapshot attached.
 `zones` lists the Frigate zones the person entered during that event, so an automation can
 tell *where* someone was seen — notify for strangers in the driveway, stay quiet for the
 street, ignore known faces anywhere. The same payload appears as the `last` attribute on
-the presence sensor.
+the presence sensor, where it stays until the next recognition replaces it — the state
+falls back to `nobody` when nobody is around, but `last` keeps answering who was seen there
+most recently. It is absent until the first recognition after a restart.
 
 ⚠️ **An empty `zones` does not mean "outside every zone".** It also appears when the camera
 has no zones at all, and when Frigate never registered the person in one — being *visible*

@@ -3,6 +3,20 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.16.1 — 2026-08-18
+
+- **Fix: the `last` attribute on the presence sensor no longer disappears.** It held the
+  most recent recognition only until the presence window ran out — after that the finalizer
+  rewrote the retained topic without it, every few seconds, and the attribute was empty for
+  most of the day. Found while verifying yesterday's zone payload: all four sensors here had
+  no `last` at all, hours after correct recognitions.
+- An attribute called `last` should answer "who was seen here most recently", and that does
+  not stop being true when the person leaves. It now persists until the next recognition
+  replaces it. After a restart it stays absent until the first one, since the sensor state
+  is rebuilt from scratch on purpose.
+- Automations triggering on `faceid/event` were never affected — only templates reading the
+  sensor attribute.
+
 ## 0.16.0 — 2026-08-17
 
 - **`faceid/event` now carries the Frigate zones** the person entered during that event,

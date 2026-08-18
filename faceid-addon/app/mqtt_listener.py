@@ -96,6 +96,10 @@ class EventProcessor:
         self.prefix = str(f.get("mqtt_prefix", "faceid")).strip("/") or "faceid"
         self.present: dict[str, dict[str, float]] = {}  # camera -> {person: zuletzt gesehen}
         self._last_presence: dict[str, list] = {}  # zuletzt publizierter Stand je Kamera
+        # letzte Meldung je Kamera, damit sie im Attribut stehen bleibt: der Finalizer
+        # schreibt den Anwesenheitsstand alle paar Sekunden neu, und ohne diesen Merker
+        # verschwand die letzte Erkennung, sobald das Anwesenheitsfenster ablief.
+        self._last_event: dict[str, dict] = {}
 
     # ---------- MQTT ----------
 
@@ -581,13 +585,19 @@ class EventProcessor:
             if now - ts > self.presence_window:
                 pres.pop(n)
         names = [n for n, _ in sorted(pres.items(), key=lambda kv: -kv[1])]
+        if last:
+            self._last_event[cam] = last
         if names == self._last_presence.get(cam) and last is None:
             return  # nichts geändert -> retained Topic nicht neu beschreiben
         self._last_presence[cam] = names
         if self.client:
             attrs = {"persons": names, "window_s": self.presence_window, "ts": now}
-            if last:
-                attrs["last"] = last
+            # 'last' bleibt erhalten, auch wenn niemand mehr anwesend ist — es beantwortet
+            # "wer wurde hier zuletzt erkannt?", und das wird nicht falsch, nur weil die
+            # Person gegangen ist. Nach einem Neustart erst wieder ab der ersten Erkennung.
+            seen = self._last_event.get(cam)
+            if seen:
+                attrs["last"] = seen
             self.client.publish(f"{self.prefix}/{cam}/person", ", ".join(names) or "nobody", retain=True)
             self.client.publish(f"{self.prefix}/{cam}/attributes", json.dumps(attrs, ensure_ascii=False), retain=True)
 
