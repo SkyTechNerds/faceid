@@ -106,6 +106,7 @@ class EventProcessor:
     def start(self):
         m = self.cfg["mqtt"]
         c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=self.prefix)
+        self.client = c
         if m.get("user"):
             c.username_pw_set(m["user"], m.get("password", ""))
         c.will_set(f"{self.prefix}/status", "offline", retain=True)
@@ -113,7 +114,6 @@ class EventProcessor:
         c.on_message = self._on_message
         c.connect(m["host"], int(m.get("port", 1883)), keepalive=60)
         c.loop_start()
-        self.client = c
         self._check_frigate()
         threading.Thread(target=self._worker, daemon=True, name="faceid-worker").start()
         threading.Thread(target=self._finalizer, daemon=True, name="faceid-finalizer").start()
@@ -648,8 +648,9 @@ class EventProcessor:
                 "icon": "mdi:face-recognition",
                 "device": device,
             }
-            self.client.publish(f"homeassistant/sensor/{self.prefix}_{cam}/config",
-                                json.dumps(conf, ensure_ascii=False), retain=True)
+            if self.client:
+                self.client.publish(f"homeassistant/sensor/{self.prefix}_{cam}/config",
+                                    json.dumps(conf, ensure_ascii=False), retain=True)
             # frischen Anwesenheits-Stand publizieren (räumt auch stale retained States nach Neustart auf)
             self._last_presence.pop(cam, None)
             self.present.setdefault(cam, {})
