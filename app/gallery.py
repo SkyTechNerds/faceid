@@ -3,12 +3,14 @@
 Matching per Cosine-Similarity (Embeddings sind L2-normiert -> Dot-Product).
 Kein Training, kein Overfitting: jedes Bild ist ein eigener Vergleichspunkt.
 """
+import hashlib
 import json
 import logging
 import re
 import shutil
 import threading
 import time
+import unicodedata
 from pathlib import Path
 
 import cv2
@@ -18,11 +20,27 @@ log = logging.getLogger("faceid.gallery")
 
 
 def slugify(name: str) -> str:
-    s = name.strip().lower()
+    normalized = unicodedata.normalize("NFKC", name).strip().casefold()
+    s = normalized
     for a, b in [("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")]:
         s = s.replace(a, b)
+    # Strip accents from Latin characters while keeping the on-disk identifier ASCII.
+    # Scripts without an ASCII representation get a stable,
+    # name-derived suffix instead of all collapsing to the literal directory "person".
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
     s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
-    return s or "person"
+    if s:
+        return s
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:10]
+    return f"person-{digest}"
+
+
+def _same_name(a: str, b: str) -> bool:
+    """Compare display names without treating Unicode composition or case as distinct."""
+    return (
+        unicodedata.normalize("NFKC", a).strip().casefold()
+        == unicodedata.normalize("NFKC", b).strip().casefold()
+    )
 
 
 class Gallery:
@@ -65,7 +83,7 @@ class Gallery:
                 emb_f = pdir / "embeddings.npy"
                 if not meta_f.exists() or not emb_f.exists():
                     continue
-                meta = json.loads(meta_f.read_text())
+                meta = json.loads(meta_f.read_text(encoding="utf-8"))
                 emb = np.load(emb_f)
                 files, changed = self._repair_person(pdir, meta, emb)
                 self._cache[pdir.name] = {
@@ -80,7 +98,7 @@ class Gallery:
                     meta_f.write_text(json.dumps(
                         {"name": meta.get("name", pdir.name), "files": files,
                          "favorite": bool(meta.get("favorite", False))},
-                        ensure_ascii=False, indent=1))
+                        ensure_ascii=False, indent=1), encoding="utf-8")
             embs, ids, groups = [], [], []
             for jf in sorted(self.ignored_dir.glob("*.json")):
                 try:
@@ -256,7 +274,8 @@ class Gallery:
             json.dumps({"name": entry["name"], "files": entry["files"],
                         "favorite": bool(entry.get("favorite", False)),
                         "sources": entry.get("sources", {})},
-                       ensure_ascii=False, indent=1)
+                       ensure_ascii=False, indent=1),
+            encoding="utf-8",
         )
 
     # ---------- Personen ----------
@@ -450,12 +469,30 @@ class Gallery:
     def create_person(self, name: str) -> str:
         slug = slugify(name)
         with self._lock:
+            # Creating the same display name again is idempotent, even if an older
+            # version used a different slugging scheme for it.
+            for existing_slug, entry in self._cache.items():
+                if _same_name(entry["name"], name):
+                    return existing_slug
+
+            # Different names can legitimately have the same ASCII projection
+            # ("Alex" / "Alex!", or names from different non-Latin scripts). Never
+            # silently turn such a request into the already-existing person.
+            if slug in self._cache or (self.persons_dir / slug).exists():
+                digest = hashlib.sha256(
+                    unicodedata.normalize("NFKC", name).strip().casefold().encode("utf-8")
+                ).hexdigest()[:10]
+                base = f"{slug}-{digest}"
+                slug = base
+                suffix = 2
+                while slug in self._cache or (self.persons_dir / slug).exists():
+                    slug = f"{base}-{suffix}"
+                    suffix += 1
             pdir = self.persons_dir / slug
             pdir.mkdir(exist_ok=True)
-            if slug not in self._cache:
-                self._cache[slug] = {"name": name, "emb": np.zeros((0, 512), dtype=np.float32),
-                                     "files": [], "favorite": False, "sources": {}}
-                self._persist(slug)
+            self._cache[slug] = {"name": name, "emb": np.zeros((0, 512), dtype=np.float32),
+                                 "files": [], "favorite": False, "sources": {}}
+            self._persist(slug)
         return slug
 
     def add_face(self, slug: str, crop_bgr: np.ndarray, embedding: np.ndarray,
