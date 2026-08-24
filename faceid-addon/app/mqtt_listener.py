@@ -177,12 +177,25 @@ class EventProcessor:
             log.error("Frigate at %s unreachable: %s — snapshots, and therefore recognition, will fail", url, e)
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
-        log.info("MQTT connected (%s), subscribing to %s/events", reason_code, self.frigate_topic)
-        client.subscribe(f"{self.frigate_topic}/events")
-        client.publish(f"{self.prefix}/status", "online", retain=True)
-        self._publish_discovery()
+        # Eine Exception in einem paho-Callback beendet dessen Netzwerk-Thread. Der Dienst
+        # laeuft dann weiter, die Web-UI antwortet, Gesichter werden erkannt — nur MQTT ist
+        # still, ohne weitere Meldung. Genau so trat Issue #11 auf. Deshalb faengt jeder
+        # Callback hier ab und protokolliert, statt die Verbindung mitzureissen.
+        try:
+            log.info("MQTT connected (%s), subscribing to %s/events", reason_code, self.frigate_topic)
+            client.subscribe(f"{self.frigate_topic}/events")
+            client.publish(f"{self.prefix}/status", "online", retain=True)
+            self._publish_discovery()
+        except Exception:
+            log.exception("error in the MQTT connect callback — connection kept alive")
 
     def _on_message(self, client, userdata, msg):
+        try:
+            self._handle_message(msg)
+        except Exception:
+            log.exception("error while handling an MQTT message — connection kept alive")
+
+    def _handle_message(self, msg):
         try:
             payload = json.loads(msg.payload)
         except json.JSONDecodeError:

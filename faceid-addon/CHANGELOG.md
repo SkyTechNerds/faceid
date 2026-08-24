@@ -3,6 +3,35 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.17.0 — 2026-08-24
+
+Two community fixes, both for bugs that were invisible until someone hit them.
+
+- **Fix: FaceID could go silent on MQTT without any sign of it** (#11, fixed by @zlowred in
+  #12). `self.client` was assigned *after* `connect()` and `loop_start()`. A broker that
+  answers fast enough — typically a local one without authentication — fired `_on_connect`
+  on the network thread before that assignment landed, and `_publish_discovery` hit
+  `None.publish`. The exception killed the paho thread.
+- The failure mode is the nasty part: the service keeps running, the web UI responds, faces
+  are still recognised — and **nothing is ever published to MQTT again**. If your sensors
+  went quiet for no apparent reason, this was a candidate. The only visible trace was a
+  traceback at startup.
+- **Hardened against the whole class of bug.** Any exception in a paho callback takes down
+  the network thread the same way, so both callbacks now catch and log instead of letting
+  it propagate. A future bug in message handling will cost one event, not the connection.
+- **Fix: two people with non-Latin names collided** (#10, fixed by @egmen in #9). `slugify()`
+  stripped everything outside `[a-z0-9]`, so "Макс" became empty and fell back to the
+  literal folder `person`. The second such name mapped to the same folder: the UI said
+  "Person created" and nothing appeared.
+- Slugs now stay ASCII but get a stable name-derived suffix when a script has no ASCII form,
+  and remaining collisions are disambiguated instead of silently reusing an existing person.
+  Display names keep their original Unicode. Verified against a 14-person gallery: **no
+  existing slug changes**, so nothing moves on upgrade.
+- That PR also brought the repo's **first unit tests**, now part of CI.
+- `rename()` now compares names the same way `create_person()` does. It used plain
+  `casefold()`, so two names that differ only in Unicode composition — visually identical —
+  could end up as separate people depending on which path created them.
+
 ## 0.16.1 — 2026-08-18
 
 - **Fix: the `last` attribute on the presence sensor no longer disappears.** It held the

@@ -439,7 +439,9 @@ class Gallery:
             if slug not in self._cache:
                 raise KeyError(slug)
             for other, e in self._cache.items():
-                if other != slug and e["name"].casefold() == name.casefold():
+                # dieselbe Gleichheit wie in create_person: sonst wird ein Name
+                # abgelehnt/akzeptiert, je nachdem ueber welchen Weg er entsteht
+                if other != slug and _same_name(e["name"], name):
                     raise ValueError(f"'{name}' already exists")
             self._cache[slug]["name"] = name
             self._persist(slug)
