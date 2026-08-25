@@ -100,6 +100,8 @@ class EventProcessor:
         # schreibt den Anwesenheitsstand alle paar Sekunden neu, und ohne diesen Merker
         # verschwand die letzte Erkennung, sobald das Anwesenheitsfenster ablief.
         self._last_event: dict[str, dict] = {}
+        # Verlauf der Meldungen; wird vom Dienst gesetzt (None = nicht mitschreiben)
+        self.history = None
 
     # ---------- MQTT ----------
 
@@ -369,11 +371,11 @@ class EventProcessor:
         if slug and score >= self.match_thr:
             if not primary:
                 # Nur melden und zur Anwesenheit zaehlen; kein sub_label, kein best_score.
-                self._publish_recognition(eid, st, name, score)
+                self._publish_recognition(eid, st, name, score, crop=crop, emb=emb)
                 return
             if score > st["best_score"]:
                 st["best_score"], st["best_person"] = score, name
-                self._publish_recognition(eid, st, name, score)
+                self._publish_recognition(eid, st, name, score, crop=crop, emb=emb)
                 if self.set_sub_label:
                     self.frigate.set_sub_label(eid, name, score)
             if score >= self.match_thr + 0.1:
@@ -561,13 +563,17 @@ class EventProcessor:
                          "guess": u["guess"], "guess_score": round(u["guess_score"], 3)},
                         full_bgr=full,
                     )
-                    self._publish_recognition(eid, st, "unknown", u["guess_score"])
+                    # crop/emb statt u[...]: kommt der schaerfere Ausschnitt aus der
+                    # Aufnahme, ist genau der auch der gemeldete.
+                    self._publish_recognition(eid, st, "unknown", u["guess_score"],
+                                              crop=crop, emb=emb)
                     log.info("event %s: unknown face stored (%s)", eid, uid)
                 self.events.pop(eid, None)
 
     # ---------- Publish ----------
 
-    def _publish_recognition(self, eid: str, st: dict, name: str, score: float):
+    def _publish_recognition(self, eid: str, st: dict, name: str, score: float,
+                             crop=None, emb=None):
         payload = {
             "person": name, "score": round(float(score), 3), "camera": st["camera"],
             "event_id": eid, "ts": time.time(),
@@ -589,6 +595,12 @@ class EventProcessor:
             self.client.publish(f"{self.prefix}/event", json.dumps(payload, ensure_ascii=False))
         self.present.setdefault(st["camera"], {})[name] = time.time()
         self._publish_presence(st["camera"], last=payload)
+        # Den TATSAECHLICH benutzten Ausschnitt festhalten. Der Frigate-Snapshot wird
+        # waehrend des Ereignisses fortlaufend ersetzt und zeigt spaeter oft einen anderen
+        # Moment — eine Nachpruefung an ihm fuehrt in die Irre. Siehe app/history.py.
+        if self.history is not None and crop is not None:
+            self.history.add(crop, emb, {k: v for k, v in payload.items() if k != "ts"}
+                             | {"ts": payload["ts"], "attempt": st.get("attempts")})
 
     def _publish_presence(self, cam: str, last: dict | None = None):
         """Sensor-State = alle im Fenster gesehenen Personen ('Christian, Juli' / 'niemand')."""

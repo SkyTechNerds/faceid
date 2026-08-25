@@ -3,6 +3,29 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.18.0 — 2026-08-25
+
+- **New: a history of what FaceID actually reported — with the face image it used.** New
+  **HISTORY** tab. Every published recognition is kept with its crop, score, camera, zones
+  and the embedding behind it.
+- This exists because of a concrete failure. Asked to verify a suspected misidentification,
+  I pulled the Frigate snapshots for the events in question — and one of them showed a
+  *different person* than the one that had been reported. The recognition turned out to be
+  right: Frigate replaces an event's snapshot while the event runs, and the picture it
+  serves later is usually a different moment. Reconstructing the truth took the recording,
+  frame by frame, for a single event. That is not a workable answer to "was this wrong?".
+- **"was wrong" does the analysis for you.** One click computes which reference photo
+  carried that match, what the score would have been without it, and who would have won
+  instead. If a single photo is responsible — its similarity far above every other photo of
+  that person — FaceID offers to set exactly that one aside. Reversible, with the reason
+  recorded, like every other set-aside.
+- If no single photo is responsible, it says so instead of suggesting a fix that would not
+  help: the two people are then genuinely close, and the answer is more references, not
+  fewer.
+- Kept to the last `history_keep` entries (default 200, `0` disables). A crop is a few KB.
+- Unknown reports are recorded too — they are published messages like any other, and
+  "why was I reported as a stranger?" is the same question.
+
 ## 0.17.0 — 2026-08-24
 
 Two community fixes, both for bugs that were invisible until someone hit them.

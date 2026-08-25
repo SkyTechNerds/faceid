@@ -424,6 +424,22 @@ class Gallery:
                 out += self._cross_risk_sweep(cross_threshold)
         return out
 
+    def set_aside(self, slug: str, fname: str, reason: str) -> bool:
+        """Ein Referenzfoto mit Begruendung beiseitelegen (nicht loeschen).
+
+        Gedacht fuer den Fall, dass eine Fehlerkennung auf genau dieses Foto
+        zurueckgefuehrt wurde — dann soll es mit dem Grund in der Ablage landen und
+        jederzeit zurueckholbar sein, wie bei den automatischen Pruefungen auch.
+        """
+        with self._lock:
+            entry = self._cache.get(slug)
+            if entry is None or fname not in entry["files"]:
+                return False
+            idx = entry["files"].index(fname)
+            self._drop(slug, entry, idx, 0.0, reason=reason)
+            self._persist(slug)
+            return True
+
     def rename(self, slug: str, new_name: str) -> str:
         """Anzeigenamen einer Person aendern.
 

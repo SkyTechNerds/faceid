@@ -1,0 +1,162 @@
+"""Verlauf der veroeffentlichten Erkennungen — mit dem Bild, das WIRKLICH benutzt wurde.
+
+Warum es das gibt: Fragt man einen Tag spaeter "wer war da eigentlich zu sehen?", ist der
+Frigate-Snapshot laengst ein anderer. Frigate ersetzt ihn waehrend des Ereignisses
+fortlaufend durch den mit dem hoechsten Personen-Score, und das ist selten der Moment, in
+dem das Gesicht erkannt wurde. Eine Nachpruefung am Snapshot zeigt deshalb regelmaessig
+eine andere Person als die, ueber die entschieden wurde — hier einmal live passiert:
+gemeldet wurde korrekt Person A, der Snapshot zeigte zwei Sekunden spaeter Person B.
+
+Deshalb legt FaceID beim Veroeffentlichen den benutzten Gesichtsausschnitt selbst ab,
+zusammen mit dem Embedding. Das Embedding ist der eigentliche Gewinn: Damit laesst sich
+nachtraeglich ausrechnen, WELCHES Referenzfoto einen falschen Treffer verursacht hat —
+und was passiert waere, haette es dieses Foto nicht gegeben.
+"""
+import json
+import logging
+import threading
+import time
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+log = logging.getLogger("faceid.history")
+
+
+class History:
+    def __init__(self, data_dir: Path, keep: int = 200):
+        self.dir = data_dir / "history"
+        self.dir.mkdir(parents=True, exist_ok=True)
+        self.keep = int(keep)
+        self._lock = threading.Lock()
+
+    # ---------- Schreiben ----------
+
+    def add(self, crop_bgr, embedding, meta: dict) -> str | None:
+        """Einen veroeffentlichten Treffer ablegen. Fehler hier duerfen die Erkennung
+        nie stoeren — im Zweifel wird nichts gespeichert und weitergearbeitet."""
+        if self.keep <= 0 or crop_bgr is None or embedding is None:
+            return None
+        try:
+            with self._lock:
+                # Suffix gegen Millisekunden-Kollisionen: bei einer Gruppe entstehen
+                # mehrere Meldungen im selben Augenblick, und ohne das ueberschreiben
+                # sie einander stillschweigend.
+                base = f"h{int(time.time() * 1000)}"
+                hid, n = base, 0
+                while (self.dir / f"{hid}.json").exists():
+                    n += 1
+                    hid = f"{base}_{n}"
+                cv2.imwrite(str(self.dir / f"{hid}.jpg"), crop_bgr, [cv2.IMWRITE_JPEG_QUALITY, 88])
+                payload = dict(meta)
+                payload["embedding"] = [round(float(v), 6) for v in embedding]
+                (self.dir / f"{hid}.json").write_text(
+                    json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+                self._enforce_cap()
+                return hid
+        except Exception:
+            log.exception("could not record a recognition in the history")
+            return None
+
+    def _enforce_cap(self):
+        """Aelteste ueber dem Limit entfernen (Aufrufer haelt das Lock)."""
+        files = sorted(self.dir.glob("*.json"), reverse=True)
+        for old in files[self.keep:]:
+            old.unlink(missing_ok=True)
+            (self.dir / f"{old.stem}.jpg").unlink(missing_ok=True)
+
+    # ---------- Lesen ----------
+
+    def items(self, limit: int = 100) -> list:
+        out = []
+        for jf in sorted(self.dir.glob("*.json"), reverse=True)[:limit]:
+            try:
+                m = json.loads(jf.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                continue
+            if not (self.dir / f"{jf.stem}.jpg").exists():
+                continue
+            out.append({"id": jf.stem,
+                        **{k: v for k, v in m.items() if k != "embedding"}})
+        return out
+
+    def _embedding(self, hid: str):
+        jf = self.dir / f"{hid}.json"
+        if not jf.exists():
+            return None, {}
+        try:
+            m = json.loads(jf.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None, {}
+        emb = m.get("embedding")
+        if not emb:
+            return None, m
+        return np.array(emb, dtype=np.float32), m
+
+    # ---------- Ursachensuche ----------
+
+    def blame(self, hid: str, gallery) -> dict:
+        """Welches Referenzfoto hat diesen Treffer getragen — und was waere ohne es passiert?
+
+        Genau die Rechnung, die eine Fehlerkennung aufklaert: Ein einzelnes Foto mit wenig
+        Gesichtsinformation kann eine fremde Person anziehen, waehrend alle uebrigen Fotos
+        derselben Person weit zurueckliegen. Ist der Abstand zwischen bestem und
+        zweitbestem Foto gross, war es genau dieses eine Foto.
+        """
+        emb, meta = self._embedding(hid)
+        if emb is None:
+            raise KeyError(hid)
+        name = meta.get("person", "")
+        slug = next((s for s, e in gallery._cache.items() if e["name"] == name), None)
+        if slug is None:
+            return {"person": name, "found": False,
+                    "note": "this person no longer exists in the gallery"}
+
+        entry = gallery._cache[slug]
+        sims = entry["emb"] @ emb
+        order = np.argsort(-sims)
+        k = gallery.top_k
+        photos = [{"file": entry["files"][i], "sim": round(float(sims[i]), 3)}
+                  for i in order[:6]]
+
+        def score_of(vals):
+            if not len(vals):
+                return 0.0
+            kk = min(k, len(vals))
+            return float(np.sort(vals)[-kk:].mean())
+
+        with_all = score_of(sims)
+        without_top = score_of(np.delete(sims, order[0]))
+
+        # Wer haette stattdessen gewonnen?
+        others = []
+        for s2, e2 in gallery._cache.items():
+            if s2 == slug or not len(e2["files"]):
+                continue
+            others.append((score_of(e2["emb"] @ emb), e2["name"]))
+        others.sort(reverse=True)
+
+        return {"person": name, "found": True, "slug": slug,
+                "score": round(with_all, 3),
+                "without_top": round(without_top, 3),
+                "top_photo": photos[0]["file"] if photos else "",
+                "photos": photos,
+                "runner_up": ({"name": others[0][1], "score": round(others[0][0], 3)}
+                              if others else None),
+                # Der aussagekraeftigste Wert: Traegt EIN Foto den Treffer allein?
+                "carried_by_one": bool(photos and len(photos) > 1
+                                       and photos[0]["sim"] - photos[1]["sim"] >= 0.15)}
+
+    # ---------- Aufraeumen ----------
+
+    def delete(self, hid: str):
+        (self.dir / f"{hid}.json").unlink(missing_ok=True)
+        (self.dir / f"{hid}.jpg").unlink(missing_ok=True)
+
+    def clear(self) -> int:
+        n = 0
+        for jf in list(self.dir.glob("*.json")):
+            self.delete(jf.stem)
+            n += 1
+        return n

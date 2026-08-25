@@ -88,6 +88,57 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
                  thr, n_out)
         return {"ok": True, "threshold": round(thr, 3), "removed": removed}
 
+    # ---------- Verlauf der Meldungen ----------
+
+    @app.get("/api/history")
+    def history_list(limit: int = 100):
+        """Was wurde gemeldet — mit dem Ausschnitt, der dafuer benutzt wurde."""
+        h = getattr(processor, "history", None)
+        if h is None:
+            return {"enabled": False, "items": []}
+        return {"enabled": True, "items": h.items(limit)}
+
+    @app.post("/api/history/{hid}/wrong")
+    def history_wrong(hid: str):
+        """'War falsch' — ausrechnen, welches Referenzfoto den Treffer getragen hat.
+
+        Beantwortet die Frage, die sonst Handarbeit ist: Zieht EIN Foto die fremde
+        Person an, und was waere ohne dieses Foto passiert?
+        """
+        h = getattr(processor, "history", None)
+        if h is None:
+            raise HTTPException(400, "history is disabled (history_keep: 0)")
+        try:
+            res = h.blame(hid, gallery)
+        except KeyError:
+            raise HTTPException(404, "unknown history entry")
+        log.info("history %s marked wrong: %s carried by %s", hid,
+                 res.get("person"), res.get("top_photo") or "?")
+        return res
+
+    @app.delete("/api/history/{hid}")
+    def history_delete(hid: str):
+        h = getattr(processor, "history", None)
+        if h is not None:
+            h.delete(hid)
+        return {"ok": True}
+
+    @app.post("/api/history/clear")
+    def history_clear():
+        h = getattr(processor, "history", None)
+        return {"ok": True, "removed": h.clear() if h is not None else 0}
+
+    class AsideBody(BaseModel):
+        reason: str = "reported as the cause of a wrong recognition"
+
+    @app.post("/api/persons/{slug}/faces/{fname}/set-aside")
+    def set_aside_face(slug: str, fname: str, body: AsideBody):
+        """Das schuldige Referenzfoto beiseitelegen — reversibel, mit Grund."""
+        if not gallery.set_aside(slug, fname, body.reason):
+            raise HTTPException(404, "unknown person or photo")
+        log.info("%s/%s set aside — %s", slug, fname, body.reason)
+        return {"ok": True}
+
     @app.post("/api/persons/{slug}/rename")
     def rename_person(slug: str, body: dict):
         """Nur der Anzeigename — Fotos, Embeddings und Zuordnungen bleiben unberuehrt."""

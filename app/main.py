@@ -10,6 +10,7 @@ from . import logbuffer
 from .engine import FaceEngine
 from .frigate_api import frigate_client
 from .gallery import Gallery
+from .history import History
 from .mqtt_listener import EventProcessor
 from .webui import build_app
 from .backup_util import start_auto_backup
@@ -58,7 +59,10 @@ def main():
                      f"too close to {r['partner']}, {r['similarity']}" if r["kind"] == "cross"
                      else f"{r['mean_sim']} where {r['median']} is normal for this person")
     frigate = frigate_client(cfg)
+    # Verlauf der Meldungen mit dem tatsaechlich benutzten Ausschnitt (0 = aus)
+    history = History(data_dir, keep=int(cfg["faceid"].get("history_keep", 200)))
     processor = EventProcessor(cfg, engine, gallery, frigate)
+    processor.history = history if history.keep > 0 else None
     processor.start()
     start_auto_backup(cfg["faceid"], data_dir)
     app = build_app(cfg, engine, gallery, processor, data_dir, BASE / "static")
