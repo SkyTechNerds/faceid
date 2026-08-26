@@ -3,6 +3,15 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.18.2 — 2026-08-26
+
+- **Fix: the HISTORY cards were still clipped.** 0.18.1 gave them a fixed width, but they
+  live in the shared grid whose columns are about 96px wide — a wider card overflows into
+  its neighbour's cell and gets cut off by it. That is what chopped the ends off the
+  button labels and the names. The history now has its own grid; the card takes the width
+  of its cell instead of fighting it, and long names and *now:* lines end in an ellipsis
+  rather than running out of the tile.
+
 ## 0.18.1 — 2026-08-26
 
 - **Fix: the presence sensor could read "Christian unknown is here".** Every published name
