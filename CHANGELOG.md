@@ -3,6 +3,12 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.18.4 — 2026-08-26
+
+- **The settings sliders are no longer browser-blue.** They were the one element on the page
+  whose colour did not come from the palette, sitting right next to their green values.
+  `accent-color` now follows the theme, for checkboxes too.
+
 ## 0.18.3 — 2026-08-26
 
 - **The UI uses the full window width.** `main` was capped at 1200px and not centred, so on

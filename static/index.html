@@ -77,6 +77,10 @@ h2{font:600 12px var(--mono);color:var(--dim);text-transform:uppercase;letter-sp
 .ghost,button.ghost{background:none;border:1px solid var(--line);color:var(--dim);font:12px var(--mono);
   padding:4px 10px;cursor:pointer;display:inline-block;line-height:1.35;text-decoration:none;vertical-align:middle}
 .ghost:hover,button.ghost:hover{color:var(--fg)}
+/* Regler in der Akzentfarbe statt im Browser-Blau — das Blau war die einzige Farbe
+   der Oberflaeche, die nicht aus der Palette stammte, und stand direkt neben den
+   gruenen Zahlenwerten. Gilt zugleich fuer Ankreuzfelder. */
+input[type=range],input[type=checkbox]{accent-color:var(--acc)}
 input,select{background:var(--panel);border:1px solid var(--line);color:var(--fg);
   font:13px var(--mono);padding:5px 8px}
 table{border-collapse:collapse;width:100%;font:13px var(--mono)}
