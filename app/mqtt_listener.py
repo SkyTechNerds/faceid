@@ -593,7 +593,12 @@ class EventProcessor:
         if self.client and name not in announced:
             announced.add(name)
             self.client.publish(f"{self.prefix}/event", json.dumps(payload, ensure_ascii=False))
-        self.present.setdefault(st["camera"], {})[name] = time.time()
+        # "unknown" gehoert NICHT in die Anwesenheitsliste. Der Sensor-State ist eine
+        # Aufzaehlung von Namen ("Christian, Juli"), und ein hineingemischtes "unknown"
+        # liest sich wie ein weiterer Name — auf dem Handy stand "Christian unknown ist
+        # da". Fremde meldet ausschliesslich das Event-Topic; der Sensor sagt, WER da ist.
+        if name != "unknown":
+            self.present.setdefault(st["camera"], {})[name] = time.time()
         self._publish_presence(st["camera"], last=payload)
         # Den TATSAECHLICH benutzten Ausschnitt festhalten. Der Frigate-Snapshot wird
         # waehrend des Ereignisses fortlaufend ersetzt und zeigt spaeter oft einen anderen

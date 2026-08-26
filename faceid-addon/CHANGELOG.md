@@ -3,6 +3,27 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.18.1 — 2026-08-26
+
+- **Fix: the presence sensor could read "Christian unknown is here".** Every published name
+  was added to the presence list, including `unknown`. Since the sensor state is a list of
+  names joined by commas, a stranger report seconds after a real recognition turned into
+  `Christian, unknown` — which reads like a second person called "unknown". Reported from a
+  phone notification that said exactly that.
+- The state now lists **known people only**. A stranger seen on their own leaves it at
+  `nobody`, and stranger reports keep going out on `faceid/event` as before, where they can
+  be told apart properly. The `last` attribute still shows the most recent report of either
+  kind.
+- ⚠️ **If an automation triggers on the sensor state being `unknown`, it needs changing** —
+  use the `faceid/event` topic with `person: unknown` instead. That topic was always the
+  right place for stranger alerts; the sensor answers "who is here".
+- Why this matters beyond the wording: on this setup **13 of 39** stranger reports in a week
+  arrived within three minutes of a *correct* recognition on the same camera — one arrival,
+  several Frigate events, only some with a usable face. So the misleading state was not rare.
+- **Fix: the HISTORY tab looked squashed.** Face crops have very different aspect ratios;
+  without fixed heights the text and the button drifted line by line across a row. Cards now
+  have a fixed image height and a fixed meta block.
+
 ## 0.18.0 — 2026-08-25
 
 - **New: a history of what FaceID actually reported — with the face image it used.** New

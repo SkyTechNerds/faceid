@@ -28,6 +28,16 @@ h2{font:600 12px var(--mono);color:var(--dim);text-transform:uppercase;letter-sp
 .tile .score{position:absolute;bottom:0;left:0;right:0;font:11px var(--mono);
   background:color-mix(in oklab,var(--bg) 80%,transparent);padding:1px 4px;color:var(--acc)}
 .tile.sel{outline:2px solid var(--acc);outline-offset:-2px}
+/* Verlauf: gleich hohe Kacheln. Die Ausschnitte haben sehr verschiedene Seiten-
+   verhaeltnisse, und ohne feste Hoehen rutschen Text und Knopf zeilenweise
+   auseinander — die Reihe sieht dann gestaucht aus. */
+.hcard{display:flex;flex-direction:column;width:154px}
+.hcard img{width:100%;height:154px;object-fit:cover;display:block;cursor:zoom-in}
+.hcard .meta{padding:4px 5px;font:11px var(--mono);color:var(--dim);line-height:1.45;
+  flex:1 0 auto;min-height:52px}
+.hcard .meta b{display:block;color:var(--fg);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.hcard button{width:100%;border-radius:0}
 .tile button.x{position:absolute;top:0;right:0;background:var(--bg);border:0;color:var(--bad);
   font:12px var(--mono);padding:2px 6px;cursor:pointer;display:none}
 .tile button.u{position:absolute;top:0;left:0;background:var(--bg);border:0;color:var(--warn);
@@ -437,12 +447,13 @@ async function renderHistory(){
     <div class="stat">Every published recognition, with the <b>face image it actually used</b> — not the Frigate snapshot. Frigate keeps replacing that snapshot while an event runs, so checking one later usually shows a different moment, and sometimes a different person. Press <b>was wrong</b> on a mistake and FaceID works out which reference photo caused it.</div>
     ${it.length?'':'<div class="stat" style="margin-top:8px">Nothing reported yet.</div>'}
     <div class="grid" style="margin-top:8px">${it.map(h=>`
-      <div class="tile" style="width:150px">
+      <div class="tile hcard">
         <img src="data/history/${h.id}.jpg" loading="lazy" onclick="showFull('data/history/${h.id}.jpg','${esc(h.person)} ${h.score} · ${esc(h.camera||'')}')" title="${esc(h.person)} ${h.score} on ${esc(h.camera||'')}${h.zones&&h.zones.length?' · '+esc(h.zones.join(', ')):''}">
-        <div class="stat" style="padding:2px 4px">
-          <b>${esc(h.person)}</b> ${h.score}<br>${fmtTs(h.ts)}<br>${esc(h.camera||'')}
+        <div class="meta">
+          <b title="${esc(h.person)} ${h.score}">${esc(h.person)} ${h.score}</b>
+          ${fmtTs(h.ts)} · ${esc(h.camera||'')}
         </div>
-        <button class="ghost" style="width:100%;margin-top:2px" onclick="markWrong('${h.id}')">was wrong</button>
+        <button class="ghost" onclick="markWrong('${h.id}')">was wrong</button>
       </div>`).join('')}</div>
     ${it.length?`<div class="row" style="margin-top:10px"><button class="ghost" onclick="clearHistory()">clear the history</button></div>`:''}
   </div>`;
