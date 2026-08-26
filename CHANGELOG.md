@@ -3,6 +3,14 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.18.3 — 2026-08-26
+
+- **The UI uses the full window width.** `main` was capped at 1200px and not centred, so on
+  a wide screen everything hugged the left edge with an empty strip on the right — it read
+  as though something was missing. The cap is gone: the views are mostly tile grids, and
+  more tiles per row is exactly what they want. Explanatory paragraphs stay capped at a
+  readable line length, since prose running the full width of a wide monitor is not.
+
 ## 0.18.2 — 2026-08-26
 
 - **Fix: the HISTORY cards were still clipped.** 0.18.1 gave them a fixed width, but they
