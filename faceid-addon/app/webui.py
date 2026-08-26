@@ -96,7 +96,9 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         h = getattr(processor, "history", None)
         if h is None:
             return {"enabled": False, "items": []}
-        return {"enabled": True, "items": h.items(limit)}
+        return {"enabled": True,
+                "items": h.items(limit, gallery=gallery,
+                                 threshold=float(cfg["faceid"].get("match_threshold", 0.5)))}
 
     @app.post("/api/history/{hid}/wrong")
     def history_wrong(hid: str):

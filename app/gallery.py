@@ -737,9 +737,11 @@ class Gallery:
             if entry is None:
                 return
             pdir = self.persons_dir / slug
-            for f in pdir.iterdir():
-                f.unlink()
-            pdir.rmdir()
+            # rmtree statt unlink-Schleife: sobald eine Person ausgemusterte Fotos hat,
+            # liegt unter ihr der Ordner _trimmed — und unlink() auf einem Verzeichnis
+            # wirft IsADirectoryError. Loeschen war damit fuer praktisch jede Person
+            # kaputt, die eine der automatischen Pruefungen durchlaufen hat.
+            shutil.rmtree(pdir, ignore_errors=True)
 
     # ---------- Matching ----------
 
@@ -849,9 +851,7 @@ class Gallery:
                 self._ign_ids.append(iid)
                 self._ign_groups.append(grp)
                 n += 1
-            for f in (self.persons_dir / slug).iterdir():
-                f.unlink()
-            (self.persons_dir / slug).rmdir()
+            shutil.rmtree(self.persons_dir / slug, ignore_errors=True)   # s. delete_person
             return n
 
     def add_ignore_anchor(self, crop_bgr: np.ndarray, embedding: np.ndarray, novelty_max: float = 0.8):

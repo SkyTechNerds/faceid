@@ -20,6 +20,17 @@ update dialog; standalone users can watch GitHub releases.
 - Why this matters beyond the wording: on this setup **13 of 39** stranger reports in a week
   arrived within three minutes of a *correct* recognition on the same camera — one arrival,
   several Frigate events, only some with a usable face. So the misleading state was not rare.
+- **The history keeps up with the gallery.** An entry reported as `unknown` whose face you
+  have since assigned to a person now also shows **who it would be matched to today**. The
+  entry itself stays untouched — it records what was reported, and that does not change
+  retroactively — but you get to see whether assigning the face actually helped. Only shown
+  when the current match would clear `match_threshold`; a best-guess of 0.13 is not an
+  answer and showing it would repeat the very confusion this tab exists to end.
+- **Fix: deleting a person failed once they had set-aside photos.** `delete_person()`
+  removed directory entries one by one, and `unlink()` on the `_trimmed` folder raises
+  `IsADirectoryError`. Since the automatic reference checks create that folder, deletion was
+  broken for practically every person that had been through one. `ignore_person()` had the
+  same flaw. Found by a test written for something else entirely.
 - **Fix: the HISTORY tab looked squashed.** Face crops have very different aspect ratios;
   without fixed heights the text and the button drifted line by line across a row. Cards now
   have a fixed image height and a fixed meta block.

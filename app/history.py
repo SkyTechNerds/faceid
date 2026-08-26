@@ -68,7 +68,15 @@ class History:
 
     # ---------- Lesen ----------
 
-    def items(self, limit: int = 100) -> list:
+    def items(self, limit: int = 100, gallery=None, threshold: float = 0.5) -> list:
+        """Der Verlauf, optional mit dem HEUTIGEN Urteil je Eintrag.
+
+        Der Eintrag selbst bleibt unangetastet — er protokolliert, was gemeldet wurde, und
+        das aendert sich nachtraeglich nicht. Wird die Galerie mitgegeben, kommt zusaetzlich
+        dazu, wie dasselbe Gesicht jetzt eingeordnet wuerde: Ein damals unbekanntes Gesicht,
+        das inzwischen einer Person zugewiesen wurde, traegt hier ihren Namen. Genau die
+        Rueckmeldung, ob das Zuordnen etwas gebracht hat.
+        """
         out = []
         for jf in sorted(self.dir.glob("*.json"), reverse=True)[:limit]:
             try:
@@ -77,8 +85,20 @@ class History:
                 continue
             if not (self.dir / f"{jf.stem}.jpg").exists():
                 continue
-            out.append({"id": jf.stem,
-                        **{k: v for k, v in m.items() if k != "embedding"}})
+            item = {"id": jf.stem, **{k: v for k, v in m.items() if k != "embedding"}}
+            if gallery is not None and m.get("embedding"):
+                try:
+                    emb = np.array(m["embedding"], dtype=np.float32)
+                    _, name, score = gallery.match(emb)
+                    # Nur einen Treffer zeigen, der auch veroeffentlicht wuerde. match()
+                    # liefert immer den besten Kandidaten, auch bei 0.13 — das als
+                    # "heute waere das X" anzuzeigen waere genau die irrefuehrende Angabe,
+                    # gegen die dieser Verlauf gebaut wurde.
+                    if name and name != item.get("person") and score >= threshold:
+                        item["now"] = {"person": name, "score": round(float(score), 3)}
+                except Exception:
+                    pass
+            out.append(item)
         return out
 
     def _embedding(self, hid: str):

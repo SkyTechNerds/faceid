@@ -38,6 +38,7 @@ h2{font:600 12px var(--mono);color:var(--dim);text-transform:uppercase;letter-sp
 .hcard .meta b{display:block;color:var(--fg);white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis}
 .hcard button{width:100%;border-radius:0}
+.hcard .nowis{color:var(--acc);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tile button.x{position:absolute;top:0;right:0;background:var(--bg);border:0;color:var(--bad);
   font:12px var(--mono);padding:2px 6px;cursor:pointer;display:none}
 .tile button.u{position:absolute;top:0;left:0;background:var(--bg);border:0;color:var(--warn);
@@ -444,7 +445,7 @@ async function renderHistory(){
   const it=r.items||[];
   main.innerHTML=`<div class="card">
     <h2>What FaceID reported</h2>
-    <div class="stat">Every published recognition, with the <b>face image it actually used</b> — not the Frigate snapshot. Frigate keeps replacing that snapshot while an event runs, so checking one later usually shows a different moment, and sometimes a different person. Press <b>was wrong</b> on a mistake and FaceID works out which reference photo caused it.</div>
+    <div class="stat">Every published recognition, with the <b>face image it actually used</b> — not the Frigate snapshot. Frigate keeps replacing that snapshot while an event runs, so checking one later usually shows a different moment, and sometimes a different person. Press <b>was wrong</b> on a mistake and FaceID works out which reference photo caused it. Where the gallery has changed since — a face you have assigned in the meantime — the card also shows who it would be matched to <b>now</b>.</div>
     ${it.length?'':'<div class="stat" style="margin-top:8px">Nothing reported yet.</div>'}
     <div class="grid" style="margin-top:8px">${it.map(h=>`
       <div class="tile hcard">
@@ -452,6 +453,7 @@ async function renderHistory(){
         <div class="meta">
           <b title="${esc(h.person)} ${h.score}">${esc(h.person)} ${h.score}</b>
           ${fmtTs(h.ts)} · ${esc(h.camera||'')}
+          ${h.now?`<div class="nowis" title="This face would be matched to ${esc(h.now.person)} today — the gallery has changed since this was reported.">now: ${esc(h.now.person)} ${h.now.score}</div>`:''}
         </div>
         <button class="ghost" onclick="markWrong('${h.id}')">was wrong</button>
       </div>`).join('')}</div>
