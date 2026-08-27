@@ -27,7 +27,11 @@ built because Frigate's built-in face recognition UX didn't cut it:
   aside (so unusual angles are kept, not lost) — visibly, on the person card, where you
   can restore it. The cap is adjustable in the Settings tab.
 - **Home Assistant native.** MQTT discovery sensors per camera (presence-window state like
-  `Alice, Bob` → `nobody`), plus a per-recognition event topic for automations.
+  `Alice, Bob` → `nobody`), plus a per-recognition event topic for automations — and a
+  [notification blueprint](blueprints/faceid-name-the-person.yaml) that puts the recognised
+  name into the Frigate notification you already get, by *replacing* it once the name is
+  known. (It has to work that way: Frigate publishes no MQTT update when a `sub_label` is
+  set, so no blueprint watching Frigate can ever see the name — [measured](#getting-the-name-into-your-frigate-notification).)
 - **Tags flow back to Frigate.** Recognized names are written as `sub_label`, so you can
   filter clips by person in Frigate's Explore view — including retroactively: the history
   scan tags past events, and assigning a face in the review UI tags its original event too.
