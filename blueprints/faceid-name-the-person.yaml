@@ -169,9 +169,10 @@ conditions:
     value_template: "{{ notify_service != '' or notify_device != '' }}"
 
 actions:
-  - action: >-
-      {% if notify_service %}{{ notify_service }}
-      {% else %}notify.mobile_app_{{ device_attr(notify_device, 'name') | slugify }}{% endif %}
+  # Einzeilig UND getrimmt: bei mehrzeiligem >- macht YAML aus dem Umbruch ein
+  # Leerzeichen, und "notify.family_group " mit Leerzeichen ist kein gueltiger Dienst.
+  - action: "{% if notify_service %}{{ notify_service }}{% else %}notify.mobile_app_{{ device_attr(notify_device, 'name') | slugify }}{% endif %}"
+
     data:
       title: FaceID
       message: >-

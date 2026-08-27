@@ -3,6 +3,14 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.19.3 — 2026-08-27
+
+- **Fix: the derived notification service could carry a trailing space.** The action template
+  was written across two lines with YAML folding, which turns the line break into a space —
+  so a service picked by name came out as `notify.family_group ` and would not resolve. It
+  is a single line now. My own test had used `.strip()` and therefore hidden it; the test
+  now compares exactly.
+
 ## 0.19.2 — 2026-08-27
 
 - **The notification target is a picker too now** — choose the phone or tablet from a list
