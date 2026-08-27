@@ -54,11 +54,17 @@ blueprint:
 
     cameras:
       name: Only these cameras
-      description: Leave empty for all cameras.
+      description: >-
+        Pick the Frigate cameras this should apply to. Leave empty for all of them.
+        The real Frigate camera name is read from each entity's `camera_name` attribute,
+        so renaming the entity in Home Assistant does not break the filter.
       default: []
       selector:
-        text:
+        entity:
           multiple: true
+          filter:
+            - domain: camera
+              integration: frigate
 
     required_zone:
       name: Only in this Frigate zone
@@ -124,7 +130,15 @@ variables:
 
 conditions:
   - condition: template
-    value_template: "{{ cameras | length == 0 or camera in cameras }}"
+    # Aus den gewaehlten Entities die echten Frigate-Kameranamen machen. Bevorzugt aus
+    # dem Attribut camera_name; ist die Kamera gerade nicht verfuegbar, fehlen die
+    # Attribute — dann greift der Objektteil der entity_id als Rueckfallebene.
+    value_template: >-
+      {% set ns = namespace(names=[]) %}
+      {% for e in cameras %}
+        {% set ns.names = ns.names + [state_attr(e, 'camera_name') or e.split('.')[1]] %}
+      {% endfor %}
+      {{ cameras | length == 0 or camera in ns.names }}
   - condition: template
     value_template: "{{ required_zone == '' or required_zone in zones }}"
   - condition: template

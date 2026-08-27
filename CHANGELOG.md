@@ -3,6 +3,16 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.19.1 — 2026-08-27
+
+- **The blueprint's camera filter is a picker now**, not a text field you have to type the
+  Frigate camera name into. It lists your Frigate camera entities.
+- The name FaceID publishes is the *Frigate* camera name, while the picker returns a Home
+  Assistant entity. The blueprint reads the real name from the entity's `camera_name`
+  attribute, so renaming a camera entity in Home Assistant does not silently break the
+  filter — and falls back to the entity id when the camera is unavailable and has no
+  attributes to read.
+
 ## 0.19.0 — 2026-08-27
 
 - **New: a notification blueprint that puts the recognised name into your Frigate
