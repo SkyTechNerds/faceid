@@ -3,6 +3,24 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.19.0 — 2026-08-27
+
+- **New: a notification blueprint that puts the recognised name into your Frigate
+  notification.** Import it from `blueprints/faceid-name-the-person.yaml`; the README has a
+  one-click import badge.
+- It exists because of a question in the forum thread that turned out to have a hard answer.
+  Frigate notification blueprints fire when the event starts, and the name is not ready yet:
+  over 132 real recognitions the median was **7 seconds**, with 3 seconds as the floor —
+  that is Frigate's own time-to-first-snapshot, which FaceID cannot undercut.
+- Waiting is not the fix either. FaceID writes the name back as `sub_label`, but **Frigate
+  publishes no MQTT update when a sub_label is set** — verified by setting one and listening
+  on `frigate/events` for 8 seconds: nothing. So a blueprint watching that topic cannot ever
+  learn the name, however long it waits.
+- The blueprint therefore triggers on `faceid/event` and **replaces** the notification that
+  already went out, using the same notification `tag`. Filters for cameras, zones and
+  whether strangers are announced. The zone filter deliberately requires the zone to be
+  *present*, because an empty zone list is far more common than people expect.
+
 ## 0.18.4 — 2026-08-26
 
 - **The settings sliders are no longer browser-blue.** They were the one element on the page

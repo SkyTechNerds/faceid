@@ -542,6 +542,30 @@ and decide deliberately what your automation does with it. If you want zone gati
 strict, do it in Frigate instead — `snapshots: required_zones:` stops the event from ever
 reaching FaceID, because FaceID only acts on events that have a snapshot.
 
+## Getting the name into your Frigate notification
+
+If you use a Frigate notification blueprint (SgtBatten's is the common one), you have
+probably noticed the name never appears in it. Two measured reasons:
+
+- **The name is not ready yet.** The blueprint fires when the event starts; FaceID first
+  needs a snapshot to exist, a face in it, and a match. Over 132 real recognitions the name
+  was ready after a **median of 7 seconds**, and 3 seconds at the very best — that is how
+  long Frigate itself takes to produce a first snapshot.
+- **Waiting does not help.** FaceID writes the name back as `sub_label`, but **Frigate does
+  not publish an MQTT update when a sub_label is set.** Verified by setting one and
+  listening on `frigate/events` for 8 seconds: no message at all. A blueprint on that topic
+  can never see the name.
+
+So do it the other way round — react to FaceID's own event and **replace** the notification
+that already went out:
+
+[![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSkyTechNerds%2Ffaceid%2Fblob%2Fmain%2Fblueprints%2Ffaceid-name-the-person.yaml)
+
+The trick is the **notification tag**: give it the same tag your Frigate blueprint uses (the
+event id, by default) and the phone replaces the earlier message instead of stacking a
+second one. Optional filters for cameras, Frigate zones, and whether strangers should be
+announced at all. See [blueprints/faceid-name-the-person.yaml](blueprints/faceid-name-the-person.yaml).
+
 ## Updates
 
 - **Home Assistant app:** you get notified automatically when a new version is available
