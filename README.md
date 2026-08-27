@@ -567,7 +567,11 @@ that already went out:
 
 The trick is the **notification tag**: give it the same tag your Frigate blueprint uses (the
 event id, by default) and the phone replaces the earlier message instead of stacking a
-second one. Optional filters for cameras, Frigate zones, and whether strangers should be
+second one.
+
+⚠️ **Already imported an older version?** Pasting the URL again does *not* replace it —
+Home Assistant keeps the copy it has. Use **Settings → Automations & scenes → Blueprints →
+⋮ → Re-import blueprint**. Optional filters for cameras, Frigate zones, and whether strangers should be
 announced at all. See [blueprints/faceid-name-the-person.yaml](blueprints/faceid-name-the-person.yaml).
 
 ## Updates

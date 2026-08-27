@@ -3,6 +3,22 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.19.2 — 2026-08-27
+
+- **The notification target is a picker too now** — choose the phone or tablet from a list
+  instead of typing a service name. A text field stays alongside it and takes precedence.
+- Both are needed, and the reason is worth knowing: the service name is *derived* from the
+  device name, so **two devices called the same thing cannot be told apart** (on the
+  reference system there are two called "iPhone"; one of them is really
+  `notify.mobile_app_iphone_2`). Renaming a device after registration breaks the derivation
+  as well, and a notification **group** cannot be picked as a device at all. So the picker
+  is the convenience, the field is the guarantee.
+- A condition now refuses to run when neither is set, instead of failing inside the action
+  with an unhelpful error.
+- ⚠️ **Updating an already-imported blueprint needs a re-import.** Pasting the URL again
+  does not replace the installed copy — Home Assistant keeps the old one. Use
+  **Settings → Automations & scenes → Blueprints → ⋮ → Re-import blueprint**.
+
 ## 0.19.1 — 2026-08-27
 
 - **The blueprint's camera filter is a picker now**, not a text field you have to type the

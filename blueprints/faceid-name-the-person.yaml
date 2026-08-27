@@ -24,12 +24,31 @@ blueprint:
   domain: automation
   source_url: https://github.com/SkyTechNerds/faceid/blob/main/blueprints/faceid-name-the-person.yaml
   input:
-    notify_target:
-      name: Notification service
+    notify_device:
+      name: Phone or tablet
       description: >-
-        The service that sends the notification, e.g. `notify.mobile_app_your_phone`.
-        Use the same one your Frigate blueprint uses, otherwise the message cannot replace
-        the earlier one.
+        Pick the device to notify. Leave empty if you use a notification group, or if the
+        service name below is set.
+      default: ""
+      selector:
+        device:
+          filter:
+            - integration: mobile_app
+
+    notify_service:
+      name: ...or a notification service by name
+      description: >-
+        e.g. `notify.mobile_app_your_phone` or `notify.family_group`. **If this is filled
+        in it wins over the device above.**
+
+
+        Use it whenever the device picker cannot be trusted: the service name is derived
+        from the device name, so **two devices with the same name are indistinguishable**
+        (one of them really is `notify.mobile_app_iphone_2`), and renaming a device after
+        it was registered breaks the derivation too. It is also the only way to reach a
+        notification group. Whatever you choose, use the same target your Frigate blueprint
+        uses — otherwise the message cannot replace the earlier one.
+      default: ""
       selector:
         text:
 
@@ -127,6 +146,8 @@ variables:
   frigate_url: !input frigate_url
   message_known: !input message_known
   message_unknown: !input message_unknown
+  notify_device: !input notify_device
+  notify_service: !input notify_service
 
 conditions:
   - condition: template
@@ -143,9 +164,14 @@ conditions:
     value_template: "{{ required_zone == '' or required_zone in zones }}"
   - condition: template
     value_template: "{{ report_unknown if is_unknown else report_known }}"
+  - condition: template
+    # Ohne Ziel wuerde die Aktion mit einer unverstaendlichen Fehlermeldung abbrechen.
+    value_template: "{{ notify_service != '' or notify_device != '' }}"
 
 actions:
-  - action: !input notify_target
+  - action: >-
+      {% if notify_service %}{{ notify_service }}
+      {% else %}notify.mobile_app_{{ device_attr(notify_device, 'name') | slugify }}{% endif %}
     data:
       title: FaceID
       message: >-
