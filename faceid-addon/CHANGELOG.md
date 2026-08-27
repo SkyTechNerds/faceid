@@ -3,6 +3,16 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.19.4 — 2026-08-27
+
+- **Fix: the snapshot only reached Android, not iOS.** The two platforms expect the image in
+  different places — Android reads `data.image`, iOS reads `data.attachment.url`. Only the
+  Android field was set, so iPhone users got the name without a picture. Both are sent now;
+  each platform ignores the other's field.
+- When no Frigate URL is configured, neither field is emitted at all. An empty `attachment`
+  makes the notification fail outright on iOS, so leaving the key out matters more than it
+  looks.
+
 ## 0.19.3 — 2026-08-27
 
 - **Fix: the derived notification service could carry a trailing space.** The action template

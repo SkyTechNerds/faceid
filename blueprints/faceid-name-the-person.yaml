@@ -148,6 +148,7 @@ variables:
   message_unknown: !input message_unknown
   notify_device: !input notify_device
   notify_service: !input notify_service
+  tag: !input notification_tag
 
 conditions:
   - condition: template
@@ -177,10 +178,16 @@ actions:
       title: FaceID
       message: >-
         {% if is_unknown %}{{ message_unknown }}{% else %}{{ message_known }}{% endif %}
-      data:
-        # Derselbe tag wie in der ersten Meldung -> sie wird ersetzt, nicht ergaenzt.
-        tag: !input notification_tag
-        channel: FaceID
-        # Bild nur anhaengen, wenn eine Frigate-URL angegeben wurde
-        image: >-
-          {% if frigate_url %}{{ frigate_url }}/api/events/{{ event_id }}/snapshot.jpg{% endif %}
+      # Android und iOS erwarten das Bild an VERSCHIEDENEN Stellen: Android liest
+      # data.image, iOS data.attachment.url. Beide zu setzen ist der uebliche Weg —
+      # jede Plattform ignoriert das Feld der anderen. Wird keine Frigate-URL
+      # angegeben, duerfen beide Felder gar nicht erst auftauchen: ein leeres
+      # attachment laesst die Meldung auf iOS fehlschlagen.
+      data: >-
+        {% set base = {'tag': tag, 'channel': 'FaceID'} %}
+        {% if frigate_url %}
+          {% set url = frigate_url ~ '/api/events/' ~ event_id ~ '/snapshot.jpg' %}
+          {{ dict(base, image=url, attachment={'url': url, 'content-type': 'jpeg'}) }}
+        {% else %}
+          {{ base }}
+        {% endif %}
