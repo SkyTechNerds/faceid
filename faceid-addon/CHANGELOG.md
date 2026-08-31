@@ -3,6 +3,23 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.19.5 — 2026-08-31
+
+- ⚠️ **Correcting something I published.** 0.19.0 stated that Frigate never sends an MQTT
+  update when a `sub_label` is set, and that a blueprint watching `frigate/events` could
+  therefore never see the name. **That is wrong.** The test behind it was run against an
+  event that had already ended — where Frigate sends nothing more, regardless of sub_labels.
+- On a **running** event, Frigate 0.17.2 forwards the name in the same second FaceID writes
+  it, as `after.sub_label` = `["Eli", 0.514]` — an array of name and score. Verified over
+  several real arrivals, log and MQTT capture side by side.
+- Why a Frigate blueprint can still come up empty: at least one popular one reads
+  `after.data.sub_labels`, which is `null` on 0.17.2. The name is in the payload, just not
+  where it is being looked for. If yours shows no name, check that field before assuming
+  nothing was written.
+- The blueprint here is unaffected and still useful: it listens to `faceid/event`, so it
+  does not depend on which Frigate version puts the name where, and it carries the score
+  and the zones as well. Only its explanation was wrong, not its behaviour.
+
 ## 0.19.4 — 2026-08-27
 
 - **Fix: the snapshot only reached Android, not iOS.** The two platforms expect the image in

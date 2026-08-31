@@ -30,8 +30,8 @@ built because Frigate's built-in face recognition UX didn't cut it:
   `Alice, Bob` → `nobody`), plus a per-recognition event topic for automations — and a
   [notification blueprint](blueprints/faceid-name-the-person.yaml) that puts the recognised
   name into the Frigate notification you already get, by *replacing* it once the name is
-  known. (It has to work that way: Frigate publishes no MQTT update when a `sub_label` is
-  set, so no blueprint watching Frigate can ever see the name — [measured](#getting-the-name-into-your-frigate-notification).)
+  known — independent of which Frigate version puts the name where, and carrying the score
+  and zones with it. ([Why a Frigate-side blueprint often shows no name](#getting-the-name-into-your-frigate-notification).)
 - **Tags flow back to Frigate.** Recognized names are written as `sub_label`, so you can
   filter clips by person in Frigate's Explore view — including retroactively: the history
   scan tags past events, and assigning a face in the review UI tags its original event too.
@@ -555,10 +555,15 @@ probably noticed the name never appears in it. Two measured reasons:
   needs a snapshot to exist, a face in it, and a match. Over 132 real recognitions the name
   was ready after a **median of 7 seconds**, and 3 seconds at the very best — that is how
   long Frigate itself takes to produce a first snapshot.
-- **Waiting does not help.** FaceID writes the name back as `sub_label`, but **Frigate does
-  not publish an MQTT update when a sub_label is set.** Verified by setting one and
-  listening on `frigate/events` for 8 seconds: no message at all. A blueprint on that topic
-  can never see the name.
+- **Waiting can help — but often does not, for a different reason than I first published.**
+  ⚠️ An earlier version of this section claimed Frigate never announces the name over MQTT.
+  That was wrong: the test behind it ran against an *already finished* event, where nothing
+  more is sent. On a **running** event, Frigate 0.17.2 forwards it in the same second, as
+  `after.sub_label` = `["Eli", 0.514]` — an array of name and score.
+- The catch is *where* it appears. At least one widely used Frigate notification blueprint
+  reads `after.data.sub_labels`, which is `null` on 0.17.2. The name is in the payload, just
+  not at the field being read — so the notification stays nameless and it looks like FaceID
+  never wrote anything.
 
 So do it the other way round — react to FaceID's own event and **replace** the notification
 that already went out:
