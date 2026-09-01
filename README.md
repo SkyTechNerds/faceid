@@ -576,7 +576,28 @@ second one.
 
 ⚠️ **Already imported an older version?** Pasting the URL again does *not* replace it —
 Home Assistant keeps the copy it has. Use **Settings → Automations & scenes → Blueprints →
-⋮ → Re-import blueprint**. Optional filters for cameras, Frigate zones, and whether strangers should be
+⋮ → Re-import blueprint**.
+
+### Or keep the blueprint you already have
+
+Since Frigate does forward the name (see above), a Frigate-side blueprint can show it — it
+just has to read `after.sub_label`, which on 0.17.2 is an array: `["Alice", 0.51]`, so the
+name is `after.sub_label[0]`.
+
+If you use SgtBatten's blueprint and would rather extend that than run a second automation,
+**@crunchynuts has published a merged version** covering both routes — the Frigate payload
+*and* `faceid/event`:
+
+- [blueprint_sgtbatten_faceid](https://github.com/whoisdave/home-automations/blob/06ce3d77193b3bb054eafe97a5ea22a826d97231/blueprints/blueprint_sgtbatten_faceid_v0.5_good_20260831.yaml) ·
+  [thread](https://community.home-assistant.io/t/1018333/51)
+
+A community contribution, not maintained here: I have read it but not run it, and its
+Signal notification path is written for the author's own setup. Which one to pick:
+
+| | |
+|---|---|
+| You already run SgtBatten's blueprint and want its full feature set | take the merged version above |
+| You want the name added with as little machinery as possible | take the blueprint in this repo | Optional filters for cameras, Frigate zones, and whether strangers should be
 announced at all. See [blueprints/faceid-name-the-person.yaml](blueprints/faceid-name-the-person.yaml).
 
 ## Updates
