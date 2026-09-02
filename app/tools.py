@@ -140,6 +140,10 @@ def _ir_cameras(frigate, cfg, days: int = 7, sample: int = 8) -> set:
     """
     if frigate is None:
         return set()
+    # Nur Kameras, die FaceID ueberhaupt verarbeitet. Sonst raet die Auswertung zu einer
+    # IR-Aufnahme an einer Kamera, die gar nicht mehr in Betrieb ist — genau das ist hier
+    # passiert, nachdem eine Kamera aus der Liste geflogen war.
+    wanted = set(cfg.get("faceid", {}).get("cameras") or [])
     try:
         from zoneinfo import ZoneInfo
         tz = ZoneInfo(cfg.get("faceid", {}).get("timezone", "Europe/Berlin"))
@@ -150,7 +154,7 @@ def _ir_cameras(frigate, cfg, days: int = 7, sample: int = 8) -> set:
     out, seen = set(), Counter()
     for ev in evs:
         cam = ev.get("camera")
-        if not cam or seen[cam] >= sample:
+        if not cam or seen[cam] >= sample or (wanted and cam not in wanted):
             continue
         hour = datetime.datetime.fromtimestamp(ev["start_time"], tz).hour
         if not (hour >= 21 or hour <= 5):
@@ -323,9 +327,12 @@ def why_no_face(engine, frigate, cfg, days: float = 3.0, progress=None) -> dict:
         cam = ev.get("camera") or "?"
         per_cam.setdefault(cam, Counter())[reason] += 1
 
+    # Bewusst ueber ALLE Kameras, nicht nur die verarbeiteten: die Frage lautet ja
+    # gerade, ob sich eine Kamera lohnt. Welche in Betrieb sind, steht daneben.
+    wanted = set(cfg["faceid"].get("cameras") or [])
     cams = [{"camera": c, "events": sum(r.values()), "ok": r[OK],
              "no_face": r[NO_DETECTION], "too_small": r[TOO_SMALL],
-             "uncertain": r[UNCERTAIN]}
+             "uncertain": r[UNCERTAIN], "used": not wanted or c in wanted}
             for c, r in sorted(per_cam.items(), key=lambda kv: -sum(kv[1].values()))]
     return {"days": days, "events": len(events), "min_face_px": min_px,
             "reasons": dict(reasons), "cameras": cams,

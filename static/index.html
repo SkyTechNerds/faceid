@@ -1109,9 +1109,13 @@ function fmtWhy(d){
   if(d.face_width&&d.face_width.n)
     h+=`<p class="stat">widest face per event: median ${d.face_width.median}px,
         threshold is ${d.min_face_px}px</p>`;
-  h+=tbl([['camera',r=>esc(r.camera)],['events',r=>r.events],['ok',r=>r.ok],
+  h+=tbl([['camera',r=>esc(r.camera)+(r.used?'':' <span class="stat">(not processed)</span>')],
+          ['events',r=>r.events],['ok',r=>r.ok],
           ['no face',r=>r.no_face],['too small',r=>r.too_small],
           ['unsure',r=>r.uncertain]],d.cameras||[]);
+  h+=`<p class="stat" style="max-width:105ch">Cameras FaceID does not process are measured
+     too — that is the point: it shows whether adding one would be worth it, or whether an
+     existing one only ever delivers backs of heads.</p>`;
   return h;
 }
 const TOOL_FMT={'delay':fmtDelay,'coverage':fmtCoverage,'why-no-face':fmtWhy};
