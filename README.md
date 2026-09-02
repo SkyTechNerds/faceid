@@ -40,6 +40,21 @@ built because Frigate's built-in face recognition UX didn't cut it:
   auto-backup** — your hand-curated face data is the one irreplaceable thing, so it's
   easy to safeguard.
 
+## Contents
+
+**What it is** — [Screenshots](#screenshots) · [How it works](#how-it-works) · [Local-only, and what gets downloaded](#local-only-and-what-gets-downloaded)
+
+**Setting it up** — [Requirements](#requirements) · [Install as a Home Assistant app](#install-as-a-home-assistant-app-recommended-for-haos) · [Install standalone](#install-standalone-lxc-vm-bare-metal) · [Connecting to Frigate](#connecting-to-frigate) · [Getting started](#getting-started)
+
+**Living with it** — [Ignoring people](#ignoring-people) · [Sharper reference photos](#sharper-reference-photos) · [How training stays healthy](#how-training-stays-healthy) · [Backup & restore](#backup--restore)
+
+**When it does not recognise someone** — [When the snapshot has no face](#when-the-snapshot-has-no-face) · [Events MQTT never announces](#events-mqtt-never-announces) · [Calibrating the threshold](#calibrating-the-threshold) · [Seeing what it is doing](#seeing-what-it-is-doing) · [Measuring instead of guessing](#measuring-instead-of-guessing)
+
+**Home Assistant** — [Home Assistant](#home-assistant) · [Getting the name into your Frigate notification](#getting-the-name-into-your-frigate-notification)
+
+**Reference** — [Updates](#updates) · [Security & privacy notes](#security--privacy-notes) · [Configuration reference](#configuration-reference)
+
+
 ## Screenshots
 
 *All faces below are AI-generated (StyleGAN) — no real persons.*
@@ -187,6 +202,28 @@ systemctl enable --now faceid
 The first start downloads the model pack (~300 MB, one time — see above). Follow the
 log with `journalctl -u faceid -f` until you see `MQTT verbunden (Success)`, then open
 `http://<host>:8600` and check that the header shows your person/queue counters.
+
+## Connecting to Frigate
+
+By default FaceID uses Frigate's API on **port 5000**, which is unauthenticated — fine on
+a trusted LAN, and it needs no configuration. Frigate also serves an authenticated API on
+port 8971:
+
+```yaml
+frigate:
+  url: https://192.168.1.10:8971
+  user: faceid
+  password: secret
+  verify_tls: false     # Frigate's default certificate is self-signed
+```
+
+One thing to know before you switch, measured rather than assumed: a `viewer` account can
+read everything FaceID needs, but **cannot write `sub_label`** back into Frigate
+(`Role viewer not authorized. Required: admin`). So authenticating costs you either the
+names in Frigate's Explore view, or requires admin credentials in a config file.
+
+Trade-offs, TLS, what FaceID actually requests, and which setup fits which network:
+**[docs/frigate-connection.md](docs/frigate-connection.md)**.
 
 ## Getting started
 
@@ -384,6 +421,14 @@ Do not copy any of these numbers. Measure your own gallery: Settings → *Does i
 work?* reports the ceiling for both cases, and refuses to suggest lowering anything if it
 finds a misassignment.
 
+## Seeing what it is doing
+
+The **LOG tab** shows the last 500 log lines straight in the UI — including the quiet
+cases that decide whether a setup works: whether Frigate answers at startup, which
+cameras were announced to Home Assistant, and for every event whether a face was found
+at all. If nothing is ever recognised, that tab usually says why within a few lines.
+There is a warnings-only filter and a copy button for pasting into an issue.
+
 ## Measuring instead of guessing
 
 ### Without a terminal: the Tools tab
@@ -481,36 +526,6 @@ being unusual, it's automatically kept.
 
 **Full details:** [docs/trimming.md](docs/trimming.md) explains the why, the exact
 selection rule (with numbers), and how to restore or curate set-aside photos.
-
-## Connecting to Frigate
-
-By default FaceID uses Frigate's API on **port 5000**, which is unauthenticated — fine on
-a trusted LAN, and it needs no configuration. Frigate also serves an authenticated API on
-port 8971:
-
-```yaml
-frigate:
-  url: https://192.168.1.10:8971
-  user: faceid
-  password: secret
-  verify_tls: false     # Frigate's default certificate is self-signed
-```
-
-One thing to know before you switch, measured rather than assumed: a `viewer` account can
-read everything FaceID needs, but **cannot write `sub_label`** back into Frigate
-(`Role viewer not authorized. Required: admin`). So authenticating costs you either the
-names in Frigate's Explore view, or requires admin credentials in a config file.
-
-Trade-offs, TLS, what FaceID actually requests, and which setup fits which network:
-**[docs/frigate-connection.md](docs/frigate-connection.md)**.
-
-## Seeing what it is doing
-
-The **LOG tab** shows the last 500 log lines straight in the UI — including the quiet
-cases that decide whether a setup works: whether Frigate answers at startup, which
-cameras were announced to Home Assistant, and for every event whether a face was found
-at all. If nothing is ever recognised, that tab usually says why within a few lines.
-There is a warnings-only filter and a copy button for pasting into an issue.
 
 ## Backup & restore
 
