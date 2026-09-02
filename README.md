@@ -574,6 +574,13 @@ The trick is the **notification tag**: give it the same tag your Frigate bluepri
 event id, by default) and the phone replaces the earlier message instead of stacking a
 second one.
 
+⚠️ **If the notification arrives without a picture**, the Frigate address is almost always
+the reason. Since v0.20.0 the image comes from Home Assistant by default
+(`/api/frigate/notifications/<event>/snapshot.jpg`), which the phone resolves against its
+own HA connection — leave that setting alone and it works at home and away. If you switch to
+a Frigate address instead, it has to be reachable **from the phone**: `http://ccab4aaf-frigate:5000`
+and similar add-on hostnames exist only inside Home Assistant.
+
 ⚠️ **Already imported an older version?** Pasting the URL again does *not* replace it —
 Home Assistant keeps the copy it has. Use **Settings → Automations & scenes → Blueprints →
 ⋮ → Re-import blueprint**.

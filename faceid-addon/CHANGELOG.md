@@ -3,6 +3,21 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.20.0 — 2026-09-01
+
+- **The notification image now comes from Home Assistant by default**, as the relative path
+  `/api/frigate/notifications/<event>/snapshot.jpg`. The phone resolves that against its own
+  Home Assistant connection, so the picture arrives at home and away without any Frigate
+  address being involved. Needs the Frigate integration with its notification proxy enabled.
+- This replaces a footgun reported in #13: the user had entered `http://ccab4aaf-frigate:5000`
+  — the add-on hostname, which only resolves *inside* Home Assistant. The phone fetches the
+  image itself, so it got nothing, on the local network and off it. That is not an obvious
+  failure, because the same address works perfectly in every other setting.
+- The old behaviour is still available (*A Frigate address I enter below*), now with the
+  requirement stated where it is needed: the address must be reachable **from the phone**.
+- Verified against a real event: the proxy path returns HTTP 200, 45 KB, `image/jpeg`,
+  without a token.
+
 ## 0.19.5 — 2026-08-31
 
 - ⚠️ **Correcting something I published.** 0.19.0 stated that Frigate never sends an MQTT

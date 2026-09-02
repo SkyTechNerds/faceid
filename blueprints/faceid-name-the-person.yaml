@@ -70,11 +70,36 @@ blueprint:
       selector:
         text:
 
-    frigate_url:
-      name: Frigate URL
+    image_source:
+      name: Where the snapshot comes from
       description: >-
-        Used to attach the event snapshot to the notification, e.g. `http://192.168.1.10:5000`.
-        Leave empty to send no image.
+        **Home Assistant** is the right answer for almost everyone: the notification then
+        carries the relative path `/api/frigate/notifications/<event>/snapshot.jpg`, which
+        your phone resolves against its own Home Assistant connection — so it works at home
+        and away, with no Frigate address involved at all. Needs the Frigate integration
+        with its notification proxy enabled.
+
+
+        ⚠️ **The usual cause of a missing image** is entering a Frigate address the *phone*
+        cannot reach. `http://ccab4aaf-frigate:5000` and similar add-on hostnames only exist
+        inside Home Assistant; the phone fetches the picture itself and gets nothing —
+        neither at home nor away.
+      default: ha_proxy
+      selector:
+        select:
+          options:
+            - label: Home Assistant (recommended)
+              value: ha_proxy
+            - label: A Frigate address I enter below
+              value: frigate_url
+            - label: No image
+              value: none
+
+    frigate_url:
+      name: Frigate address (only for the option above)
+      description: >-
+        Only used if you picked *A Frigate address*. It must be reachable **from the phone**,
+        e.g. `http://192.168.1.10:5000` — not an add-on hostname.
       default: ""
       selector:
         text:
@@ -152,6 +177,7 @@ variables:
   report_known: !input report_known
   report_unknown: !input report_unknown
   frigate_url: !input frigate_url
+  image_source: !input image_source
   message_known: !input message_known
   message_unknown: !input message_unknown
   notify_device: !input notify_device
@@ -193,8 +219,14 @@ actions:
       # attachment laesst die Meldung auf iOS fehlschlagen.
       data: >-
         {% set base = {'tag': tag, 'channel': 'FaceID'} %}
-        {% if frigate_url %}
+        {% if image_source == 'ha_proxy' %}
+          {% set url = '/api/frigate/notifications/' ~ event_id ~ '/snapshot.jpg' %}
+        {% elif image_source == 'frigate_url' and frigate_url %}
           {% set url = frigate_url ~ '/api/events/' ~ event_id ~ '/snapshot.jpg' %}
+        {% else %}
+          {% set url = '' %}
+        {% endif %}
+        {% if url %}
           {{ dict(base, image=url, attachment={'url': url, 'content-type': 'jpeg'}) }}
         {% else %}
           {{ base }}
