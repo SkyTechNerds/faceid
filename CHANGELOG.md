@@ -21,6 +21,18 @@ update dialog; standalone users can watch GitHub releases.
 - Recognitions from a history scan are excluded from the delay figures rather than silently
   averaged in; they lag their event by weeks and would wreck every median. The count of
   what was dropped is shown.
+- **Corrected: there is no 3-second floor.** README and the notification blueprint said the
+  name takes 3 seconds at the very best, "because that is how long Frigate takes to produce
+  the first snapshot". The new tool made it checkable, and 18% of recognitions land below
+  that, the fastest in 0.8s. The old figure was the *median* of first attempts in an older
+  sample, written up as a physical limit. Both measurement paths — the log-based script and
+  the history — now agree: median 8-9s, fastest around 1s, and the floor varies per event.
+  Clocks were compared between Frigate and the container first; they match to the second.
+- The history no longer prints a similarity of 1.0 as if it meant something. Every such
+  entry was a face that had since been assigned, so it is one of that person's reference
+  photos and matches itself. It now reads "now assigned: <name>", without a number.
+- `retry_seconds: 1.2` (down from 2.5) is confirmed to have worked: attempt 2 went from a
+  median of 6.5s to 4.0s.
 
 ## 0.21.0 — 2026-09-01
 
