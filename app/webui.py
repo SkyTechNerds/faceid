@@ -371,8 +371,8 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             backfill_state.update(processed=i, total=total)
 
         def worker():
-            from .backfill import run_backfill
             try:
+                from .backfill import run_backfill
                 stats = run_backfill(
                     engine, gallery, processor.frigate, cfg["frigate"]["url"], days=days,
                     tag=bool(cfg["faceid"].get("set_sub_label", True)),
@@ -540,8 +540,8 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             analysis_state.update(running=True, processed=0, total=0, result=None)
 
         def worker():
-            from . import analysis
             try:
+                from . import analysis
                 analysis_state["result"] = analysis.run(
                     data_dir, engine, processor.frigate, cfg, days=days,
                     progress=lambda i, t: analysis_state.update(processed=i, total=t))
@@ -601,9 +601,12 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             st.update(running=True, processed=0, total=0, result=None)
 
         def worker():
-            from . import tools as t
-            prog = lambda i, n: st.update(processed=i, total=n)
+            # Der Import gehoert INS try: schlaegt er fehl, stirbt der Thread sonst vor
+            # dem finally, "running" bliebe fuer immer True und das Werkzeug waere bis
+            # zum Neustart tot — mit "already running" als einziger Auskunft.
             try:
+                from . import tools as t
+                prog = lambda i, n: st.update(processed=i, total=n)
                 if tid == "delay":
                     h = getattr(processor, "history", None)
                     st["result"] = ({"error": "history is disabled (history_keep: 0)"}
