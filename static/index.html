@@ -758,14 +758,15 @@ async function renderSettings(){
       <span class="stat">tests the gallery against itself (real ground truth) and against recent events. Runs in the background; a few minutes.</span>
     </div>
     <div id="anbox" style="margin-bottom:18px"></div>
-    <div class="row" style="margin-bottom:18px">
+    <div class="row">
       <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="advOn"
         onchange="setAdvanced(this.checked)"> show the Tools tab</label>
-      <span class="stat" style="max-width:70ch">Adds a tab with deeper measurements:
-        how fast recognition is, how well each person is covered, and why events yield
-        no face. Same analyses as the scripts in the repository, without a terminal.
-        This setting lives in this browser only.</span>
     </div>
+    <div class="stat" style="max-width:105ch;margin-bottom:18px">Adds a tab with deeper
+      measurements: how fast recognition is, how well each person is covered, and why events
+      yield no usable face. The same analyses as the scripts in the repository, but without a
+      terminal — which is the point, since the scripts are not part of the app image at all.
+      This switch lives in this browser only.</div>
 
     <h2>Automatic backup</h2>
     <div class="row">
