@@ -213,12 +213,17 @@ async function startBackfill(){
   render();
 }
 async function renderUnknowns(){
-  const [clusters,bf]=await Promise.all([j('api/unknowns'),j('api/backfill')]);
+  let [clusters,bf]=await Promise.all([j('api/unknowns'),j('api/backfill')]);
   if(tab!=='unknowns')return;
   if(bf.running&&tab==='unknowns')setTimeout(()=>{if(tab==='unknowns')render()},4000);
   if(!clusters.length){
     main.innerHTML=backfillRow(bf)+'<div class="empty">No unknown faces in the queue.</div>';return}
   const excluded=window._excludedIds||(window._excludedIds=new Set());
+  // Kamera-Filter wirkt auf die Cluster: ein Cluster bleibt, wenn mindestens ein
+  // Gesicht darin von der gewaehlten Kamera stammt.
+  const unkCams=camsOf(clusters.flat(), u=>u.camera);
+  if(camFilter.unknowns)
+    clusters=clusters.map(c=>c.filter(u=>u.camera===camFilter.unknowns)).filter(c=>c.length);
   const n2s={}; Object.entries(persons).forEach(([sl,p])=>{n2s[p.name]=sl;});
   const SUGGEST=suggestThr;
   // Vorschlags-Gruppen (nach vermuteter Person) + Rest-Cluster
@@ -237,7 +242,9 @@ async function renderUnknowns(){
     .map(name=>({name,slug:n2s[name],items:byName[name]}));
   window._sugg=sugg; window._clusters=rest; window._n2s=n2s;
 
-  let html=backfillRow(bf)+`<div class="row">
+  let html=backfillRow(bf)+(camSelect('unknowns', unkCams)
+      ? `<div class="row" style="margin-bottom:6px">${camSelect('unknowns', unkCams)}</div>` : '')
+    +`<div class="row">
     <button class="act" title="assign every face whose best gallery match clears the recognition threshold" onclick="autoAssign()">APPLY SUGGESTIONS ≥50%</button>
     <span class="stat">assigns every face whose best gallery match clears the recognition threshold</span>
   </div>`;
@@ -458,12 +465,38 @@ async function discardCluster(i){
 }
 
 let logTimer=null, logLevel=null;
+// Kamera-Auswahl fuer die Listen. Erscheint erst ab zwei Kameras — bei einer waere
+// ein Filter nur ein Bedienelement ohne Wirkung. Idee aus einem Nutzerbeitrag (#14).
+let camFilter = {unknowns: '', history: ''};
+function camSelect(view, cams){
+  if(cams.length < 2) return '';
+  const cur = camFilter[view];
+  return `<span class="stat">camera:</span>
+    <select onchange="camFilter['${view}']=this.value;render()" style="margin-right:12px">
+      <option value=""${cur===''?' selected':''}>all (${cams.length})</option>
+      ${cams.map(c=>`<option value="${esc(c)}"${cur===c?' selected':''}>${esc(c)}</option>`).join('')}
+    </select>`;
+}
+function camsOf(items, get){
+  return [...new Set(items.map(get).filter(Boolean))].sort();
+}
+
+let historyLimit = 60;
 async function renderHistory(){
-  const r=await j('api/history?limit=60').catch(()=>({enabled:false,items:[]}));
+  const r=await j(`api/history?limit=${historyLimit}`).catch(()=>({enabled:false,items:[]}));
   if(!r.enabled){main.innerHTML='<div class="card"><div class="stat">The history is switched off (<code>history_keep: 0</code>).</div></div>';return}
-  const it=r.items||[];
+  const all=r.items||[];
+  const cams=camsOf(all, h=>h.camera);
+  const it=camFilter.history ? all.filter(h=>h.camera===camFilter.history) : all;
   main.innerHTML=`<div class="card">
     <h2>What FaceID reported</h2>
+    <div class="row" style="margin:-2px 0 8px">
+      ${camSelect('history', cams)}
+      <span class="stat">entries:</span>
+      <select onchange="historyLimit=+this.value;renderHistory()">
+        ${[30,60,120,200].map(n=>`<option value="${n}"${historyLimit===n?' selected':''}>${n}</option>`).join('')}
+      </select>
+    </div>
     <div class="stat">Every published recognition, with the <b>face image it actually used</b> — not the Frigate snapshot. Frigate keeps replacing that snapshot while an event runs, so checking one later usually shows a different moment, and sometimes a different person. Press <b>was wrong</b> on a mistake and FaceID works out which reference photo caused it. Where the gallery has changed since — a face you have assigned in the meantime — the card also shows who it would be matched to <b>now</b>.</div>
     ${it.length?'':'<div class="stat" style="margin-top:8px">Nothing reported yet.</div>'}
     <div class="hgrid" style="margin-top:8px">${it.map(h=>`

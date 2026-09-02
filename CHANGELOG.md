@@ -3,6 +3,17 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.21.0 — 2026-09-01
+
+- **Camera filter on the review queue and the history, and a choice of how many history
+  entries to load** — suggested and prototyped by @WiredLife in #14, rebuilt here against
+  the current UI.
+- The filter only appears once there is more than one camera to choose between. With a
+  single camera it would be a control that cannot change anything, and an empty dropdown
+  invites the question of what it is for.
+- On the review queue it filters *clusters*: a cluster survives when at least one face in it
+  came from the selected camera, so a group is never silently cut in half.
+
 ## 0.20.0 — 2026-09-01
 
 - **The notification image now comes from Home Assistant by default**, as the relative path
