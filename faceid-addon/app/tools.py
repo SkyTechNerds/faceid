@@ -279,8 +279,6 @@ def why_no_face(engine, frigate, cfg, days: float = 3.0, progress=None) -> dict:
     selbst nicht sicher genug findet. Erst die Aufschlüsselung nach Kamera zeigt, ob
     ein Standort etwas taugt — oder nur Rücken und Hinterköpfe liefert.
     """
-    from .engine import FaceEngine
-
     if frigate is None:
         return {"error": "no Frigate connection configured"}
     min_px = int(cfg["faceid"].get("min_face_px", 48))
