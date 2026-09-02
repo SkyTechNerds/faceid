@@ -347,6 +347,13 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             gallery.discard_unknown(uid)
         return {"ok": True}
 
+    # Pruefen und Setzen von "running" muss zusammen passieren. FastAPI fuehrt
+    # synchrone Endpunkte in einem Threadpool aus, und zwischen der Abfrage und dem
+    # Setzen liegt eine Zuweisung — dort kann Python den Thread wechseln. Zwei
+    # gleichzeitige Starts kaemen sonst beide durch die 409-Sperre und wuerden in
+    # denselben Zustand schreiben. Die Sperre haelt nur den Check-and-Set, nie den Lauf.
+    job_lock = threading.Lock()
+
     backfill_state = {"running": False, "processed": 0, "total": 0, "result": None, "days": 0}
 
     class BackfillBody(BaseModel):
@@ -354,17 +361,18 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
 
     @app.post("/api/backfill")
     def start_backfill(body: BackfillBody):
-        if backfill_state["running"]:
-            raise HTTPException(409, "History scan already running")
         days = max(1, min(int(body.days), 60))
-        backfill_state.update(running=True, processed=0, total=0, result=None, days=days)
+        with job_lock:
+            if backfill_state["running"]:
+                raise HTTPException(409, "History scan already running")
+            backfill_state.update(running=True, processed=0, total=0, result=None, days=days)
 
         def progress(i, total):
             backfill_state.update(processed=i, total=total)
 
         def worker():
-            from .backfill import run_backfill
             try:
+                from .backfill import run_backfill
                 stats = run_backfill(
                     engine, gallery, processor.frigate, cfg["frigate"]["url"], days=days,
                     tag=bool(cfg["faceid"].get("set_sub_label", True)),
@@ -525,14 +533,15 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     def start_analysis(body: AnalysisBody):
         """Kalibrierungs-Auswertung anstossen — dieselbe Rechnung wie die Skripte,
         aber ohne Shell, damit App-Nutzer sie ueberhaupt ausfuehren koennen."""
-        if analysis_state["running"]:
-            raise HTTPException(409, "analysis already running")
         days = max(0.0, min(float(body.days), 30.0))
-        analysis_state.update(running=True, processed=0, total=0, result=None)
+        with job_lock:
+            if analysis_state["running"]:
+                raise HTTPException(409, "analysis already running")
+            analysis_state.update(running=True, processed=0, total=0, result=None)
 
         def worker():
-            from . import analysis
             try:
+                from . import analysis
                 analysis_state["result"] = analysis.run(
                     data_dir, engine, processor.frigate, cfg, days=days,
                     progress=lambda i, t: analysis_state.update(processed=i, total=t))
@@ -548,6 +557,81 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     @app.get("/api/analysis")
     def analysis_status():
         return dict(analysis_state)
+
+    # ---- Werkzeuge -------------------------------------------------------------
+    # Dieselben Auswertungen wie in scripts/, nur ohne Shell. Noetig, weil scripts/
+    # gar nicht im App-Image liegt (das Dockerfile kopiert app/ und static/) und die
+    # Verzoegerungsmessung dort journalctl braeuchte, das es im Container nicht gibt.
+    TOOL_SPECS = [
+        {"id": "delay", "label": "How fast is a recognition?",
+         "about": "Time from the start of the event to the published name, split by "
+                  "attempt — attempt 1 is really Frigate's time to a usable snapshot. "
+                  "Reads the history, so it needs no camera access and is instant.",
+         "days": [0, 1, 3, 7, 14], "days_label": "period", "needs": "history"},
+        {"id": "coverage", "label": "How well is each person covered?",
+         "about": "Angles, cameras, day and night per person — and what photo is "
+                  "concretely missing. Re-reads every reference photo, so it takes a "
+                  "while on a large gallery.",
+         "days": [], "needs": "gallery"},
+        {"id": "why-no-face", "label": "Why do events yield no face?",
+         "about": "Separates the three reasons that otherwise blur into 'not "
+                  "recognised': no face in the picture at all, one too small, or one "
+                  "the detector is unsure about. Downloads a snapshot per event.",
+         "days": [1, 3, 7], "days_label": "look back", "needs": "frigate"},
+    ]
+    tool_state = {t["id"]: {"running": False, "processed": 0, "total": 0,
+                            "result": None} for t in TOOL_SPECS}
+
+    class ToolBody(BaseModel):
+        days: float = 3.0
+
+    @app.get("/api/tools")
+    def tools_list():
+        return {"tools": TOOL_SPECS, "state": tool_state}
+
+    @app.post("/api/tools/{tid}")
+    def start_tool(tid: str, body: ToolBody):
+        st = tool_state.get(tid)
+        if st is None:
+            raise HTTPException(404, "unknown tool")
+        days = max(0.0, min(float(body.days), 30.0))
+        with job_lock:
+            if st["running"]:
+                raise HTTPException(409, "already running")
+            st.update(running=True, processed=0, total=0, result=None)
+
+        def worker():
+            # Der Import gehoert INS try: schlaegt er fehl, stirbt der Thread sonst vor
+            # dem finally, "running" bliebe fuer immer True und das Werkzeug waere bis
+            # zum Neustart tot — mit "already running" als einziger Auskunft.
+            try:
+                from . import tools as t
+                prog = lambda i, n: st.update(processed=i, total=n)
+                if tid == "delay":
+                    h = getattr(processor, "history", None)
+                    st["result"] = ({"error": "history is disabled (history_keep: 0)"}
+                                    if h is None else t.delay(h.dir, days=days))
+                elif tid == "coverage":
+                    st["result"] = t.coverage(data_dir, engine, processor.frigate, cfg,
+                                              progress=prog)
+                else:
+                    st["result"] = t.why_no_face(engine, processor.frigate, cfg,
+                                                 days=days, progress=prog)
+            except Exception as e:
+                log.exception("tool %s failed", tid)
+                st["result"] = {"error": str(e)}
+            finally:
+                st["running"] = False
+
+        threading.Thread(target=worker, daemon=True, name=f"faceid-tool-{tid}").start()
+        return {"started": True, "days": days}
+
+    @app.get("/api/tools/{tid}")
+    def tool_status(tid: str):
+        st = tool_state.get(tid)
+        if st is None:
+            raise HTTPException(404, "unknown tool")
+        return dict(st)
 
     @app.get("/api/backups")
     def backups():

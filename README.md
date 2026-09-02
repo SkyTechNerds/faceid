@@ -122,8 +122,9 @@ tools built on the same models (Immich, CompreFace) sit in the same range.
 | 480 | ~107 ms |
 | 320 | ~60 ms |
 
-Lower values find small and distant faces less reliably, so trade it against
-`scripts/why-no-face.py` rather than by feel.
+Lower values find small and distant faces less reliably, so trade it against the
+*Why do events yield no face?* tool (Tools tab, or `scripts/why-no-face.py`) rather than
+by feel.
 
 If ~650 MB is genuinely too much, the only real reduction is a smaller model family
 (`buffalo_s`, MobileFaceNet instead of ResNet-50, roughly a third of the memory) at the
@@ -329,8 +330,8 @@ box-less snapshots: **[docs/camera-bridge.md](docs/camera-bridge.md)**.
 ## Calibrating the threshold
 
 The defaults are deliberately cautious, and on a real gallery that caution turned out to
-be expensive. Measure yours rather than guessing — `scripts/measure-recognition.py` and
-`scripts/coverage.py` produce the numbers.
+be expensive. Measure yours rather than guessing — the Tools tab produces the numbers
+without a terminal, as do `scripts/measure-recognition.py` and `scripts/coverage.py`.
 
 On a 128-photo household gallery the separation was far wider than the defaults assume:
 
@@ -384,6 +385,28 @@ work?* reports the ceiling for both cases, and refuses to suggest lowering anyth
 finds a misassignment.
 
 ## Measuring instead of guessing
+
+### Without a terminal: the Tools tab
+
+Switch it on under **Settings → Does it work? → show the Tools tab**. It runs the same
+analyses in the service itself and shows them as tables:
+
+| Tool | Answers | Cost |
+|---|---|---|
+| How fast is a recognition? | delay from the start of the event to the published name, per attempt and camera | instant, reads the history |
+| How well is each person covered? | angles, cameras, day and night per person, and what photo is concretely missing | re-reads every reference photo |
+| Why do events yield no face? | no face at all / too small / detector unsure, per camera | downloads one snapshot per event |
+
+This is not a wrapper around the scripts below, because it could not be: `scripts/` is not
+part of the app image at all, and the delay measurement there reads `journalctl`, which does
+not exist in a container without systemd. If you run FaceID as a Home Assistant app, the tab
+is the only way to get these numbers.
+
+The delay figures therefore come from the history rather than the log, which also means they
+need no camera access. Recognitions produced by a history scan are excluded instead of being
+averaged in — they lag their event by weeks — and the tab says how many it dropped.
+
+### With a terminal: the scripts
 
 Three scripts answer the questions that otherwise invite guesswork:
 
@@ -552,9 +575,11 @@ If you use a Frigate notification blueprint (SgtBatten's is the common one), you
 probably noticed the name never appears in it. Two measured reasons:
 
 - **The name is not ready yet.** The blueprint fires when the event starts; FaceID first
-  needs a snapshot to exist, a face in it, and a match. Over 132 real recognitions the name
-  was ready after a **median of 7 seconds**, and 3 seconds at the very best — that is how
-  long Frigate itself takes to produce a first snapshot.
+  needs a snapshot to exist, a face in it, and a match. Over 155 real recognitions on one
+  household setup the name was ready after a **median of 8 seconds**, the fastest in one.
+  What sets the floor is Frigate's time to a first usable snapshot, and that varies a lot —
+  it is not a fixed few seconds. Measure your own in FaceID's **Tools** tab (switch it on
+  under Settings → *Does it work?*); the numbers depend on your cameras and your hardware.
 - **Waiting can help — but often does not, for a different reason than I first published.**
   ⚠️ An earlier version of this section claimed Frigate never announces the name over MQTT.
   That was wrong: the test behind it ran against an *already finished* event, where nothing

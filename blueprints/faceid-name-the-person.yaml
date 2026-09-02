@@ -8,9 +8,10 @@ blueprint:
 
     **Why this is needed.** A Frigate notification blueprint fires when the event starts.
     FaceID needs a moment longer: it has to wait for a snapshot to exist, find a face in it
-    and match it. Measured over 132 real recognitions on one household setup, the name is
-    ready after a median of 7 seconds — 3 seconds at the very best, because that is how long
-    Frigate itself takes to produce the first snapshot.
+    and match it. Measured over 155 real recognitions on one household setup, the name is
+    ready after a median of 8 seconds, the fastest of them in one. What sets the floor is how
+    long Frigate takes to produce a usable snapshot, which varies widely from event to event.
+    Your own figures are in FaceID's Tools tab.
 
 
     **Correction (2026-08-31).** An earlier version of this text claimed Frigate never

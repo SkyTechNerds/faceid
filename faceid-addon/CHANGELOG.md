@@ -3,6 +3,45 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.22.0 — 2026-09-02
+
+- **A Tools tab with the measurements that used to need a terminal.** Off by default;
+  switch it on under Settings → *Does it work?*. It runs three analyses that so far only
+  existed as scripts: how fast a recognition is, how well each person is covered, and why
+  events yield no usable face.
+- This is not a convenience wrapper around the scripts — it could not be. `scripts/` is not
+  in the app image at all (the Dockerfile ships `app/` and `static/`), and the delay
+  measurement read `journalctl`, which does not exist in a container without systemd. For
+  anyone running FaceID as a Home Assistant app, those analyses were unreachable, not just
+  inconvenient.
+- The delay measurement therefore uses a different source than the script: the history
+  instead of the log. The event's start time is in the Frigate event id anyway, and the
+  moment the name went out is in the history entry — so it needs neither the log nor camera
+  access, and answers instantly.
+- Recognitions from a history scan are excluded from the delay figures rather than silently
+  averaged in; they lag their event by weeks and would wreck every median. The count of
+  what was dropped is shown.
+- **Corrected: there is no 3-second floor.** README and the notification blueprint said the
+  name takes 3 seconds at the very best, "because that is how long Frigate takes to produce
+  the first snapshot". The new tool made it checkable, and 18% of recognitions land below
+  that, the fastest in 0.8s. The old figure was the *median* of first attempts in an older
+  sample, written up as a physical limit. Both measurement paths — the log-based script and
+  the history — now agree: median 8-9s, fastest around 1s, and the floor varies per event.
+  Clocks were compared between Frigate and the container first; they match to the second.
+- The history no longer prints a similarity of 1.0 as if it meant something. Every such
+  entry was a face that had since been assigned, so it is one of that person's reference
+  photos and matches itself. It now reads "now assigned: <name>", without a number.
+- `retry_seconds: 1.2` (down from 2.5) is confirmed to have worked: attempt 2 went from a
+  median of 6.5s to 4.0s.
+- **Two long-standing bugs in the background jobs**, found while reviewing the new one and
+  fixed for the history scan and the calibration analysis as well:
+  - A failing import inside a worker killed the thread before the `finally` that clears the
+    running flag. The job then stayed "running" forever and every later start answered `409
+    already running` until a service restart — with that message as the only clue, pointing
+    at everything except the real cause. Verified by breaking the import on purpose.
+  - Starting a job checked the running flag and set it in two separate steps, so two
+    simultaneous starts could both get past the guard. Now held under one lock.
+
 ## 0.21.0 — 2026-09-01
 
 - **Camera filter on the review queue and the history, and a choice of how many history
