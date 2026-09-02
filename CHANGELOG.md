@@ -3,6 +3,25 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.22.0 — 2026-09-02
+
+- **A Tools tab with the measurements that used to need a terminal.** Off by default;
+  switch it on under Settings → *Does it work?*. It runs three analyses that so far only
+  existed as scripts: how fast a recognition is, how well each person is covered, and why
+  events yield no usable face.
+- This is not a convenience wrapper around the scripts — it could not be. `scripts/` is not
+  in the app image at all (the Dockerfile ships `app/` and `static/`), and the delay
+  measurement read `journalctl`, which does not exist in a container without systemd. For
+  anyone running FaceID as a Home Assistant app, those analyses were unreachable, not just
+  inconvenient.
+- The delay measurement therefore uses a different source than the script: the history
+  instead of the log. The event's start time is in the Frigate event id anyway, and the
+  moment the name went out is in the history entry — so it needs neither the log nor camera
+  access, and answers instantly.
+- Recognitions from a history scan are excluded from the delay figures rather than silently
+  averaged in; they lag their event by weeks and would wreck every median. The count of
+  what was dropped is shown.
+
 ## 0.21.0 — 2026-09-01
 
 - **Camera filter on the review queue and the history, and a choice of how many history

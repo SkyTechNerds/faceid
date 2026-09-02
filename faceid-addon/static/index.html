@@ -16,6 +16,12 @@ body{background:var(--bg);color:var(--fg);font:14px/1.45 var(--sans)}
 header{display:flex;align-items:baseline;gap:16px;padding:10px 16px;border-bottom:1px solid var(--line)}
 header h1{font:700 15px var(--mono);color:var(--acc);letter-spacing:.08em}
 header .stat{font:12px var(--mono);color:var(--dim)}
+table.t{border-collapse:collapse;font-size:12px;margin:2px 0 14px}
+table.t th{text-align:right;color:var(--dim);font-weight:400;padding:3px 10px 3px 0;
+  border-bottom:1px solid var(--line)}
+table.t th:first-child,table.t td:first-child{text-align:left}
+table.t td{text-align:right;padding:3px 10px 3px 0;border-bottom:1px solid var(--line)}
+table.t tr:last-child td{border-bottom:0}
 nav{display:flex;gap:0;border-bottom:1px solid var(--line)}
 nav button{background:none;border:0;border-right:1px solid var(--line);color:var(--dim);
   font:13px var(--mono);padding:8px 18px;cursor:pointer}
@@ -132,6 +138,7 @@ td.p{color:var(--acc)} td.u{color:var(--warn)}
   <button data-t="settings" title="matching thresholds, backup and restore">SETTINGS</button>
   <button data-t="history" title="what FaceID actually reported — with the face image it used, and a way to say it was wrong">HISTORY</button>
   <button data-t="log" title="recent service log — what FaceID is doing, and why nothing was recognised">LOG</button>
+  <button data-t="tools" title="deeper measurements: speed, gallery coverage, why events yield no face" hidden>TOOLS</button>
 </nav>
 <main id="main"></main>
 <div id="toast"></div>
@@ -182,6 +189,7 @@ async function render(){
   if(tab==='settings')return renderSettings();
   if(tab==='history')return renderHistory();
   if(tab==='log')return renderLog();
+  if(tab==='tools')return renderTools();
   return renderPersons();
 }
 
@@ -750,6 +758,14 @@ async function renderSettings(){
       <span class="stat">tests the gallery against itself (real ground truth) and against recent events. Runs in the background; a few minutes.</span>
     </div>
     <div id="anbox" style="margin-bottom:18px"></div>
+    <div class="row" style="margin-bottom:18px">
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="advOn"
+        onchange="setAdvanced(this.checked)"> show the Tools tab</label>
+      <span class="stat" style="max-width:70ch">Adds a tab with deeper measurements:
+        how fast recognition is, how well each person is covered, and why events yield
+        no face. Same analyses as the scripts in the repository, without a terminal.
+        This setting lives in this browser only.</span>
+    </div>
 
     <h2>Automatic backup</h2>
     <div class="row">
@@ -776,6 +792,7 @@ async function renderSettings(){
   dedupePreview();
   renderBackupList();
   renderAnalysis();
+  const adv=document.getElementById('advOn'); if(adv)adv.checked=advanced();
 }
 
 // Die Einstellungen sind ueber die Zeit auf acht Abschnitte gewachsen — als eine lange
@@ -1015,6 +1032,144 @@ async function ignorePerson(slug,name){
 async function delPerson(slug,name){if(!confirm(`Delete "${name}" and all their faces?`))return;
   await j(`api/persons/${slug}`,{method:'DELETE'});render()}
 
+
+// ---- TOOLS -----------------------------------------------------------------
+// Die Auswertungen laufen im Dienst, nicht im Browser: sie brauchen die Galerie,
+// die Erkennung und teils Frigate. Hier steht nur die Darstellung.
+const ADV='faceid.advanced';
+function advanced(){return localStorage.getItem(ADV)==='1'}
+function applyAdvanced(){
+  const b=document.querySelector('nav button[data-t="tools"]');
+  if(b)b.hidden=!advanced();
+  // Wer den Modus abschaltet, waehrend er im Tab steht, saesse sonst auf einer
+  // Seite, die es laut Navigation nicht mehr gibt.
+  if(!advanced()&&tab==='tools')document.querySelector('nav button[data-t="unknowns"]').click();
+}
+function setAdvanced(on){
+  localStorage.setItem(ADV,on?'1':'0');applyAdvanced();
+  toast(on?'Tools tab enabled':'Tools tab hidden');
+}
+
+function tbl(cols,rows){
+  if(!rows.length)return '';
+  return `<table class="t"><tr>${cols.map(c=>`<th>${esc(c[0])}</th>`).join('')}</tr>`+
+    rows.map(r=>`<tr>${cols.map(c=>`<td>${c[1](r)??'—'}</td>`).join('')}</tr>`).join('')+
+    '</table>';
+}
+const secs=v=>v==null?'—':`${v.toFixed?v.toFixed(1):v}s`;
+
+function fmtDelay(d){
+  if(d.error)return `<span class="stat">${esc(d.error)}</span>`;
+  if(!d.n)return `<span class="stat">${esc(d.note||'nothing recorded yet')}</span>`;
+  let h=`<p class="stat" style="max-width:105ch"><b>${d.n}</b> recognitions ·
+    median <b>${secs(d.median)}</b> · fastest ${secs(d.min)} · 9 of 10 within
+    ${secs(d.p90)}${d.skipped_late?` · ${d.skipped_late} ignored as history-scan results`:''}</p>`;
+  h+=tbl([['attempt',r=>r.attempt],['n',r=>r.n],['median',r=>secs(r.median)],
+          ['fastest',r=>secs(r.min)],['slowest',r=>secs(r.max)]],d.by_attempt||[]);
+  h+=`<p class="stat">Attempt 1 is not FaceID's speed — it is how long Frigate takes to
+     produce a usable snapshot. That is the floor everything else sits on.</p>`;
+  h+=tbl([['camera',r=>esc(r.camera)],['n',r=>r.n],['median',r=>secs(r.median)]],d.by_camera||[]);
+  if((d.by_day||[]).length>1)
+    h+=tbl([['day',r=>esc(r.day)],['n',r=>r.n],['median',r=>secs(r.median)]],d.by_day);
+  return h;
+}
+
+function fmtCoverage(d){
+  if(d.error)return `<span class="stat">${esc(d.error)}</span>`;
+  let h='';
+  if((d.ir_cameras||[]).length)
+    h+=`<p class="stat">cameras that switch to infrared at night:
+        ${d.ir_cameras.map(esc).join(', ')}</p>`;
+  h+=tbl([['person',r=>esc(r.name)],['photos',r=>r.photos],
+          ['alike',r=>r.diversity==null?'—':r.diversity.toFixed(2)],
+          ['frontal',r=>r.frontal],['half',r=>r.half],['profile',r=>r.profile],
+          ['grey',r=>r.greyscale],['self test',r=>r.self_test+'%'],
+          ['cameras',r=>r.cameras.map(c=>esc(c.camera)+' '+c.n).join(', ')||'—']],
+         d.people||[]);
+  h+=`<p class="stat" style="max-width:105ch">The self test is deliberately harsh and
+     pessimistic on small galleries — one photo has to hold up against all the others.
+     A low value means the photos support each other weakly, not that the person will
+     not be recognised.</p>`;
+  if((d.advice||[]).length)
+    h+='<p class="stat">What is concretely missing (weakest first):</p><ul class="stat">'+
+       d.advice.map(a=>`<li><b>${esc(a.name)}</b>: ${a.missing.map(esc).join(', ')}</li>`).join('')+
+       '</ul>';
+  else h+='<p class="stat">Every person is broadly covered.</p>';
+  return h;
+}
+
+function fmtWhy(d){
+  if(d.error)return `<span class="stat">${esc(d.error)}</span>`;
+  const r=d.reasons||{}, tot=d.events||0;
+  const pct=n=>tot?` (${Math.round(100*n/tot)}%)`:'';
+  let h=`<p class="stat" style="max-width:105ch"><b>${tot}</b> events ·
+    usable face <b>${r.ok||0}</b>${pct(r.ok||0)} · no face at all ${r['no face']||0}
+    · too small ${r['too small']||0} · detector unsure ${r.uncertain||0}
+    ${r['no snapshot']?`· no snapshot ${r['no snapshot']}`:''}</p>`;
+  if(d.face_width&&d.face_width.n)
+    h+=`<p class="stat">widest face per event: median ${d.face_width.median}px,
+        threshold is ${d.min_face_px}px</p>`;
+  h+=tbl([['camera',r=>esc(r.camera)],['events',r=>r.events],['ok',r=>r.ok],
+          ['no face',r=>r.no_face],['too small',r=>r.too_small],
+          ['unsure',r=>r.uncertain]],d.cameras||[]);
+  return h;
+}
+const TOOL_FMT={'delay':fmtDelay,'coverage':fmtCoverage,'why-no-face':fmtWhy};
+
+function toolCard(t,st){
+  const days=(t.days||[]).length?`<label class="stat" style="display:flex;gap:6px;align-items:center">
+      ${esc(t.days_label||'period')}
+      <select id="td-${t.id}">${t.days.map(d=>`<option value="${d}"${d===(t.days[1]??t.days[0])?' selected':''}>${d?d+' day'+(d>1?'s':''):'everything'}</option>`).join('')}</select>
+    </label>`:'';
+  return `<h2>${esc(t.label)}</h2>
+    <div class="row">
+      <button class="act" onclick="runTool('${t.id}')" ${st&&st.running?'disabled':''}>RUN</button>
+      ${days}
+      <span class="stat" style="max-width:70ch">${esc(t.about)}</span>
+    </div>
+    <div id="tb-${t.id}" style="margin-bottom:18px"></div>`;
+}
+
+async function renderTools(){
+  main.innerHTML='<span class="stat">loading…</span>';
+  let d; try{ d=await j('api/tools') }catch(e){ main.innerHTML='<span class="stat">tools unavailable</span>'; return }
+  if(tab!=='tools')return;
+  main.innerHTML=`<p class="stat" style="max-width:105ch">Measurements that used to live
+    in <code>scripts/</code> and needed a terminal. They read what FaceID already has —
+    nothing here changes your gallery.</p>`+
+    d.tools.map(t=>toolCard(t,d.state[t.id])).join('');
+  for(const t of d.tools)paintTool(t.id,d.state[t.id]);
+}
+
+function paintTool(id,st){
+  const el=document.getElementById('tb-'+id); if(!el||!st)return;
+  if(st.running){
+    const pct=st.total?Math.round(100*st.processed/st.total):0;
+    el.innerHTML=`<span class="stat">measuring… ${st.processed}/${st.total||'?'}${st.total?` (${pct}%)`:''}</span>`;
+    setTimeout(()=>pollTool(id),1000);
+  } else if(st.result){
+    el.innerHTML=(TOOL_FMT[id]||(r=>`<pre class="stat">${esc(JSON.stringify(r,null,2))}</pre>`))(st.result);
+    const b=el.parentElement&&document.querySelector(`button[onclick="runTool('${id}')"]`);
+    if(b)b.disabled=false;
+  }
+}
+
+async function pollTool(id){
+  if(tab!=='tools')return;
+  try{ paintTool(id,await j('api/tools/'+id)) }catch(e){}
+}
+
+async function runTool(id){
+  const sel=document.getElementById('td-'+id);
+  try{ await j('api/tools/'+id,{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({days:+(sel?sel.value:0)})}) }
+  catch(e){ return toast('already running') }
+  const b=document.querySelector(`button[onclick="runTool('${id}')"]`); if(b)b.disabled=true;
+  const el=document.getElementById('tb-'+id); if(el)el.innerHTML='<span class="stat">starting…</span>';
+  pollTool(id);
+}
+
+applyAdvanced();
 
 health();setInterval(health,10000);render();
 </script>

@@ -549,6 +549,77 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     def analysis_status():
         return dict(analysis_state)
 
+    # ---- Werkzeuge -------------------------------------------------------------
+    # Dieselben Auswertungen wie in scripts/, nur ohne Shell. Noetig, weil scripts/
+    # gar nicht im App-Image liegt (das Dockerfile kopiert app/ und static/) und die
+    # Verzoegerungsmessung dort journalctl braeuchte, das es im Container nicht gibt.
+    TOOL_SPECS = [
+        {"id": "delay", "label": "How fast is a recognition?",
+         "about": "Time from the start of the event to the published name, split by "
+                  "attempt — attempt 1 is really Frigate's time to a usable snapshot. "
+                  "Reads the history, so it needs no camera access and is instant.",
+         "days": [0, 1, 3, 7, 14], "days_label": "period", "needs": "history"},
+        {"id": "coverage", "label": "How well is each person covered?",
+         "about": "Angles, cameras, day and night per person — and what photo is "
+                  "concretely missing. Re-reads every reference photo, so it takes a "
+                  "while on a large gallery.",
+         "days": [], "needs": "gallery"},
+        {"id": "why-no-face", "label": "Why do events yield no face?",
+         "about": "Separates the three reasons that otherwise blur into 'not "
+                  "recognised': no face in the picture at all, one too small, or one "
+                  "the detector is unsure about. Downloads a snapshot per event.",
+         "days": [1, 3, 7], "days_label": "look back", "needs": "frigate"},
+    ]
+    tool_state = {t["id"]: {"running": False, "processed": 0, "total": 0,
+                            "result": None} for t in TOOL_SPECS}
+
+    class ToolBody(BaseModel):
+        days: float = 3.0
+
+    @app.get("/api/tools")
+    def tools_list():
+        return {"tools": TOOL_SPECS, "state": tool_state}
+
+    @app.post("/api/tools/{tid}")
+    def start_tool(tid: str, body: ToolBody):
+        st = tool_state.get(tid)
+        if st is None:
+            raise HTTPException(404, "unknown tool")
+        if st["running"]:
+            raise HTTPException(409, "already running")
+        days = max(0.0, min(float(body.days), 30.0))
+        st.update(running=True, processed=0, total=0, result=None)
+
+        def worker():
+            from . import tools as t
+            prog = lambda i, n: st.update(processed=i, total=n)
+            try:
+                if tid == "delay":
+                    h = getattr(processor, "history", None)
+                    st["result"] = ({"error": "history is disabled (history_keep: 0)"}
+                                    if h is None else t.delay(h.dir, days=days))
+                elif tid == "coverage":
+                    st["result"] = t.coverage(data_dir, engine, processor.frigate, cfg,
+                                              progress=prog)
+                else:
+                    st["result"] = t.why_no_face(engine, processor.frigate, cfg,
+                                                 days=days, progress=prog)
+            except Exception as e:
+                log.exception("tool %s failed", tid)
+                st["result"] = {"error": str(e)}
+            finally:
+                st["running"] = False
+
+        threading.Thread(target=worker, daemon=True, name=f"faceid-tool-{tid}").start()
+        return {"started": True, "days": days}
+
+    @app.get("/api/tools/{tid}")
+    def tool_status(tid: str):
+        st = tool_state.get(tid)
+        if st is None:
+            raise HTTPException(404, "unknown tool")
+        return dict(st)
+
     @app.get("/api/backups")
     def backups():
         """Gespeicherte Backups auflisten — wer FaceID als App betreibt, kommt sonst gar
