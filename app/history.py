@@ -21,6 +21,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from .analysis import SELF_HIT
+
 log = logging.getLogger("faceid.history")
 
 
@@ -99,7 +101,6 @@ class History:
                         # dass genau dieser Ausschnitt inzwischen selbst ein Referenzfoto
                         # ist: das Bild vergleicht sich mit sich selbst. Als Guetemass
                         # waere das eine Scheinaussage, also wird es getrennt ausgewiesen.
-                        from .analysis import SELF_HIT
                         item["now"] = {"person": name, "score": round(float(score), 3),
                                        "self": float(score) >= SELF_HIT}
                 except Exception:
