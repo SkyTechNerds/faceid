@@ -347,6 +347,13 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             gallery.discard_unknown(uid)
         return {"ok": True}
 
+    # Pruefen und Setzen von "running" muss zusammen passieren. FastAPI fuehrt
+    # synchrone Endpunkte in einem Threadpool aus, und zwischen der Abfrage und dem
+    # Setzen liegt eine Zuweisung — dort kann Python den Thread wechseln. Zwei
+    # gleichzeitige Starts kaemen sonst beide durch die 409-Sperre und wuerden in
+    # denselben Zustand schreiben. Die Sperre haelt nur den Check-and-Set, nie den Lauf.
+    job_lock = threading.Lock()
+
     backfill_state = {"running": False, "processed": 0, "total": 0, "result": None, "days": 0}
 
     class BackfillBody(BaseModel):
@@ -354,10 +361,11 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
 
     @app.post("/api/backfill")
     def start_backfill(body: BackfillBody):
-        if backfill_state["running"]:
-            raise HTTPException(409, "History scan already running")
         days = max(1, min(int(body.days), 60))
-        backfill_state.update(running=True, processed=0, total=0, result=None, days=days)
+        with job_lock:
+            if backfill_state["running"]:
+                raise HTTPException(409, "History scan already running")
+            backfill_state.update(running=True, processed=0, total=0, result=None, days=days)
 
         def progress(i, total):
             backfill_state.update(processed=i, total=total)
@@ -525,10 +533,11 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     def start_analysis(body: AnalysisBody):
         """Kalibrierungs-Auswertung anstossen — dieselbe Rechnung wie die Skripte,
         aber ohne Shell, damit App-Nutzer sie ueberhaupt ausfuehren koennen."""
-        if analysis_state["running"]:
-            raise HTTPException(409, "analysis already running")
         days = max(0.0, min(float(body.days), 30.0))
-        analysis_state.update(running=True, processed=0, total=0, result=None)
+        with job_lock:
+            if analysis_state["running"]:
+                raise HTTPException(409, "analysis already running")
+            analysis_state.update(running=True, processed=0, total=0, result=None)
 
         def worker():
             from . import analysis
@@ -585,10 +594,11 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         st = tool_state.get(tid)
         if st is None:
             raise HTTPException(404, "unknown tool")
-        if st["running"]:
-            raise HTTPException(409, "already running")
         days = max(0.0, min(float(body.days), 30.0))
-        st.update(running=True, processed=0, total=0, result=None)
+        with job_lock:
+            if st["running"]:
+                raise HTTPException(409, "already running")
+            st.update(running=True, processed=0, total=0, result=None)
 
         def worker():
             from . import tools as t
