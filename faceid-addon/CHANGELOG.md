@@ -33,6 +33,14 @@ update dialog; standalone users can watch GitHub releases.
   photos and matches itself. It now reads "now assigned: <name>", without a number.
 - `retry_seconds: 1.2` (down from 2.5) is confirmed to have worked: attempt 2 went from a
   median of 6.5s to 4.0s.
+- **Two long-standing bugs in the background jobs**, found while reviewing the new one and
+  fixed for the history scan and the calibration analysis as well:
+  - A failing import inside a worker killed the thread before the `finally` that clears the
+    running flag. The job then stayed "running" forever and every later start answered `409
+    already running` until a service restart — with that message as the only clue, pointing
+    at everything except the real cause. Verified by breaking the import on purpose.
+  - Starting a job checked the running flag and set it in two separate steps, so two
+    simultaneous starts could both get past the guard. Now held under one lock.
 
 ## 0.21.0 — 2026-09-01
 
