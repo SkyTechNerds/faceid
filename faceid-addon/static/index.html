@@ -513,7 +513,9 @@ async function renderHistory(){
         <div class="meta">
           <b title="${esc(h.person)} ${h.score}">${esc(h.person)} ${h.score}</b>
           <span class="sub">${fmtTs(h.ts)} · ${esc(h.camera||'')}</span>
-          ${h.now?`<div class="nowis" title="This face would be matched to ${esc(h.now.person)} today — the gallery has changed since this was reported.">now: ${esc(h.now.person)} ${h.now.score}</div>`:''}
+          ${h.now?(h.now.self
+            ? `<div class="nowis" title="You assigned this face to ${esc(h.now.person)}, so it is one of their reference photos now. It matches itself — that says nothing about how well ${esc(h.now.person)} is recognised.">now assigned: ${esc(h.now.person)}</div>`
+            : `<div class="nowis" title="This face would be matched to ${esc(h.now.person)} today — the gallery has changed since this was reported.">now: ${esc(h.now.person)} ${h.now.score}</div>`):''}
         </div>
         <button class="ghost" onclick="markWrong('${h.id}')">was wrong</button>
       </div>`).join('')}</div>
