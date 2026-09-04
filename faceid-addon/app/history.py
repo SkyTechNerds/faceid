@@ -45,15 +45,25 @@ class History:
         name = Path(str(payload.get("img") or "")).name
         return name or f"{hid}.jpg"
 
-    def _images_of(self, stem: str):
-        """Alle Bildfassungen einer Zeile: ``<id>.jpg`` und ``<id>.vN.jpg``.
+    @staticmethod
+    def _row_of(img: Path) -> str:
+        """Zu welcher Zeile gehoert dieses Bild? ``<id>.jpg`` oder ``<id>.vN.jpg``.
 
-        Bewusst ohne ``glob``: die Kennung stuende dort als Muster, und ein ``*`` oder
-        ``[`` darin traefe fremde Zeilen.
+        Die einzige Stelle, die den Namensaufbau kennt — vorher fragten Verdraengung
+        und Waisensuche dasselbe auf zwei Arten.
         """
-        for f in self.dir.iterdir():
-            if f.suffix == ".jpg" and (f.name == f"{stem}.jpg"
-                                       or f.name.startswith(f"{stem}.v")):
+        name = img.name[:-len(".jpg")]
+        head, sep, tail = name.rpartition(".v")
+        return head if sep and tail.isdigit() else name
+
+    def _images_of(self, stem: str):
+        """Alle Bildfassungen einer Zeile.
+
+        Bewusst ohne Muster aus der Kennung: die ist Nutzdatum, und ein ``*`` oder
+        ``[`` darin traefe als Glob fremde Zeilen.
+        """
+        for f in self.dir.glob("*.jpg"):
+            if self._row_of(f) == stem:
                 yield f
 
     def _write_json(self, js: Path, payload: dict) -> bool:
@@ -188,7 +198,13 @@ class History:
                     (self.dir / new_img).unlink(missing_ok=True)
                     return False
                 if old_img != new_img:
-                    (self.dir / old_img).unlink(missing_ok=True)
+                    # Nur noch Aufraeumen — die Zeile steht bereits richtig. Ein Fehler
+                    # hier darf nicht als Fehlschlag zurueckgemeldet werden; das Bild
+                    # holt spaetestens der naechste Durchlauf von _enforce_cap.
+                    try:
+                        (self.dir / old_img).unlink(missing_ok=True)
+                    except OSError:
+                        log.warning("could not remove the superseded image %s", old_img)
                 return True
         except Exception:
             log.exception("could not update history entry %s", hid)
@@ -196,20 +212,17 @@ class History:
 
     def _enforce_cap(self):
         """Aelteste ueber dem Limit entfernen (Aufrufer haelt das Lock)."""
-        files = sorted(self.dir.glob("*.json"), reverse=True)
-        for old in files[self.keep:]:
+        for old in sorted(self.dir.glob("*.json"), reverse=True)[self.keep:]:
             old.unlink(missing_ok=True)
-            # Auch die spaeteren Fassungen: eine verbesserte Zeile heisst <id>.vN.jpg,
-            # und wer nur <id>.jpg loescht, laesst Bilder liegen, die *.json nie zaehlt.
-            for img in self._images_of(old.stem):
-                img.unlink(missing_ok=True)
-        # Bilder ohne Zeile einsammeln. Gelistet wird ueber *.json, ein Bild ohne JSON
-        # wuerde also nie wieder gezaehlt und nie geloescht — es waere unsichtbarer
-        # Ballast. Gefahrlos, weil beide Schreibwege das Lock halten und ein Bild nur
-        # waehrenddessen kurz ohne seine Zeile existiert.
-        known = {img for j in self.dir.glob("*.json") for img in self._images_of(j.stem)}
+        # Danach EIN Durchlauf ueber die Bilder: das raeumt die eben verdraengten Zeilen
+        # mit weg und ebenso Bilder, die auf anderem Weg ihre Zeile verloren haben — die
+        # wuerden sonst nie wieder gezaehlt, weil ueber *.json gelistet wird.
+        # Vorher lief _images_of je Zeile einmal ueber das ganze Verzeichnis.
+        # Gefahrlos, weil beide Schreibwege das Lock halten und ein Bild nur innerhalb
+        # dieses Abschnitts kurz ohne seine Zeile existiert.
+        stems = {j.stem for j in self.dir.glob("*.json")}
         for img in self.dir.glob("*.jpg"):
-            if img not in known:
+            if self._row_of(img) not in stems:
                 img.unlink(missing_ok=True)
 
     # ---------- Lesen ----------
@@ -322,9 +335,13 @@ class History:
     # ---------- Aufraeumen ----------
 
     def delete(self, hid: str):
-        (self.dir / f"{hid}.json").unlink(missing_ok=True)
-        for img in self._images_of(hid):
-            img.unlink(missing_ok=True)
+        # Unter derselben Sperre wie die Schreibwege: sonst koennte zwischen dem
+        # Entfernen der Zeile und ihrer Bilder ein laufendes improve() ein neues Bild
+        # anlegen, das anschliessend niemandem mehr gehoert.
+        with self._lock:
+            (self.dir / f"{hid}.json").unlink(missing_ok=True)
+            for img in self._images_of(hid):
+                img.unlink(missing_ok=True)
 
     def clear(self) -> int:
         n = 0
