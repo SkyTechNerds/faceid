@@ -665,6 +665,14 @@ class EventProcessor:
             # der erste, tatsaechlich gemeldete Treffer keinen Ausschnitt, entsteht die
             # Zeile erst spaeter und truege faelschlich "nicht gemeldet".
             published = sent or name in announced
+            # Bekannte Ungenauigkeit, bewusst nicht weiter verfolgt: Meldet ausgerechnet
+            # ein Treffer OHNE Ausschnitt als erster, laeuft dieser Block gar nicht, und
+            # die Marke bleibt bis zum naechsten Treffer mit Bild auf "nicht gemeldet".
+            # Ebenso traegt eine Zeile, die nach einer Verdraengung neu entsteht, den Wert
+            # der ausloesenden statt der gemeldeten Erkennung. Beides betrifft nur die
+            # Marke und den angezeigten Wert, nie Meldung, Erkennung oder Ausschnitt — und
+            # der Weg dorthin (Verdraengung mitten im Ereignis bei 200 Plaetzen) waere mit
+            # mehr Zustand teurer erkauft als die Ungenauigkeit kostet.
             # Die vorhandene Zeile ist die Merkliste. Gibt es noch keine — oder wurde sie
             # inzwischen vom Limit verdraengt (improve meldet das mit None) —, wird
             # angelegt statt verbessert. Sonst fiele die Erkennung stillschweigend aus
