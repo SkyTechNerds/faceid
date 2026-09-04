@@ -627,8 +627,15 @@ class EventProcessor:
             # und der naechste Treffer wuerde sie erneut verschicken. Eine doppelte
             # Benachrichtigung ist schlimmer als eine Zeile ohne Marke.
             if self.client.is_connected():
-                info = self.client.publish(f"{self.prefix}/event",
-                                           json.dumps(payload, ensure_ascii=False))
+                try:
+                    info = self.client.publish(f"{self.prefix}/event",
+                                               json.dumps(payload, ensure_ascii=False))
+                except Exception:
+                    # paho wirft durchaus (etwa ValueError bei zu grosser Nachricht).
+                    # Ungefangen risse das die ganze Erkennung mit — Sensor, Verlauf und
+                    # sub_label eingeschlossen —, obwohl nur die Meldung misslang.
+                    log.exception("could not publish the recognition for %s", name)
+                    info = None
                 # Kein rc am Ergebnis: als Fehlschlag werten. Ein fehlendes Feld ist
                 # keine Zusage, und die Marke soll im Zweifel zu wenig behaupten.
                 if getattr(info, "rc", None) == mqtt.MQTT_ERR_SUCCESS:
