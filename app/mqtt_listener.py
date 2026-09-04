@@ -608,15 +608,18 @@ class EventProcessor:
         # Eine MENGE, kein einzelner Name: in einem Vollbild koennen mehrere Bekannte
         # stehen, die sich sonst gegenseitig ueberschreiben und abwechselnd neu gemeldet
         # wuerden — genau die Doppelmeldung, die diese Stelle verhindern soll.
-        # Nur vermerken, was wirklich hinausging: waere der Name schon beim fehlenden
-        # Client als gemeldet markiert, bliebe er es fuer dieses Ereignis auch nach dem
-        # Wiederverbinden — ein spaeterer Treffer koennte die Meldung nicht mehr
-        # nachholen. Der Verlauf fuehrt seine eigene Merkliste (hids, s. unten).
+        # Erst vermerken, wenn die Meldung den Client wirklich verlassen hat. Ein
+        # vorhandener Client heisst nicht, dass die Verbindung steht: bei getrenntem
+        # Broker liefert paho MQTT_ERR_NO_CONN. Wuerde der Name schon davor als gemeldet
+        # gelten, bliebe er es fuer dieses Ereignis auch nach dem Wiederverbinden, und
+        # kein spaeterer Treffer koennte die Meldung nachholen. Der Verlauf fuehrt seine
+        # eigene Merkliste (hids, s. unten).
         announced = st.setdefault("announced", set())
         if self.client and name not in announced:
-            announced.add(name)
-            self.client.publish(f"{self.prefix}/event",
-                                json.dumps(payload, ensure_ascii=False))
+            info = self.client.publish(f"{self.prefix}/event",
+                                       json.dumps(payload, ensure_ascii=False))
+            if getattr(info, "rc", mqtt.MQTT_ERR_SUCCESS) == mqtt.MQTT_ERR_SUCCESS:
+                announced.add(name)
         # "unknown" gehoert NICHT in die Anwesenheitsliste. Der Sensor-State ist eine
         # Aufzaehlung von Namen ("Christian, Juli"), und ein hineingemischtes "unknown"
         # liest sich wie ein weiterer Name — auf dem Handy stand "Christian unknown ist
