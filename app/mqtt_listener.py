@@ -660,10 +660,11 @@ class EventProcessor:
         # nichts. (Frueher entschied das ein Gate hier — das warf im Broker-Ausfall die
         # ganze Erkennung weg.)
         if self.history is not None and crop is not None:
-            # ``sent`` und nicht "die Person steht in announced": letzteres ist auch fuer
-            # jeden spaeteren Treffer wahr, der selbst nichts mehr meldet. Die Marke in der
-            # Zeile beantwortet genau eine Frage — ging DIESE Erkennung hinaus?
-            published = sent
+            # Die Marke beantwortet die Frage auf Ereignis-Ebene: ging fuer diese Person
+            # in diesem Ereignis eine Meldung hinaus? ``sent`` allein reicht nicht — hatte
+            # der erste, tatsaechlich gemeldete Treffer keinen Ausschnitt, entsteht die
+            # Zeile erst spaeter und truege faelschlich "nicht gemeldet".
+            published = sent or name in announced
             # Die vorhandene Zeile ist die Merkliste. Gibt es noch keine — oder wurde sie
             # inzwischen vom Limit verdraengt (improve meldet das mit None) —, wird
             # angelegt statt verbessert. Sonst fiele die Erkennung stillschweigend aus

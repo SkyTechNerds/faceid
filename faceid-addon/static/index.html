@@ -509,7 +509,7 @@ async function renderHistory(){
     ${it.length?'':'<div class="stat" style="margin-top:8px">Nothing reported yet.</div>'}
     <div class="hgrid" style="margin-top:8px">${it.map(h=>`
       <div class="tile hcard">
-        <img src="data/history/${esc(h.img||h.id+'.jpg')}" loading="lazy" onclick="showFull('data/history/${esc(h.img||h.id+'.jpg')}','${esc(h.person)} ${h.score} · ${esc(h.camera||'')}')" title="${esc(h.person)} ${h.score} on ${esc(h.camera||'')}${h.zones&&h.zones.length?' · '+esc(h.zones.join(', ')):''}">
+        <img src="data/history/${esc(h.img||h.id+'.jpg')}" loading="lazy" onclick="showFull(this.src,'${esc(h.person)} ${h.score} · ${esc(h.camera||'')}')" title="${esc(h.person)} ${h.score} on ${esc(h.camera||'')}${h.zones&&h.zones.length?' · '+esc(h.zones.join(', ')):''}">
         <div class="meta">
           ${h.reported===false?`<span class="sub" title="This recognition happened but could not be sent - the broker was unreachable. It is kept because the picture is what a wrong-recognition report needs.">not reported</span> `:''}<b title="Reported as ${esc(h.person)} at ${esc(h.score)}${h.best_score?` — the picture shown is a later, clearer view of the same person from the same event (${esc(h.best_score)}), which is why it does not match the reported score`:''}">${esc(h.person)} ${esc(h.score)}${h.best_score?` <span class="sub">· best view ${esc(h.best_score)}</span>`:''}</b>
           <span class="sub">${fmtTs(h.ts)} · ${esc(h.camera||'')}</span>
