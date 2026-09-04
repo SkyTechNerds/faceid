@@ -509,7 +509,7 @@ async function renderHistory(){
     ${it.length?'':'<div class="stat" style="margin-top:8px">Nothing reported yet.</div>'}
     <div class="hgrid" style="margin-top:8px">${it.map(h=>`
       <div class="tile hcard">
-        <img src="data/history/${h.img||h.id+'.jpg'}" loading="lazy" onclick="showFull('data/history/${h.img||h.id+'.jpg'}','${esc(h.person)} ${h.score} · ${esc(h.camera||'')}')" title="${esc(h.person)} ${h.score} on ${esc(h.camera||'')}${h.zones&&h.zones.length?' · '+esc(h.zones.join(', ')):''}">
+        <img src="data/history/${esc(h.img||h.id+'.jpg')}" loading="lazy" onclick="showFull('data/history/${esc(h.img||h.id+'.jpg')}','${esc(h.person)} ${h.score} · ${esc(h.camera||'')}')" title="${esc(h.person)} ${h.score} on ${esc(h.camera||'')}${h.zones&&h.zones.length?' · '+esc(h.zones.join(', ')):''}">
         <div class="meta">
           <b title="Reported as ${esc(h.person)} at ${esc(h.score)}${h.best_score?` — the picture shown is a later, clearer view of the same person from the same event (${esc(h.best_score)}), which is why it does not match the reported score`:''}">${esc(h.person)} ${esc(h.score)}${h.best_score?` <span class="sub">· best view ${esc(h.best_score)}</span>`:''}</b>
           <span class="sub">${fmtTs(h.ts)} · ${esc(h.camera||'')}</span>

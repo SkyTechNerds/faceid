@@ -37,8 +37,24 @@ class History:
     # ---------- Schreiben ----------
 
     def _img_name(self, payload: dict, hid: str) -> str:
-        """Dateiname des Bildes einer Zeile. Aeltere Zeilen kennen das Feld nicht."""
-        return str(payload.get("img") or f"{hid}.jpg")
+        """Dateiname des Bildes einer Zeile. Aeltere Zeilen kennen das Feld nicht.
+
+        Nur der Basisname wird uebernommen: der Wert stammt aus einer Datei, und ein
+        Pfad darin duerfte nie mit ``self.dir`` zusammengesetzt werden.
+        """
+        name = Path(str(payload.get("img") or "")).name
+        return name or f"{hid}.jpg"
+
+    def _images_of(self, stem: str):
+        """Alle Bildfassungen einer Zeile: ``<id>.jpg`` und ``<id>.vN.jpg``.
+
+        Bewusst ohne ``glob``: die Kennung stuende dort als Muster, und ein ``*`` oder
+        ``[`` darin traefe fremde Zeilen.
+        """
+        for f in self.dir.iterdir():
+            if f.suffix == ".jpg" and (f.name == f"{stem}.jpg"
+                                       or f.name.startswith(f"{stem}.v")):
+                yield f
 
     def _write_json(self, js: Path, payload: dict) -> bool:
         """JSON atomar ersetzen — der einzige Moment, in dem eine Zeile umschaltet."""
@@ -49,7 +65,9 @@ class History:
             tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
             os.replace(tmp, js)
             return True
-        except OSError:
+        except (OSError, TypeError, ValueError):
+            # json.dumps scheitert an nicht serialisierbaren Werten mit TypeError —
+            # faengt man nur OSError, reisst es die ganze Erkennung mit.
             log.exception("could not write the history entry %s", js.stem)
             return False
         finally:
@@ -101,7 +119,8 @@ class History:
             log.exception("could not record a recognition in the history")
             return None
 
-    def improve(self, hid: str, crop_bgr, embedding, score: float, attempt=None) -> bool:
+    def improve(self, hid: str, crop_bgr, embedding, score: float,
+                attempt=None) -> bool | None:
         """Einen spaeteren, besseren Treffer derselben Person im selben Ereignis
         einarbeiten — ohne eine zweite Zeile anzulegen.
 
@@ -116,9 +135,14 @@ class History:
         Zeile zeigt. ``score``/``ts`` bleiben die der Meldung, damit der Verlauf weiter
         beantwortet, womit sie ausgeloest wurde.
 
-        Rueckgabe: ``True`` uebernommen, ``False`` nicht besser, ``None`` die Zeile gibt
-        es nicht mehr (vom Limit verdraengt) — dann muss der Aufrufer neu anlegen, sonst
-        faellt die Erkennung stillschweigend aus dem Verlauf.
+        Rueckgabe: ``True`` uebernommen; ``False`` nicht uebernommen, die Zeile steht
+        unveraendert (nicht besser, oder das Schreiben schlug fehl); ``None`` die Zeile
+        gibt es nicht mehr oder sie ist unlesbar — dann muss der Aufrufer neu anlegen,
+        sonst faellt die Erkennung stillschweigend aus dem Verlauf.
+
+        Ein unerwarteter Fehler ergibt bewusst ``False`` und nicht ``None``: die Zeile
+        existiert ja noch, und ein Neuanlegen brauechte genau das Duplikat, das diese
+        Funktion vermeiden soll.
         """
         if self.keep <= 0 or crop_bgr is None or embedding is None or not hid:
             return False
@@ -177,15 +201,15 @@ class History:
             old.unlink(missing_ok=True)
             # Auch die spaeteren Fassungen: eine verbesserte Zeile heisst <id>.vN.jpg,
             # und wer nur <id>.jpg loescht, laesst Bilder liegen, die *.json nie zaehlt.
-            for img in self.dir.glob(f"{old.stem}.*jpg"):
+            for img in self._images_of(old.stem):
                 img.unlink(missing_ok=True)
         # Bilder ohne Zeile einsammeln. Gelistet wird ueber *.json, ein Bild ohne JSON
         # wuerde also nie wieder gezaehlt und nie geloescht — es waere unsichtbarer
         # Ballast. Gefahrlos, weil beide Schreibwege das Lock halten und ein Bild nur
         # waehrenddessen kurz ohne seine Zeile existiert.
-        stems = {p.stem for p in self.dir.glob("*.json")}
+        known = {img for j in self.dir.glob("*.json") for img in self._images_of(j.stem)}
         for img in self.dir.glob("*.jpg"):
-            if img.name.split(".", 1)[0] not in stems:
+            if img not in known:
                 img.unlink(missing_ok=True)
 
     # ---------- Lesen ----------
@@ -299,7 +323,7 @@ class History:
 
     def delete(self, hid: str):
         (self.dir / f"{hid}.json").unlink(missing_ok=True)
-        for img in self.dir.glob(f"{hid}.*jpg"):
+        for img in self._images_of(hid):
             img.unlink(missing_ok=True)
 
     def clear(self) -> int:
