@@ -36,50 +36,38 @@ class History:
 
     # ---------- Schreiben ----------
 
-    def _write_pair(self, hid: str, crop_bgr, payload: dict) -> bool:
-        """Bild und JSON als Paar schreiben — beide oder keins.
+    def _img_name(self, payload: dict, hid: str) -> str:
+        """Dateiname des Bildes einer Zeile. Aeltere Zeilen kennen das Feld nicht."""
+        return str(payload.get("img") or f"{hid}.jpg")
 
-        ``cv2.imwrite`` wirft bei einem Fehler nicht, es gibt ``False`` zurueck (volle
-        Platte, unbeschreibbarer Pfad). Wird das uebergangen, beschreibt die JSON danach
-        ein Gesicht, das im .jpg gar nicht steht — und genau darauf laeuft spaeter die
-        Fehleranalyse.
-
-        Beide Dateien gehen zuerst nach ``.tmp`` und werden dann per ``os.replace``
-        eingehaengt. Ein Absturz zwischen den beiden ``replace`` bleibt theoretisch
-        moeglich; das Fenster schrumpft damit aber von zwei Schreibvorgaengen auf zwei
-        Metadaten-Operationen.
-        """
-        jpg, js = self.dir / f"{hid}.jpg", self.dir / f"{hid}.json"
-        # Eigenes Unterverzeichnis, und die Zwischendatei behaelt .jpg: OpenCV waehlt das
-        # Format ueber die Endung und schreibt nach ".jpg.tmp" gar nichts. Im selben
-        # Verzeichnis wuerde sie ausserdem vom *.json-Glob mitgezaehlt und taeuchte
-        # kurzzeitig als halbe Zeile im Verlauf auf.
+    def _write_json(self, js: Path, payload: dict) -> bool:
+        """JSON atomar ersetzen — der einzige Moment, in dem eine Zeile umschaltet."""
         tmpdir = self.dir / ".tmp"
         tmpdir.mkdir(exist_ok=True)
-        tmp_jpg, tmp_js = tmpdir / f"{hid}.jpg", tmpdir / f"{hid}.json"
-
-        backup = tmpdir / f"{hid}.prev.jpg"
+        tmp = tmpdir / f"{js.stem}.json"
         try:
-            if not cv2.imwrite(str(tmp_jpg), crop_bgr, [cv2.IMWRITE_JPEG_QUALITY, 88]):
-                log.warning("could not write the history image for %s", hid)
-                return False
-            tmp_js.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-            # Das Bild wandert zuerst. Scheitert danach die JSON, waere das Bild neu und
-            # die Beschreibung alt — genau der Widerspruch, den diese Funktion verhindern
-            # soll. Deshalb vorher eine Kopie, die in dem Fall zurueckgespielt wird.
-            if jpg.exists():
-                os.replace(jpg, backup)
-            os.replace(tmp_jpg, jpg)
-            try:
-                os.replace(tmp_js, js)
-            except OSError:
-                if backup.exists():
-                    os.replace(backup, jpg)
-                raise
+            tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            os.replace(tmp, js)
             return True
+        except OSError:
+            log.exception("could not write the history entry %s", js.stem)
+            return False
         finally:
-            for f in (tmp_jpg, tmp_js, backup):
-                f.unlink(missing_ok=True)
+            tmp.unlink(missing_ok=True)
+
+    def _write_image(self, name: str, crop_bgr) -> bool:
+        """Bild unter seinem endgueltigen Namen schreiben.
+
+        ``cv2.imwrite`` wirft bei einem Fehler nicht immer, es gibt auch ``False``
+        zurueck (volle Platte, unbeschreibbarer Pfad) — beides muss abgefangen werden,
+        sonst beschriebe die JSON danach ein Bild, das es nicht gibt.
+        """
+        try:
+            return bool(cv2.imwrite(str(self.dir / name), crop_bgr,
+                                    [cv2.IMWRITE_JPEG_QUALITY, 88]))
+        except cv2.error:
+            log.warning("could not encode the history image %s", name)
+            return False
 
     def add(self, crop_bgr, embedding, meta: dict) -> str | None:
         """Einen veroeffentlichten Treffer ablegen. Fehler hier duerfen die Erkennung
@@ -98,7 +86,14 @@ class History:
                     hid = f"{base}_{n}"
                 payload = dict(meta)
                 payload["embedding"] = [round(float(v), 6) for v in embedding]
-                if not self._write_pair(hid, crop_bgr, payload):
+                payload["img"] = f"{hid}.jpg"
+                # Reihenfolge ist der ganze Trick: Erst das Bild, dann die JSON. Gelistet
+                # wird ueber *.json, die Zeile entsteht also genau in dem Moment, in dem
+                # die JSON da ist — und dann liegt das Bild schon bereit.
+                if not self._write_image(payload["img"], crop_bgr):
+                    return None
+                if not self._write_json(self.dir / f"{hid}.json", payload):
+                    (self.dir / payload["img"]).unlink(missing_ok=True)
                     return None
                 self._enforce_cap()
                 return hid
@@ -132,7 +127,13 @@ class History:
                 jf = self.dir / f"{hid}.json"
                 if not jf.exists():
                     return None
-                payload = json.loads(jf.read_text(encoding="utf-8"))
+                try:
+                    payload = json.loads(jf.read_text(encoding="utf-8"))
+                except (ValueError, OSError):
+                    # Unlesbare Zeile: wie eine fehlende behandeln, damit der Aufrufer
+                    # neu anlegt statt sie fuer den Rest des Ereignisses einzufrieren.
+                    log.warning("history entry %s is unreadable — will be replaced", hid)
+                    return None
                 # Ein unlesbarer gespeicherter Wert darf nicht dazu fuehren, dass jede
                 # weitere Verbesserung still unterbleibt — dann lieber ersetzen.
                 try:
@@ -142,14 +143,29 @@ class History:
                     best = 0.0
                 if round(float(score), 3) <= best:
                     return False
+                # Das neue Bild bekommt einen EIGENEN Namen, das alte bleibt liegen.
+                # Damit aendert sich die Zeile ausschliesslich beim Ersetzen der JSON —
+                # scheitert irgendetwas davor oder dabei, zeigt sie unveraendert auf ihr
+                # altes, stimmiges Bild. Ein Zurueckspielen von Sicherungskopien braucht
+                # es dafuer nicht.
+                old_img = self._img_name(payload, hid)
+                n = 1
+                while (self.dir / f"{hid}.v{n}.jpg").exists():
+                    n += 1
+                new_img = f"{hid}.v{n}.jpg"
+                if not self._write_image(new_img, crop_bgr):
+                    return False
                 payload["embedding"] = [round(float(v), 6) for v in embedding]
                 payload["best_score"] = round(float(score), 3)
+                payload["img"] = new_img
                 if attempt is not None:
                     payload["best_attempt"] = attempt
-                # Scheitert das Bild, bleibt die alte Zeile unveraendert stehen — lieber
-                # der aeltere, stimmige Stand als eine Zeile, die auf ein anderes
-                # Gesicht zeigt.
-                return self._write_pair(hid, crop_bgr, payload)
+                if not self._write_json(jf, payload):
+                    (self.dir / new_img).unlink(missing_ok=True)
+                    return False
+                if old_img != new_img:
+                    (self.dir / old_img).unlink(missing_ok=True)
+                return True
         except Exception:
             log.exception("could not update history entry %s", hid)
             return False
@@ -159,7 +175,10 @@ class History:
         files = sorted(self.dir.glob("*.json"), reverse=True)
         for old in files[self.keep:]:
             old.unlink(missing_ok=True)
-            (self.dir / f"{old.stem}.jpg").unlink(missing_ok=True)
+            # Auch die spaeteren Fassungen: eine verbesserte Zeile heisst <id>.vN.jpg,
+            # und wer nur <id>.jpg loescht, laesst Bilder liegen, die *.json nie zaehlt.
+            for img in self.dir.glob(f"{old.stem}.*jpg"):
+                img.unlink(missing_ok=True)
 
     # ---------- Lesen ----------
 
@@ -178,7 +197,7 @@ class History:
                 m = json.loads(jf.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
                 continue
-            if not (self.dir / f"{jf.stem}.jpg").exists():
+            if not (self.dir / self._img_name(m, jf.stem)).exists():
                 continue
             item = {"id": jf.stem, **{k: v for k, v in m.items() if k != "embedding"}}
             if gallery is not None and m.get("embedding"):
@@ -272,7 +291,8 @@ class History:
 
     def delete(self, hid: str):
         (self.dir / f"{hid}.json").unlink(missing_ok=True)
-        (self.dir / f"{hid}.jpg").unlink(missing_ok=True)
+        for img in self.dir.glob(f"{hid}.*jpg"):
+            img.unlink(missing_ok=True)
 
     def clear(self) -> int:
         n = 0
