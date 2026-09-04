@@ -629,7 +629,9 @@ class EventProcessor:
             if self.client.is_connected():
                 info = self.client.publish(f"{self.prefix}/event",
                                            json.dumps(payload, ensure_ascii=False))
-                if getattr(info, "rc", mqtt.MQTT_ERR_SUCCESS) == mqtt.MQTT_ERR_SUCCESS:
+                # Kein rc am Ergebnis: als Fehlschlag werten. Ein fehlendes Feld ist
+                # keine Zusage, und die Marke soll im Zweifel zu wenig behaupten.
+                if getattr(info, "rc", None) == mqtt.MQTT_ERR_SUCCESS:
                     announced.add(name)
                     sent = True
         # "unknown" gehoert NICHT in die Anwesenheitsliste. Der Sensor-State ist eine
@@ -678,7 +680,11 @@ class EventProcessor:
             # angelegt statt verbessert. Sonst fiele die Erkennung stillschweigend aus
             # dem Verlauf, obwohl sie gemeldet wurde.
             hids = st.setdefault("hids", {})
-            hid = hids.get(name)
+            # "unknown" ist kein Name, sondern das Fehlen eines Namens: im Vollbild
+            # koennen mehrere Fremde stehen, die alle so heissen. Sie zu einer Zeile
+            # zusammenzufassen wuerde ihre Gesichter gegeneinander austauschen — jede
+            # unbekannte Erkennung behaelt deshalb ihre eigene Zeile.
+            hid = hids.get(name) if name != "unknown" else None
             if hid is not None:
                 if self.history.improve(hid, crop, emb, score, ts=payload["ts"],
                                         attempt=st.get("attempts"),
@@ -690,7 +696,7 @@ class EventProcessor:
                     crop, emb, {k: v for k, v in payload.items() if k != "ts"}
                     | {"ts": payload["ts"], "attempt": st.get("attempts"),
                        "reported": published})
-                if hid is not None:
+                if hid is not None and name != "unknown":
                     hids[name] = hid
 
     def _publish_presence(self, cam: str, last: dict | None = None):
