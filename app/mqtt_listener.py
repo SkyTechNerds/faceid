@@ -692,14 +692,15 @@ class EventProcessor:
             # (s. unten) — dort gilt deshalb nur, ob GENAU DIESE Meldung hinausging;
             # gemeldet wird ohnehin nur die erste, alle weiteren sperrt ``announced``.
             published = sent if name == "unknown" else name in announced
-            # Bekannte Ungenauigkeit, bewusst nicht weiter verfolgt: Meldet ausgerechnet
-            # ein Treffer OHNE Ausschnitt als erster, laeuft dieser Block gar nicht, und
-            # die Marke bleibt bis zum naechsten Treffer mit Bild auf "nicht gemeldet".
-            # Ebenso traegt eine Zeile, die nach einer Verdraengung neu entsteht, den Wert
-            # der ausloesenden statt der gemeldeten Erkennung. Beides betrifft nur die
-            # Marke und den angezeigten Wert, nie Meldung, Erkennung oder Ausschnitt — und
-            # der Weg dorthin (Verdraengung mitten im Ereignis bei 200 Plaetzen) waere mit
-            # mehr Zustand teurer erkauft als die Ungenauigkeit kostet.
+            # Bekannte Ungenauigkeit, bewusst nicht weiter verfolgt: Eine Zeile, die nach
+            # einer Verdraengung neu entsteht, traegt den Wert der ausloesenden statt der
+            # gemeldeten Erkennung. Bei Unbekannten kommt hinzu, dass die Marke am
+            # einzelnen Treffer haengt — meldet ausgerechnet einer ohne Ausschnitt, bleibt
+            # die spaeter entstehende Zeile auf "nicht gemeldet". Beides betrifft nur die
+            # Marke und den angezeigten Wert, nie Meldung, Erkennung oder Ausschnitt, und
+            # waere nur mit mehr Zustand je Ereignis zu haben, als es kostet.
+            # (Fuer benannte Personen greift der Fall nicht: dort zaehlt announced, das
+            # unabhaengig vom Ausschnitt gesetzt wird.)
             # Die vorhandene Zeile ist die Merkliste. Gibt es noch keine — oder wurde sie
             # inzwischen vom Limit verdraengt (improve meldet das mit None) —, wird
             # angelegt statt verbessert. Sonst fiele die Erkennung stillschweigend aus
