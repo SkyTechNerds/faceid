@@ -666,7 +666,11 @@ class EventProcessor:
             # in diesem Ereignis eine Meldung hinaus? ``sent`` allein reicht nicht — hatte
             # der erste, tatsaechlich gemeldete Treffer keinen Ausschnitt, entsteht die
             # Zeile erst spaeter und truege faelschlich "nicht gemeldet".
-            published = sent or name in announced
+            # Bei benannten Personen traegt EINE Zeile das ganze Ereignis, also zaehlt
+            # die Ereignis-Ebene. Unbekannte behalten je Erkennung eine eigene Zeile
+            # (s. unten) — dort gilt deshalb nur, ob GENAU DIESE Meldung hinausging;
+            # gemeldet wird ohnehin nur die erste, alle weiteren sperrt ``announced``.
+            published = sent if name == "unknown" else (sent or name in announced)
             # Bekannte Ungenauigkeit, bewusst nicht weiter verfolgt: Meldet ausgerechnet
             # ein Treffer OHNE Ausschnitt als erster, laeuft dieser Block gar nicht, und
             # die Marke bleibt bis zum naechsten Treffer mit Bild auf "nicht gemeldet".
