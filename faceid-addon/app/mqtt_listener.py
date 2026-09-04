@@ -608,10 +608,59 @@ class EventProcessor:
         # Eine MENGE, kein einzelner Name: in einem Vollbild koennen mehrere Bekannte
         # stehen, die sich sonst gegenseitig ueberschreiben und abwechselnd neu gemeldet
         # wuerden — genau die Doppelmeldung, die diese Stelle verhindern soll.
+        # Erst vermerken, wenn die Meldung den Client wirklich verlassen hat. Ein
+        # vorhandener Client heisst nicht, dass die Verbindung steht: bei getrenntem
+        # Broker liefert paho MQTT_ERR_NO_CONN. Wuerde der Name schon davor als gemeldet
+        # gelten, bliebe er es fuer dieses Ereignis auch nach dem Wiederverbinden, und
+        # kein spaeterer Treffer koennte die Meldung nachholen. Der Verlauf fuehrt seine
+        # eigene Merkliste (hids, s. unten).
         announced = st.setdefault("announced", set())
-        if self.client and name not in announced:
-            announced.add(name)
-            self.client.publish(f"{self.prefix}/event", json.dumps(payload, ensure_ascii=False))
+        sent = False
+        if self.client is not None and name not in announced:
+            # is_connected() zusaetzlich zum rc: MQTT_ERR_SUCCESS heisst nur "in den
+            # Ausgangspuffer aufgenommen". Auf einer halb offenen Verbindung meldet paho
+            # bei QoS 0 Erfolg, waehrend die Nachricht verfaellt — und die Zeile behauptete
+            # dann eine Meldung, die nie ankam. Eine echte Zustellbestaetigung gaebe es nur
+            # mit QoS 1 und wait_for_publish(), das den Erkennungspfad blockieren wuerde.
+            # Verbindung VOR dem Senden pruefen, nicht danach: reisst sie im selben
+            # Moment ab, gaelte eine tatsaechlich abgeschickte Meldung als ungesendet —
+            # und der naechste Treffer wuerde sie erneut verschicken. Eine doppelte
+            # Benachrichtigung ist schlimmer als eine Zeile ohne Marke.
+            if self.client.is_connected():
+                try:
+                    info = self.client.publish(f"{self.prefix}/event",
+                                               json.dumps(payload, ensure_ascii=False))
+                except Exception:
+                    # paho wirft durchaus (etwa ValueError bei zu grosser Nachricht).
+                    # Ungefangen risse das die ganze Erkennung mit — Sensor, Verlauf und
+                    # sub_label eingeschlossen —, obwohl nur die Meldung misslang.
+                    log.exception("could not publish the recognition for %s", name)
+                    # Wirft der Aufruf, wurde garantiert nichts eingereiht — also wie ein
+                    # fehlender Broker behandeln, damit ein spaeterer Treffer die Meldung
+                    # nachholen darf. Ein neutrales None waere hier falsch: es zaehlte
+                    # unten als "vielleicht verschickt" und sperrte die Wiederholung.
+                    info, rc = None, mqtt.MQTT_ERR_NO_CONN
+                else:
+                    rc = getattr(info, "rc", None)
+                # Zwei verschiedene Fragen, deshalb zwei Merker:
+                #
+                # ``announced`` verhindert die Doppelmeldung. Eingereiht ist verschickt —
+                # bei MQTT_ERR_AGAIN (voller Socket-Puffer) liegt das Paket in der
+                # Warteschlange und geht ueber den Netzwerk-Thread hinaus. Nur wo
+                # feststeht, dass NICHTS eingereiht wurde, darf ein spaeterer Treffer es
+                # erneut senden.
+                #
+                # ``sent`` (und die daraus gefuellte Liste ``reported_names``) markiert
+                # die Verlaufszeile und verlangt echten Erfolg: dort soll im Zweifel zu
+                # wenig behauptet werden, nicht zu viel.
+                if rc not in (mqtt.MQTT_ERR_NO_CONN, mqtt.MQTT_ERR_QUEUE_SIZE):
+                    announced.add(name)
+                sent = rc == mqtt.MQTT_ERR_SUCCESS
+                if sent:
+                    # Eigene Merkliste, weil ``announced`` bewusst lockerer ist: dort
+                    # steht der Name auch bei bloss eingereiht (MQTT_ERR_AGAIN) oder bei
+                    # unerwartetem Rueckgabewert. Fuer die Verlaufsmarke reicht das nicht.
+                    st.setdefault("reported_names", set()).add(name)
         # "unknown" gehoert NICHT in die Anwesenheitsliste. Der Sensor-State ist eine
         # Aufzaehlung von Namen ("Christian, Juli"), und ein hineingemischtes "unknown"
         # liest sich wie ein weiterer Name — auf dem Handy stand "Christian unknown ist
@@ -622,9 +671,57 @@ class EventProcessor:
         # Den TATSAECHLICH benutzten Ausschnitt festhalten. Der Frigate-Snapshot wird
         # waehrend des Ereignisses fortlaufend ersetzt und zeigt spaeter oft einen anderen
         # Moment — eine Nachpruefung an ihm fuehrt in die Irre. Siehe app/history.py.
+        # Verlauf: EINE Zeile je (Ereignis, benannter Person).
+        #
+        # Frueher legte jeder Treffer eine Zeile an. Gemeldet wird aber nur der erste je
+        # Person (``announced`` sperrt die weiteren), also behaupteten die uebrigen eine
+        # Benachrichtigung, die es nie gab — und verdraengten dabei aeltere echte
+        # Eintraege: gemessen 27 solcher Zeilen bei 200 Plaetzen, 13 % weniger Reichweite.
+        # Der spaetere Ausschnitt ist aber oft der bessere Beleg, deshalb ersetzt er das
+        # Bild der bestehenden Zeile, statt verworfen zu werden.
+        #
+        # Aufgezeichnet wird JEDE Erkennung, auch eine, die nicht hinausging: sonst
+        # gingen bei totem Broker genau die Ausschnitte verloren, auf denen die
+        # Fehleranalyse beruht. Ob gemeldet wurde, steht als Marke in der Zeile, und die
+        # erste tatsaechlich gemeldete Erkennung uebernimmt dort Wert und Zeitpunkt.
         if self.history is not None and crop is not None:
-            self.history.add(crop, emb, {k: v for k, v in payload.items() if k != "ts"}
-                             | {"ts": payload["ts"], "attempt": st.get("attempts")})
+            # Die Marke: bei benannten Personen traegt eine Zeile das ganze Ereignis, also
+            # zaehlt, ob dafuer irgendwann eine Meldung bestaetigt hinausging — sonst
+            # truege eine Zeile faelschlich "nicht gemeldet", wenn ausgerechnet der
+            # gemeldete Treffer keinen Ausschnitt hatte. Unbekannte behalten je Erkennung
+            # eine eigene Zeile (s. unten), dort zaehlt nur diese eine Meldung.
+            published = (sent if name == "unknown"
+                         else name in st.get("reported_names", ()))
+            # Bekannte Ungenauigkeit, bewusst so belassen: Eine Zeile, die nach einer
+            # Verdraengung neu entsteht, traegt den Wert der ausloesenden statt der
+            # gemeldeten Erkennung; und bei Unbekannten bleibt die Marke auf "nicht
+            # gemeldet", wenn der gemeldete Treffer keinen Ausschnitt hatte. Beides
+            # betrifft nur Marke und angezeigten Wert, nie Meldung, Erkennung oder
+            # Ausschnitt — und waere nur mit mehr Zustand je Ereignis zu haben, als es
+            # kostet.
+            #
+            # Gibt es noch keine Zeile — oder wurde sie vom Limit verdraengt, was improve
+            # mit None meldet —, wird angelegt statt verbessert. Sonst fiele die Erkennung
+            # stillschweigend aus dem Verlauf.
+            hids = st.setdefault("hids", {})
+            # "unknown" ist kein Name, sondern das Fehlen eines Namens: im Vollbild
+            # koennen mehrere Fremde stehen, die alle so heissen. Sie zu einer Zeile
+            # zusammenzufassen wuerde ihre Gesichter gegeneinander austauschen — jede
+            # unbekannte Erkennung behaelt deshalb ihre eigene Zeile.
+            hid = hids.get(name) if name != "unknown" else None
+            if hid is not None:
+                if self.history.improve(hid, crop, emb, score, ts=payload["ts"],
+                                        attempt=st.get("attempts"),
+                                        reported=published) is None:
+                    hids.pop(name, None)
+                    hid = None
+            if hid is None:
+                hid = self.history.add(
+                    crop, emb, {k: v for k, v in payload.items() if k != "ts"}
+                    | {"ts": payload["ts"], "attempt": st.get("attempts"),
+                       "reported": published})
+                if hid is not None and name != "unknown":
+                    hids[name] = hid
 
     def _publish_presence(self, cam: str, last: dict | None = None):
         """Sensor-State = alle im Fenster gesehenen Personen ('Christian, Juli' / 'niemand')."""
