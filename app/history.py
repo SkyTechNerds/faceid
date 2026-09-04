@@ -179,6 +179,14 @@ class History:
             # und wer nur <id>.jpg loescht, laesst Bilder liegen, die *.json nie zaehlt.
             for img in self.dir.glob(f"{old.stem}.*jpg"):
                 img.unlink(missing_ok=True)
+        # Bilder ohne Zeile einsammeln. Gelistet wird ueber *.json, ein Bild ohne JSON
+        # wuerde also nie wieder gezaehlt und nie geloescht — es waere unsichtbarer
+        # Ballast. Gefahrlos, weil beide Schreibwege das Lock halten und ein Bild nur
+        # waehrenddessen kurz ohne seine Zeile existiert.
+        stems = {p.stem for p in self.dir.glob("*.json")}
+        for img in self.dir.glob("*.jpg"):
+            if img.name.split(".", 1)[0] not in stems:
+                img.unlink(missing_ok=True)
 
     # ---------- Lesen ----------
 
