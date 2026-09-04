@@ -58,17 +58,28 @@ class History:
         tmpdir.mkdir(exist_ok=True)
         tmp_jpg, tmp_js = tmpdir / f"{hid}.jpg", tmpdir / f"{hid}.json"
 
+        backup = tmpdir / f"{hid}.prev.jpg"
         try:
             if not cv2.imwrite(str(tmp_jpg), crop_bgr, [cv2.IMWRITE_JPEG_QUALITY, 88]):
                 log.warning("could not write the history image for %s", hid)
                 return False
             tmp_js.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            # Das Bild wandert zuerst. Scheitert danach die JSON, waere das Bild neu und
+            # die Beschreibung alt — genau der Widerspruch, den diese Funktion verhindern
+            # soll. Deshalb vorher eine Kopie, die in dem Fall zurueckgespielt wird.
+            if jpg.exists():
+                os.replace(jpg, backup)
             os.replace(tmp_jpg, jpg)
-            os.replace(tmp_js, js)
+            try:
+                os.replace(tmp_js, js)
+            except OSError:
+                if backup.exists():
+                    os.replace(backup, jpg)
+                raise
             return True
         finally:
-            tmp_jpg.unlink(missing_ok=True)
-            tmp_js.unlink(missing_ok=True)
+            for f in (tmp_jpg, tmp_js, backup):
+                f.unlink(missing_ok=True)
 
     def add(self, crop_bgr, embedding, meta: dict) -> str | None:
         """Einen veroeffentlichten Treffer ablegen. Fehler hier duerfen die Erkennung
@@ -109,6 +120,10 @@ class History:
         eigentliche Fehler: Die Analyse liefe sonst auf einem anderen Gesicht, als die
         Zeile zeigt. ``score``/``ts`` bleiben die der Meldung, damit der Verlauf weiter
         beantwortet, womit sie ausgeloest wurde.
+
+        Rueckgabe: ``True`` uebernommen, ``False`` nicht besser, ``None`` die Zeile gibt
+        es nicht mehr (vom Limit verdraengt) — dann muss der Aufrufer neu anlegen, sonst
+        faellt die Erkennung stillschweigend aus dem Verlauf.
         """
         if self.keep <= 0 or crop_bgr is None or embedding is None or not hid:
             return False
@@ -116,9 +131,16 @@ class History:
             with self._lock:
                 jf = self.dir / f"{hid}.json"
                 if not jf.exists():
-                    return False
+                    return None
                 payload = json.loads(jf.read_text(encoding="utf-8"))
-                if float(score) <= float(payload.get("best_score", payload.get("score", 0))):
+                # Ein unlesbarer gespeicherter Wert darf nicht dazu fuehren, dass jede
+                # weitere Verbesserung still unterbleibt — dann lieber ersetzen.
+                try:
+                    best = round(float(payload.get("best_score",
+                                                   payload.get("score", 0))), 3)
+                except (TypeError, ValueError):
+                    best = 0.0
+                if round(float(score), 3) <= best:
                     return False
                 payload["embedding"] = [round(float(v), 6) for v in embedding]
                 payload["best_score"] = round(float(score), 3)

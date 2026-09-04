@@ -636,22 +636,28 @@ class EventProcessor:
         # Zeilen bei 200 Plaetzen, also 13 % weniger Reichweite. Der spaetere Ausschnitt
         # ist aber oft der bessere Beleg, deshalb ersetzt er das Bild, statt verworfen zu
         # werden.
-        if self.history is not None and crop is not None:
-            # Die vorhandene Zeile ist die Merkliste: gibt es noch keine — auch weil der
-            # erste Treffer ohne Ausschnitt kam oder das Anlegen scheiterte —, wird
+        # Nur was gemeldet wurde, gehoert in den Verlauf — er ist mit "was FaceID
+        # gemeldet hat" ueberschrieben. Ging die Meldung nicht hinaus (Broker weg), waere
+        # eine Zeile mit deren Score und Zeit eine Behauptung ueber etwas, das nie
+        # stattfand; die spaetere, tatsaechlich gemeldete Erkennung legt dann an.
+        if self.history is not None and crop is not None and name in announced:
+            # Die vorhandene Zeile ist die Merkliste. Gibt es noch keine — oder wurde sie
+            # inzwischen vom Limit verdraengt (improve meldet das mit None) —, wird
             # angelegt statt verbessert. Sonst fiele die Erkennung stillschweigend aus
-            # dem Verlauf, obwohl sie stattgefunden hat.
+            # dem Verlauf, obwohl sie gemeldet wurde.
             hids = st.setdefault("hids", {})
             hid = hids.get(name)
+            if hid is not None:
+                if self.history.improve(hid, crop, emb, score,
+                                        attempt=st.get("attempts")) is None:
+                    hids.pop(name, None)
+                    hid = None
             if hid is None:
                 hid = self.history.add(
                     crop, emb, {k: v for k, v in payload.items() if k != "ts"}
                     | {"ts": payload["ts"], "attempt": st.get("attempts")})
                 if hid:
                     hids[name] = hid
-            else:
-                self.history.improve(hid, crop, emb, score,
-                                     attempt=st.get("attempts"))
 
     def _publish_presence(self, cam: str, last: dict | None = None):
         """Sensor-State = alle im Fenster gesehenen Personen ('Christian, Juli' / 'niemand')."""

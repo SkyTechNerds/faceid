@@ -511,7 +511,7 @@ async function renderHistory(){
       <div class="tile hcard">
         <img src="data/history/${h.id}.jpg" loading="lazy" onclick="showFull('data/history/${h.id}.jpg','${esc(h.person)} ${h.score} · ${esc(h.camera||'')}')" title="${esc(h.person)} ${h.score} on ${esc(h.camera||'')}${h.zones&&h.zones.length?' · '+esc(h.zones.join(', ')):''}">
         <div class="meta">
-          <b title="Reported as ${esc(h.person)} at ${h.score}${h.best_score?` — the picture shown is a later, clearer view of the same person from the same event (${h.best_score}), which is why it does not match the reported score`:''}">${esc(h.person)} ${h.score}${h.best_score?` <span class="sub">· best view ${h.best_score}</span>`:''}</b>
+          <b title="Reported as ${esc(h.person)} at ${esc(h.score)}${h.best_score?` — the picture shown is a later, clearer view of the same person from the same event (${esc(h.best_score)}), which is why it does not match the reported score`:''}">${esc(h.person)} ${esc(h.score)}${h.best_score?` <span class="sub">· best view ${esc(h.best_score)}</span>`:''}</b>
           <span class="sub">${fmtTs(h.ts)} · ${esc(h.camera||'')}</span>
           ${h.now?(h.now.self
             ? `<div class="nowis" title="You assigned this face to ${esc(h.now.person)}, so it is one of their reference photos now. It matches itself — that says nothing about how well ${esc(h.now.person)} is recognised.">now assigned: ${esc(h.now.person)}</div>`
