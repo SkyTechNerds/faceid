@@ -622,12 +622,16 @@ class EventProcessor:
             # bei QoS 0 Erfolg, waehrend die Nachricht verfaellt — und die Zeile behauptete
             # dann eine Meldung, die nie ankam. Eine echte Zustellbestaetigung gaebe es nur
             # mit QoS 1 und wait_for_publish(), das den Erkennungspfad blockieren wuerde.
-            info = self.client.publish(f"{self.prefix}/event",
-                                       json.dumps(payload, ensure_ascii=False))
-            if (getattr(info, "rc", mqtt.MQTT_ERR_SUCCESS) == mqtt.MQTT_ERR_SUCCESS
-                    and self.client.is_connected()):
-                announced.add(name)
-                sent = True
+            # Verbindung VOR dem Senden pruefen, nicht danach: reisst sie im selben
+            # Moment ab, gaelte eine tatsaechlich abgeschickte Meldung als ungesendet —
+            # und der naechste Treffer wuerde sie erneut verschicken. Eine doppelte
+            # Benachrichtigung ist schlimmer als eine Zeile ohne Marke.
+            if self.client.is_connected():
+                info = self.client.publish(f"{self.prefix}/event",
+                                           json.dumps(payload, ensure_ascii=False))
+                if getattr(info, "rc", mqtt.MQTT_ERR_SUCCESS) == mqtt.MQTT_ERR_SUCCESS:
+                    announced.add(name)
+                    sent = True
         # "unknown" gehoert NICHT in die Anwesenheitsliste. Der Sensor-State ist eine
         # Aufzaehlung von Namen ("Christian, Juli"), und ein hineingemischtes "unknown"
         # liest sich wie ein weiterer Name — auf dem Handy stand "Christian unknown ist

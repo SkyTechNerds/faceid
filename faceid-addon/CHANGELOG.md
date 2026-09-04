@@ -14,8 +14,11 @@ update dialog; standalone users can watch GitHub releases.
   first showed why that matters: all ten sampled duplicate pairs held *different* pictures,
   sometimes drastically so — 8 KB against 94 KB of the same person, a distant crop against
   a close one. Those later pictures are exactly what makes a wrong recognition checkable.
-  So a later match now replaces the picture when its score is higher, instead of adding a
-  row, and the card shows "best view 0.687" beside the reported score.
+  So a later match now improves the existing row instead of adding one: it replaces the
+  picture when its score is higher, and the card shows "best view 0.687" beside the
+  reported score. Independently of that, the first match that is actually published takes
+  over the row's score and timestamp even when it scores *lower* — it is the one somebody
+  received, and the card is headed "What FaceID reported".
 - Picture and embedding are always replaced together. Keeping them apart would let the
   "was wrong" analysis run on a different face than the row displays.
 
