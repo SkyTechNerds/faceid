@@ -635,8 +635,13 @@ class EventProcessor:
                     # Ungefangen risse das die ganze Erkennung mit — Sensor, Verlauf und
                     # sub_label eingeschlossen —, obwohl nur die Meldung misslang.
                     log.exception("could not publish the recognition for %s", name)
-                    info = None
-                rc = getattr(info, "rc", None)
+                    # Wirft der Aufruf, wurde garantiert nichts eingereiht — also wie ein
+                    # fehlender Broker behandeln, damit ein spaeterer Treffer die Meldung
+                    # nachholen darf. Ein neutrales None waere hier falsch: es zaehlte
+                    # unten als "vielleicht verschickt" und sperrte die Wiederholung.
+                    info, rc = None, mqtt.MQTT_ERR_NO_CONN
+                else:
+                    rc = getattr(info, "rc", None)
                 # Zwei verschiedene Fragen, deshalb zwei Merker:
                 #
                 # ``announced`` verhindert die Doppelmeldung. Eingereiht ist verschickt —

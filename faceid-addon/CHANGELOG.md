@@ -5,7 +5,9 @@ update dialog; standalone users can watch GitHub releases.
 
 ## 0.22.2 — 2026-09-04
 
-- **The history shows one row per event and person again.** It is titled "What FaceID
+- **The history shows one row per event and named person again** (unknown faces keep one row
+  each — several strangers in a single frame all carry that label, and merging them would
+  swap their pictures against each other). It is titled "What FaceID
   reported", but only the *first* match per person and event is ever reported — the
   `announced` set suppresses the rest. Every further row therefore claimed a notification
   that never happened, and pushed genuine older entries out: 27 such rows out of 200 slots
