@@ -50,7 +50,14 @@ class History:
         Metadaten-Operationen.
         """
         jpg, js = self.dir / f"{hid}.jpg", self.dir / f"{hid}.json"
-        tmp_jpg, tmp_js = jpg.with_suffix(".jpg.tmp"), js.with_suffix(".json.tmp")
+        # Eigenes Unterverzeichnis, und die Zwischendatei behaelt .jpg: OpenCV waehlt das
+        # Format ueber die Endung und schreibt nach ".jpg.tmp" gar nichts. Im selben
+        # Verzeichnis wuerde sie ausserdem vom *.json-Glob mitgezaehlt und taeuchte
+        # kurzzeitig als halbe Zeile im Verlauf auf.
+        tmpdir = self.dir / ".tmp"
+        tmpdir.mkdir(exist_ok=True)
+        tmp_jpg, tmp_js = tmpdir / f"{hid}.jpg", tmpdir / f"{hid}.json"
+
         try:
             if not cv2.imwrite(str(tmp_jpg), crop_bgr, [cv2.IMWRITE_JPEG_QUALITY, 88]):
                 log.warning("could not write the history image for %s", hid)
