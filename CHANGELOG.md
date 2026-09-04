@@ -3,6 +3,24 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.22.1 — 2026-09-04
+
+- **`live_hires_fallback` now also covers the case its name promises: no snapshot at all.**
+  It said "on a failed snapshot, ask go2rtc for a full frame", but only handled one of the
+  two ways a snapshot can fail — one that exists and holds no face. When Frigate produced
+  no snapshot, FaceID did nothing: the event never entered the queue (no `has_snapshot`),
+  so even `live_hires_mode: always` never ran. Reported in #14.
+- This matters for setups with `snapshots.required_zones`, where Frigate withholds the
+  snapshot while the person stands plainly in the picture. It could not surface here —
+  our Frigate has no `required_zones`, and `no snapshot from Frigate` appears zero times
+  in 14 days of logs.
+- A recognition from a frame fetched without a snapshot binds nothing to the event: no
+  `sub_label`, no `best_score`. Without the snapshot nothing says who the event is about,
+  which is the same reason `live_hires_mode: always` already behaved that way. It still
+  counts toward presence and fires `faceid/event`.
+- The poll path still requires a snapshot on purpose: it picks up stragglers up to five
+  minutes old, and a frame from now no longer shows that person.
+
 ## 0.22.0 — 2026-09-02
 
 - **A Tools tab with the measurements that used to need a terminal.** Off by default;
