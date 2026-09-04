@@ -640,14 +640,15 @@ class EventProcessor:
         # gemeldet hat" ueberschrieben. Ging die Meldung nicht hinaus (Broker weg), waere
         # eine Zeile mit deren Score und Zeit eine Behauptung ueber etwas, das nie
         # stattfand; die spaetere, tatsaechlich gemeldete Erkennung legt dann an.
-        # "Kein Client konfiguriert" ist etwas anderes als "Meldung fehlgeschlagen": ohne
-        # Broker kann nie etwas hinausgehen, und die Oberflaeche waere der einzige Ort,
-        # an dem die Erkennung ueberhaupt noch auftaucht — samt der Ausschnitte, auf denen
-        # die Fehleranalyse beruht. Dann wird aufgezeichnet. Steht ein Client bereit und
-        # die Meldung scheiterte nur, legt die spaetere, erfolgreiche Meldung die Zeile an.
-        reportable = self.client is not None
-        if (self.history is not None and crop is not None
-                and (name in announced or not reportable)):
+        # Aufgezeichnet wird JEDE Erkennung, auch eine, die gerade nicht hinausging —
+        # sonst gingen mit einem toten Broker genau die Ausschnitte verloren, auf denen
+        # die Fehleranalyse beruht. Ob gemeldet wurde, steht in der Zeile selbst, und die
+        # erste tatsaechlich gemeldete Erkennung uebernimmt dort Wert und Zeitpunkt: so
+        # behauptet der Verlauf nie eine Meldung, die es nicht gab, und verliert doch
+        # nichts. (Frueher entschied das ein Gate hier — das warf im Broker-Ausfall die
+        # ganze Erkennung weg.)
+        if self.history is not None and crop is not None:
+            published = name in announced
             # Die vorhandene Zeile ist die Merkliste. Gibt es noch keine — oder wurde sie
             # inzwischen vom Limit verdraengt (improve meldet das mit None) —, wird
             # angelegt statt verbessert. Sonst fiele die Erkennung stillschweigend aus
@@ -655,15 +656,17 @@ class EventProcessor:
             hids = st.setdefault("hids", {})
             hid = hids.get(name)
             if hid is not None:
-                if self.history.improve(hid, crop, emb, score,
-                                        attempt=st.get("attempts")) is None:
+                if self.history.improve(hid, crop, emb, score, ts=payload["ts"],
+                                        attempt=st.get("attempts"),
+                                        reported=published) is None:
                     hids.pop(name, None)
                     hid = None
             if hid is None:
                 hid = self.history.add(
                     crop, emb, {k: v for k, v in payload.items() if k != "ts"}
-                    | {"ts": payload["ts"], "attempt": st.get("attempts")})
-                if hid:
+                    | {"ts": payload["ts"], "attempt": st.get("attempts"),
+                       "reported": published})
+                if hid is not None:
                     hids[name] = hid
 
     def _publish_presence(self, cam: str, last: dict | None = None):

@@ -132,7 +132,7 @@ class History:
             return None
 
     def improve(self, hid: str, crop_bgr, embedding, score: float,
-                attempt=None) -> bool | None:
+                attempt=None, ts=None, reported: bool = False) -> bool | None:
         """Einen spaeteren, besseren Treffer derselben Person im selben Ereignis
         einarbeiten — ohne eine zweite Zeile anzulegen.
 
@@ -155,9 +155,15 @@ class History:
         Ein unerwarteter Fehler ergibt bewusst ``False`` und nicht ``None``: die Zeile
         existiert ja noch, und ein Neuanlegen brauechte genau das Duplikat, das diese
         Funktion vermeiden soll.
+
+        ``reported`` uebergibt, ob DIESE Erkennung hinausging. Trug die Zeile bisher eine
+        Erkennung, die nie gemeldet wurde (Broker weg), uebernimmt die erste tatsaechlich
+        gemeldete deren ``score``/``ts`` — sonst behauptete eine mit "was FaceID gemeldet
+        hat" ueberschriebene Karte einen Wert, den nie jemand bekommen hat.
         """
         if self.keep <= 0 or crop_bgr is None or embedding is None or not hid:
             return False
+        new_img = None
         try:
             with self._lock:
                 jf = self.dir / f"{hid}.json"
@@ -177,7 +183,11 @@ class History:
                                                    payload.get("score", 0))), 3)
                 except (TypeError, ValueError):
                     best = 0.0
-                if round(float(score), 3) <= best:
+                # Die erste wirklich gemeldete Erkennung darf die Zeile auch dann
+                # uebernehmen, wenn ihr Wert niedriger ist: sie ist die, die zaehlt.
+                takeover = bool(reported) and not payload.get("reported")
+                better = round(float(score), 3) > best
+                if not better and not takeover:
                     return False
                 # Das neue Bild bekommt einen EIGENEN Namen, das alte bleibt liegen.
                 # Damit aendert sich die Zeile ausschliesslich beim Ersetzen der JSON —
@@ -185,24 +195,32 @@ class History:
                 # altes, stimmiges Bild. Ein Zurueckspielen von Sicherungskopien braucht
                 # es dafuer nicht.
                 old_img = self._img_name(payload, hid)
-                n = 1
-                while (self.dir / f"{hid}.v{n}.jpg").exists():
-                    n += 1
-                new_img = f"{hid}.v{n}.jpg"
-                if not self._write_image(new_img, crop_bgr):
-                    # Ein halb geschriebenes Bild wuerde bis zum naechsten Aufraeumen
-                    # als Waise herumliegen.
-                    (self.dir / new_img).unlink(missing_ok=True)
-                    return False
-                payload["embedding"] = [round(float(v), 6) for v in embedding]
-                payload["best_score"] = round(float(score), 3)
-                payload["img"] = new_img
-                if attempt is not None:
-                    payload["best_attempt"] = attempt
+                if better:
+                    n = 1
+                    while (self.dir / f"{hid}.v{n}.jpg").exists():
+                        n += 1
+                    new_img = f"{hid}.v{n}.jpg"
+                    if not self._write_image(new_img, crop_bgr):
+                        # Ein halb geschriebenes Bild wuerde bis zum naechsten
+                        # Aufraeumen als Waise herumliegen.
+                        (self.dir / new_img).unlink(missing_ok=True)
+                        return False
+                    payload["embedding"] = [round(float(v), 6) for v in embedding]
+                    payload["best_score"] = round(float(score), 3)
+                    payload["img"] = new_img
+                    if attempt is not None:
+                        payload["best_attempt"] = attempt
+                if takeover:
+                    payload["reported"] = True
+                    payload["score"] = round(float(score), 3)
+                    if ts is not None:
+                        payload["ts"] = ts
+                    if attempt is not None:
+                        payload["attempt"] = attempt
                 if not self._write_json(jf, payload):
                     (self.dir / new_img).unlink(missing_ok=True)
                     return False
-                if old_img != new_img:
+                if new_img and old_img != new_img:
                     # Nur noch Aufraeumen — die Zeile steht bereits richtig. Ein Fehler
                     # hier darf nicht als Fehlschlag zurueckgemeldet werden; das Bild
                     # holt spaetestens der naechste Durchlauf von _enforce_cap.
@@ -212,6 +230,10 @@ class History:
                         log.warning("could not remove the superseded image %s", old_img)
                 return True
         except Exception:
+            # Ein schon geschriebenes neues Bild wuerde sonst liegen bleiben: der
+            # Aufraeumlauf haelt es fuer gueltig, weil seine Zeile ja noch existiert.
+            if new_img:
+                (self.dir / new_img).unlink(missing_ok=True)
             log.exception("could not update history entry %s", hid)
             return False
 
