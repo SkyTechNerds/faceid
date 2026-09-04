@@ -32,7 +32,9 @@ class History:
         self.dir = data_dir / "history"
         self.dir.mkdir(parents=True, exist_ok=True)
         self.keep = int(keep)
-        self._lock = threading.Lock()
+        # RLock, nicht Lock: delete() nimmt die Sperre selbst, und ein Aufrufer, der sie
+        # schon haelt, wuerde sich sonst selbst blockieren.
+        self._lock = threading.RLock()
 
     # ---------- Schreiben ----------
 
@@ -188,6 +190,9 @@ class History:
                     n += 1
                 new_img = f"{hid}.v{n}.jpg"
                 if not self._write_image(new_img, crop_bgr):
+                    # Ein halb geschriebenes Bild wuerde bis zum naechsten Aufraeumen
+                    # als Waise herumliegen.
+                    (self.dir / new_img).unlink(missing_ok=True)
                     return False
                 payload["embedding"] = [round(float(v), 6) for v in embedding]
                 payload["best_score"] = round(float(score), 3)
@@ -250,6 +255,9 @@ class History:
             if not (self.dir / self._img_name(m, jf.stem)).exists():
                 continue
             item = {"id": jf.stem, **{k: v for k, v in m.items() if k != "embedding"}}
+            # Den geprueften Namen auch ausliefern: sonst pruefte die Zeile oben den
+            # bereinigten Wert, waehrend die Oberflaeche den rohen aus der Datei bekaeme.
+            item["img"] = self._img_name(m, jf.stem)
             if gallery is not None and m.get("embedding"):
                 try:
                     emb = np.array(m["embedding"], dtype=np.float32)
