@@ -14,6 +14,7 @@ und was passiert waere, haette es dieses Foto nicht gegeben.
 """
 import json
 import logging
+import os
 import threading
 import time
 from pathlib import Path
@@ -35,6 +36,33 @@ class History:
 
     # ---------- Schreiben ----------
 
+    def _write_pair(self, hid: str, crop_bgr, payload: dict) -> bool:
+        """Bild und JSON als Paar schreiben — beide oder keins.
+
+        ``cv2.imwrite`` wirft bei einem Fehler nicht, es gibt ``False`` zurueck (volle
+        Platte, unbeschreibbarer Pfad). Wird das uebergangen, beschreibt die JSON danach
+        ein Gesicht, das im .jpg gar nicht steht — und genau darauf laeuft spaeter die
+        Fehleranalyse.
+
+        Beide Dateien gehen zuerst nach ``.tmp`` und werden dann per ``os.replace``
+        eingehaengt. Ein Absturz zwischen den beiden ``replace`` bleibt theoretisch
+        moeglich; das Fenster schrumpft damit aber von zwei Schreibvorgaengen auf zwei
+        Metadaten-Operationen.
+        """
+        jpg, js = self.dir / f"{hid}.jpg", self.dir / f"{hid}.json"
+        tmp_jpg, tmp_js = jpg.with_suffix(".jpg.tmp"), js.with_suffix(".json.tmp")
+        try:
+            if not cv2.imwrite(str(tmp_jpg), crop_bgr, [cv2.IMWRITE_JPEG_QUALITY, 88]):
+                log.warning("could not write the history image for %s", hid)
+                return False
+            tmp_js.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            os.replace(tmp_jpg, jpg)
+            os.replace(tmp_js, js)
+            return True
+        finally:
+            tmp_jpg.unlink(missing_ok=True)
+            tmp_js.unlink(missing_ok=True)
+
     def add(self, crop_bgr, embedding, meta: dict) -> str | None:
         """Einen veroeffentlichten Treffer ablegen. Fehler hier duerfen die Erkennung
         nie stoeren — im Zweifel wird nichts gespeichert und weitergearbeitet."""
@@ -50,11 +78,10 @@ class History:
                 while (self.dir / f"{hid}.json").exists():
                     n += 1
                     hid = f"{base}_{n}"
-                cv2.imwrite(str(self.dir / f"{hid}.jpg"), crop_bgr, [cv2.IMWRITE_JPEG_QUALITY, 88])
                 payload = dict(meta)
                 payload["embedding"] = [round(float(v), 6) for v in embedding]
-                (self.dir / f"{hid}.json").write_text(
-                    json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+                if not self._write_pair(hid, crop_bgr, payload):
+                    return None
                 self._enforce_cap()
                 return hid
         except Exception:
@@ -86,14 +113,14 @@ class History:
                 payload = json.loads(jf.read_text(encoding="utf-8"))
                 if float(score) <= float(payload.get("best_score", payload.get("score", 0))):
                     return False
-                cv2.imwrite(str(self.dir / f"{hid}.jpg"), crop_bgr,
-                            [cv2.IMWRITE_JPEG_QUALITY, 88])
                 payload["embedding"] = [round(float(v), 6) for v in embedding]
                 payload["best_score"] = round(float(score), 3)
                 if attempt is not None:
                     payload["best_attempt"] = attempt
-                jf.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-                return True
+                # Scheitert das Bild, bleibt die alte Zeile unveraendert stehen — lieber
+                # der aeltere, stimmige Stand als eine Zeile, die auf ein anderes
+                # Gesicht zeigt.
+                return self._write_pair(hid, crop_bgr, payload)
         except Exception:
             log.exception("could not update history entry %s", hid)
             return False

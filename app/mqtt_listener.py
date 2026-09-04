@@ -608,15 +608,15 @@ class EventProcessor:
         # Eine MENGE, kein einzelner Name: in einem Vollbild koennen mehrere Bekannte
         # stehen, die sich sonst gegenseitig ueberschreiben und abwechselnd neu gemeldet
         # wuerden — genau die Doppelmeldung, die diese Stelle verhindern soll.
+        # Nur vermerken, was wirklich hinausging: waere der Name schon beim fehlenden
+        # Client als gemeldet markiert, bliebe er es fuer dieses Ereignis auch nach dem
+        # Wiederverbinden — ein spaeterer Treffer koennte die Meldung nicht mehr
+        # nachholen. Der Verlauf fuehrt seine eigene Merkliste (hids, s. unten).
         announced = st.setdefault("announced", set())
-        first_time = name not in announced
-        if first_time:
-            # Die Merkliste unabhaengig vom MQTT-Client fuehren: sie steuert auch den
-            # Verlauf, und ohne Client waere dort sonst jeder Treffer eine neue Zeile.
+        if self.client and name not in announced:
             announced.add(name)
-            if self.client:
-                self.client.publish(f"{self.prefix}/event",
-                                    json.dumps(payload, ensure_ascii=False))
+            self.client.publish(f"{self.prefix}/event",
+                                json.dumps(payload, ensure_ascii=False))
         # "unknown" gehoert NICHT in die Anwesenheitsliste. Der Sensor-State ist eine
         # Aufzaehlung von Namen ("Christian, Juli"), und ein hineingemischtes "unknown"
         # liest sich wie ein weiterer Name — auf dem Handy stand "Christian unknown ist
@@ -634,15 +634,20 @@ class EventProcessor:
         # ist aber oft der bessere Beleg, deshalb ersetzt er das Bild, statt verworfen zu
         # werden.
         if self.history is not None and crop is not None:
+            # Die vorhandene Zeile ist die Merkliste: gibt es noch keine — auch weil der
+            # erste Treffer ohne Ausschnitt kam oder das Anlegen scheiterte —, wird
+            # angelegt statt verbessert. Sonst fiele die Erkennung stillschweigend aus
+            # dem Verlauf, obwohl sie stattgefunden hat.
             hids = st.setdefault("hids", {})
-            if first_time:
+            hid = hids.get(name)
+            if hid is None:
                 hid = self.history.add(
                     crop, emb, {k: v for k, v in payload.items() if k != "ts"}
                     | {"ts": payload["ts"], "attempt": st.get("attempts")})
                 if hid:
                     hids[name] = hid
-            elif hids.get(name):
-                self.history.improve(hids[name], crop, emb, score,
+            else:
+                self.history.improve(hid, crop, emb, score,
                                      attempt=st.get("attempts"))
 
     def _publish_presence(self, cam: str, last: dict | None = None):
