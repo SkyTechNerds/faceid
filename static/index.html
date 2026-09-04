@@ -274,7 +274,7 @@ async function renderUnknowns(){
         <div class="tile">
           <img src="data/unknowns/${u.id}.jpg" loading="lazy">
           <span class="score">${(u.guess_score*100|0)}% · ${fmtWhen(u)}</span>
-          ${u.full_url?`<button class="z" title="full snapshot" onclick="showFull('${u.full_url}','${esc(u.camera||'')} · ${fmtWhen(u)}','data/unknowns/${u.id}.jpg')">⛶</button>`:''}
+          ${u.full_url?`<button class="z" title="full snapshot" data-url="${esc(u.full_url)}" data-cap="${esc(u.camera||'')} · ${esc(fmtWhen(u))}" data-fb="data/unknowns/${esc(u.id)}.jpg" onclick="showFull(this.dataset.url,this.dataset.cap,this.dataset.fb)">⛶</button>`:''}
           <button class="x" title="not ${esc(g.name)} — pull this face out" onclick="rejectSuggestion('${u.id}')">×</button>
         </div>`).join('')}
       </div>
@@ -300,7 +300,7 @@ async function renderUnknowns(){
         <div class="tile" data-id="${u.id}" title="click to select — actions then apply to the selection only" onclick="this.classList.toggle('sel')">
           <img src="data/unknowns/${u.id}.jpg" loading="lazy">
           <span class="score">${fmtWhen(u)}</span>
-          ${u.full_url?`<button class="z" title="full snapshot" onclick="event.stopPropagation();showFull('${u.full_url}','${esc(u.camera||'')} · ${fmtWhen(u)}','data/unknowns/${u.id}.jpg')">⛶</button>`:''}
+          ${u.full_url?`<button class="z" title="full snapshot" data-url="${esc(u.full_url)}" data-cap="${esc(u.camera||'')} · ${esc(fmtWhen(u))}" data-fb="data/unknowns/${esc(u.id)}.jpg" onclick="event.stopPropagation();showFull(this.dataset.url,this.dataset.cap,this.dataset.fb)">⛶</button>`:''}
         </div>`).join('')}
       </div>
     </div>`;}).join('');
@@ -509,7 +509,7 @@ async function renderHistory(){
     ${it.length?'':'<div class="stat" style="margin-top:8px">Nothing reported yet.</div>'}
     <div class="hgrid" style="margin-top:8px">${it.map(h=>`
       <div class="tile hcard">
-        <img src="data/history/${esc(h.img||h.id+'.jpg')}" loading="lazy" onclick="showFull(this.src,'${esc(h.person)} ${h.score} · ${esc(h.camera||'')}')" title="${esc(h.person)} ${h.score} on ${esc(h.camera||'')}${h.zones&&h.zones.length?' · '+esc(h.zones.join(', ')):''}">
+        <img src="data/history/${esc(h.img||h.id+'.jpg')}" loading="lazy" data-cap="${esc(h.person)} ${esc(h.score)} · ${esc(h.camera||'')}" onclick="showFull(this.src,this.dataset.cap)" title="${esc(h.person)} ${h.score} on ${esc(h.camera||'')}${h.zones&&h.zones.length?' · '+esc(h.zones.join(', ')):''}">
         <div class="meta">
           ${h.reported===false?`<span class="sub" title="This recognition happened but could not be sent - the broker was unreachable. It is kept because the picture is what a wrong-recognition report needs.">not reported</span> `:''}<b title="Reported as ${esc(h.person)} at ${esc(h.score)}${h.best_score?` — the picture shown is a later, clearer view of the same person from the same event (${esc(h.best_score)}), which is why it does not match the reported score`:''}">${esc(h.person)} ${esc(h.score)}${h.best_score?` <span class="sub">· best view ${esc(h.best_score)}</span>`:''}</b>
           <span class="sub">${fmtTs(h.ts)} · ${esc(h.camera||'')}</span>
@@ -937,7 +937,7 @@ function personCard(slug,p){
       </div>
       <div class="grid">${p.files.map(f=>`
         <div class="tile" data-file="${f}"><img src="data/persons/${slug}/${f}" loading="lazy" style="cursor:zoom-in"
-            onclick="showFull('data/persons/${slug}/${f}','${esc(p.name)}')">
+            data-url="data/persons/${esc(slug)}/${esc(f)}" data-cap="${esc(p.name)}" onclick="showFull(this.dataset.url,this.dataset.cap)">
           <button class="u" title="back to unknown queue" onclick="unassignFace('${slug}','${f}')">↩</button>
           <button class="x" title="delete permanently" onclick="delFace('${slug}','${f}')">×</button></div>`).join('')}
       </div>
