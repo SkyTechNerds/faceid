@@ -63,7 +63,7 @@ class History:
         ``[`` darin traefe als Glob fremde Zeilen.
         """
         for f in self.dir.glob("*.jpg"):
-            if self._row_of(f) == stem:
+            if f.stem == stem or self._row_of(f) == stem:
                 yield f
 
     def _write_json(self, js: Path, payload: dict) -> bool:
@@ -222,7 +222,12 @@ class History:
         # dieses Abschnitts kurz ohne seine Zeile existiert.
         stems = {j.stem for j in self.dir.glob("*.json")}
         for img in self.dir.glob("*.jpg"):
-            if self._row_of(img) not in stems:
+            # Erst der volle Name: gaebe es je eine Kennung, die selbst auf ".v<Ziffern>"
+            # endet, wuerde _row_of sie einer fremden Zeile zuschlagen und ihr lebendes
+            # Bild loeschen. Die Kennungen entstehen zwar aus time.time() und koennen
+            # keinen Punkt enthalten — aber das hier ist ein Aufraeumpfad, und der darf
+            # sich auf keine Annahme stuetzen, die er selbst nicht prueft.
+            if img.stem not in stems and self._row_of(img) not in stems:
                 img.unlink(missing_ok=True)
 
     # ---------- Lesen ----------
