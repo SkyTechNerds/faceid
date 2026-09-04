@@ -636,11 +636,20 @@ class EventProcessor:
                     # sub_label eingeschlossen —, obwohl nur die Meldung misslang.
                     log.exception("could not publish the recognition for %s", name)
                     info = None
-                # Kein rc am Ergebnis: als Fehlschlag werten. Ein fehlendes Feld ist
-                # keine Zusage, und die Marke soll im Zweifel zu wenig behaupten.
-                if getattr(info, "rc", None) == mqtt.MQTT_ERR_SUCCESS:
+                rc = getattr(info, "rc", None)
+                # Zwei verschiedene Fragen, deshalb zwei Merker:
+                #
+                # ``announced`` verhindert die Doppelmeldung. Eingereiht ist verschickt —
+                # bei MQTT_ERR_AGAIN (voller Socket-Puffer) liegt das Paket in der
+                # Warteschlange und geht ueber den Netzwerk-Thread hinaus. Nur wo
+                # feststeht, dass NICHTS eingereiht wurde, darf ein spaeterer Treffer es
+                # erneut senden.
+                #
+                # ``sent`` markiert die Verlaufszeile und verlangt echten Erfolg: dort
+                # soll im Zweifel zu wenig behauptet werden, nicht zu viel.
+                if rc not in (mqtt.MQTT_ERR_NO_CONN, mqtt.MQTT_ERR_QUEUE_SIZE):
                     announced.add(name)
-                    sent = True
+                sent = rc == mqtt.MQTT_ERR_SUCCESS
         # "unknown" gehoert NICHT in die Anwesenheitsliste. Der Sensor-State ist eine
         # Aufzaehlung von Namen ("Christian, Juli"), und ein hineingemischtes "unknown"
         # liest sich wie ein weiterer Name — auf dem Handy stand "Christian unknown ist
