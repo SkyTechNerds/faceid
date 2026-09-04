@@ -650,11 +650,17 @@ class EventProcessor:
                 # feststeht, dass NICHTS eingereiht wurde, darf ein spaeterer Treffer es
                 # erneut senden.
                 #
-                # ``sent`` markiert die Verlaufszeile und verlangt echten Erfolg: dort
-                # soll im Zweifel zu wenig behauptet werden, nicht zu viel.
+                # ``sent`` (und die daraus gefuellte Liste ``reported_names``) markiert
+                # die Verlaufszeile und verlangt echten Erfolg: dort soll im Zweifel zu
+                # wenig behauptet werden, nicht zu viel.
                 if rc not in (mqtt.MQTT_ERR_NO_CONN, mqtt.MQTT_ERR_QUEUE_SIZE):
                     announced.add(name)
                 sent = rc == mqtt.MQTT_ERR_SUCCESS
+                if sent:
+                    # Eigene Merkliste, weil ``announced`` bewusst lockerer ist: dort
+                    # steht der Name auch bei bloss eingereiht (MQTT_ERR_AGAIN) oder bei
+                    # unerwartetem Rueckgabewert. Fuer die Verlaufsmarke reicht das nicht.
+                    st.setdefault("reported_names", set()).add(name)
         # "unknown" gehoert NICHT in die Anwesenheitsliste. Der Sensor-State ist eine
         # Aufzaehlung von Namen ("Christian, Juli"), und ein hineingemischtes "unknown"
         # liest sich wie ein weiterer Name — auf dem Handy stand "Christian unknown ist
@@ -665,46 +671,38 @@ class EventProcessor:
         # Den TATSAECHLICH benutzten Ausschnitt festhalten. Der Frigate-Snapshot wird
         # waehrend des Ereignisses fortlaufend ersetzt und zeigt spaeter oft einen anderen
         # Moment — eine Nachpruefung an ihm fuehrt in die Irre. Siehe app/history.py.
-        # EINE Zeile je (Ereignis, Person). Ein spaeterer Treffer derselben Person meldet
-        # nichts mehr (s. oben) — eine zweite Zeile behauptete also eine Meldung, die es
-        # nie gab, und verdraengte dabei aeltere echte Eintraege: gemessen 27 solcher
-        # Zeilen bei 200 Plaetzen, also 13 % weniger Reichweite. Der spaetere Ausschnitt
-        # ist aber oft der bessere Beleg, deshalb ersetzt er das Bild, statt verworfen zu
-        # werden.
-        # Nur was gemeldet wurde, gehoert in den Verlauf — er ist mit "was FaceID
-        # gemeldet hat" ueberschrieben. Ging die Meldung nicht hinaus (Broker weg), waere
-        # eine Zeile mit deren Score und Zeit eine Behauptung ueber etwas, das nie
-        # stattfand; die spaetere, tatsaechlich gemeldete Erkennung legt dann an.
-        # Aufgezeichnet wird JEDE Erkennung, auch eine, die gerade nicht hinausging —
-        # sonst gingen mit einem toten Broker genau die Ausschnitte verloren, auf denen
-        # die Fehleranalyse beruht. Ob gemeldet wurde, steht in der Zeile selbst, und die
-        # erste tatsaechlich gemeldete Erkennung uebernimmt dort Wert und Zeitpunkt: so
-        # behauptet der Verlauf nie eine Meldung, die es nicht gab, und verliert doch
-        # nichts. (Frueher entschied das ein Gate hier — das warf im Broker-Ausfall die
-        # ganze Erkennung weg.)
+        # Verlauf: EINE Zeile je (Ereignis, benannter Person).
+        #
+        # Frueher legte jeder Treffer eine Zeile an. Gemeldet wird aber nur der erste je
+        # Person (``announced`` sperrt die weiteren), also behaupteten die uebrigen eine
+        # Benachrichtigung, die es nie gab — und verdraengten dabei aeltere echte
+        # Eintraege: gemessen 27 solcher Zeilen bei 200 Plaetzen, 13 % weniger Reichweite.
+        # Der spaetere Ausschnitt ist aber oft der bessere Beleg, deshalb ersetzt er das
+        # Bild der bestehenden Zeile, statt verworfen zu werden.
+        #
+        # Aufgezeichnet wird JEDE Erkennung, auch eine, die nicht hinausging: sonst
+        # gingen bei totem Broker genau die Ausschnitte verloren, auf denen die
+        # Fehleranalyse beruht. Ob gemeldet wurde, steht als Marke in der Zeile, und die
+        # erste tatsaechlich gemeldete Erkennung uebernimmt dort Wert und Zeitpunkt.
         if self.history is not None and crop is not None:
-            # Die Marke beantwortet die Frage auf Ereignis-Ebene: ging fuer diese Person
-            # in diesem Ereignis eine Meldung hinaus? ``sent`` allein reicht nicht — hatte
-            # der erste, tatsaechlich gemeldete Treffer keinen Ausschnitt, entsteht die
-            # Zeile erst spaeter und truege faelschlich "nicht gemeldet".
-            # Bei benannten Personen traegt EINE Zeile das ganze Ereignis, also zaehlt
-            # die Ereignis-Ebene. Unbekannte behalten je Erkennung eine eigene Zeile
-            # (s. unten) — dort gilt deshalb nur, ob GENAU DIESE Meldung hinausging;
-            # gemeldet wird ohnehin nur die erste, alle weiteren sperrt ``announced``.
-            published = sent if name == "unknown" else name in announced
-            # Bekannte Ungenauigkeit, bewusst nicht weiter verfolgt: Eine Zeile, die nach
-            # einer Verdraengung neu entsteht, traegt den Wert der ausloesenden statt der
-            # gemeldeten Erkennung. Bei Unbekannten kommt hinzu, dass die Marke am
-            # einzelnen Treffer haengt — meldet ausgerechnet einer ohne Ausschnitt, bleibt
-            # die spaeter entstehende Zeile auf "nicht gemeldet". Beides betrifft nur die
-            # Marke und den angezeigten Wert, nie Meldung, Erkennung oder Ausschnitt, und
-            # waere nur mit mehr Zustand je Ereignis zu haben, als es kostet.
-            # (Fuer benannte Personen greift der Fall nicht: dort zaehlt announced, das
-            # unabhaengig vom Ausschnitt gesetzt wird.)
-            # Die vorhandene Zeile ist die Merkliste. Gibt es noch keine — oder wurde sie
-            # inzwischen vom Limit verdraengt (improve meldet das mit None) —, wird
-            # angelegt statt verbessert. Sonst fiele die Erkennung stillschweigend aus
-            # dem Verlauf, obwohl sie gemeldet wurde.
+            # Die Marke: bei benannten Personen traegt eine Zeile das ganze Ereignis, also
+            # zaehlt, ob dafuer irgendwann eine Meldung bestaetigt hinausging — sonst
+            # truege eine Zeile faelschlich "nicht gemeldet", wenn ausgerechnet der
+            # gemeldete Treffer keinen Ausschnitt hatte. Unbekannte behalten je Erkennung
+            # eine eigene Zeile (s. unten), dort zaehlt nur diese eine Meldung.
+            published = (sent if name == "unknown"
+                         else name in st.get("reported_names", ()))
+            # Bekannte Ungenauigkeit, bewusst so belassen: Eine Zeile, die nach einer
+            # Verdraengung neu entsteht, traegt den Wert der ausloesenden statt der
+            # gemeldeten Erkennung; und bei Unbekannten bleibt die Marke auf "nicht
+            # gemeldet", wenn der gemeldete Treffer keinen Ausschnitt hatte. Beides
+            # betrifft nur Marke und angezeigten Wert, nie Meldung, Erkennung oder
+            # Ausschnitt — und waere nur mit mehr Zustand je Ereignis zu haben, als es
+            # kostet.
+            #
+            # Gibt es noch keine Zeile — oder wurde sie vom Limit verdraengt, was improve
+            # mit None meldet —, wird angelegt statt verbessert. Sonst fiele die Erkennung
+            # stillschweigend aus dem Verlauf.
             hids = st.setdefault("hids", {})
             # "unknown" ist kein Name, sondern das Fehlen eines Namens: im Vollbild
             # koennen mehrere Fremde stehen, die alle so heissen. Sie zu einer Zeile
