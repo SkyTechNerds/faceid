@@ -640,7 +640,14 @@ class EventProcessor:
         # gemeldet hat" ueberschrieben. Ging die Meldung nicht hinaus (Broker weg), waere
         # eine Zeile mit deren Score und Zeit eine Behauptung ueber etwas, das nie
         # stattfand; die spaetere, tatsaechlich gemeldete Erkennung legt dann an.
-        if self.history is not None and crop is not None and name in announced:
+        # "Kein Client konfiguriert" ist etwas anderes als "Meldung fehlgeschlagen": ohne
+        # Broker kann nie etwas hinausgehen, und die Oberflaeche waere der einzige Ort,
+        # an dem die Erkennung ueberhaupt noch auftaucht — samt der Ausschnitte, auf denen
+        # die Fehleranalyse beruht. Dann wird aufgezeichnet. Steht ein Client bereit und
+        # die Meldung scheiterte nur, legt die spaetere, erfolgreiche Meldung die Zeile an.
+        reportable = self.client is not None
+        if (self.history is not None and crop is not None
+                and (name in announced or not reportable)):
             # Die vorhandene Zeile ist die Merkliste. Gibt es noch keine — oder wurde sie
             # inzwischen vom Limit verdraengt (improve meldet das mit None) —, wird
             # angelegt statt verbessert. Sonst fiele die Erkennung stillschweigend aus
