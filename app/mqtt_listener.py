@@ -609,9 +609,14 @@ class EventProcessor:
         # stehen, die sich sonst gegenseitig ueberschreiben und abwechselnd neu gemeldet
         # wuerden — genau die Doppelmeldung, die diese Stelle verhindern soll.
         announced = st.setdefault("announced", set())
-        if self.client and name not in announced:
+        first_time = name not in announced
+        if first_time:
+            # Die Merkliste unabhaengig vom MQTT-Client fuehren: sie steuert auch den
+            # Verlauf, und ohne Client waere dort sonst jeder Treffer eine neue Zeile.
             announced.add(name)
-            self.client.publish(f"{self.prefix}/event", json.dumps(payload, ensure_ascii=False))
+            if self.client:
+                self.client.publish(f"{self.prefix}/event",
+                                    json.dumps(payload, ensure_ascii=False))
         # "unknown" gehoert NICHT in die Anwesenheitsliste. Der Sensor-State ist eine
         # Aufzaehlung von Namen ("Christian, Juli"), und ein hineingemischtes "unknown"
         # liest sich wie ein weiterer Name — auf dem Handy stand "Christian unknown ist
@@ -622,9 +627,23 @@ class EventProcessor:
         # Den TATSAECHLICH benutzten Ausschnitt festhalten. Der Frigate-Snapshot wird
         # waehrend des Ereignisses fortlaufend ersetzt und zeigt spaeter oft einen anderen
         # Moment — eine Nachpruefung an ihm fuehrt in die Irre. Siehe app/history.py.
+        # EINE Zeile je (Ereignis, Person). Ein spaeterer Treffer derselben Person meldet
+        # nichts mehr (s. oben) — eine zweite Zeile behauptete also eine Meldung, die es
+        # nie gab, und verdraengte dabei aeltere echte Eintraege: gemessen 27 solcher
+        # Zeilen bei 200 Plaetzen, also 13 % weniger Reichweite. Der spaetere Ausschnitt
+        # ist aber oft der bessere Beleg, deshalb ersetzt er das Bild, statt verworfen zu
+        # werden.
         if self.history is not None and crop is not None:
-            self.history.add(crop, emb, {k: v for k, v in payload.items() if k != "ts"}
-                             | {"ts": payload["ts"], "attempt": st.get("attempts")})
+            hids = st.setdefault("hids", {})
+            if first_time:
+                hid = self.history.add(
+                    crop, emb, {k: v for k, v in payload.items() if k != "ts"}
+                    | {"ts": payload["ts"], "attempt": st.get("attempts")})
+                if hid:
+                    hids[name] = hid
+            elif hids.get(name):
+                self.history.improve(hids[name], crop, emb, score,
+                                     attempt=st.get("attempts"))
 
     def _publish_presence(self, cam: str, last: dict | None = None):
         """Sensor-State = alle im Fenster gesehenen Personen ('Christian, Juli' / 'niemand')."""

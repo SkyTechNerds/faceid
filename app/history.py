@@ -61,6 +61,43 @@ class History:
             log.exception("could not record a recognition in the history")
             return None
 
+    def improve(self, hid: str, crop_bgr, embedding, score: float, attempt=None) -> bool:
+        """Einen spaeteren, besseren Treffer derselben Person im selben Ereignis
+        einarbeiten — ohne eine zweite Zeile anzulegen.
+
+        Gemeldet wurde nur der erste Treffer (das ``announced``-Set unterdrueckt
+        weitere), eine zweite Zeile behauptete also eine Meldung, die es nie gab. Der
+        spaetere Ausschnitt ist aber haeufig der weit bessere Beleg — gemessen bis zu
+        94 KB gegen 8 KB derselben Person —, und genau der macht eine Fehlerkennung
+        nachpruefbar. Also: eine Zeile, aber mit dem besten Bild.
+
+        Bild UND Embedding werden zusammen ersetzt. Sie getrennt zu behandeln waere der
+        eigentliche Fehler: Die Analyse liefe sonst auf einem anderen Gesicht, als die
+        Zeile zeigt. ``score``/``ts`` bleiben die der Meldung, damit der Verlauf weiter
+        beantwortet, womit sie ausgeloest wurde.
+        """
+        if self.keep <= 0 or crop_bgr is None or embedding is None or not hid:
+            return False
+        try:
+            with self._lock:
+                jf = self.dir / f"{hid}.json"
+                if not jf.exists():
+                    return False
+                payload = json.loads(jf.read_text(encoding="utf-8"))
+                if float(score) <= float(payload.get("best_score", payload.get("score", 0))):
+                    return False
+                cv2.imwrite(str(self.dir / f"{hid}.jpg"), crop_bgr,
+                            [cv2.IMWRITE_JPEG_QUALITY, 88])
+                payload["embedding"] = [round(float(v), 6) for v in embedding]
+                payload["best_score"] = round(float(score), 3)
+                if attempt is not None:
+                    payload["best_attempt"] = attempt
+                jf.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+                return True
+        except Exception:
+            log.exception("could not update history entry %s", hid)
+            return False
+
     def _enforce_cap(self):
         """Aelteste ueber dem Limit entfernen (Aufrufer haelt das Lock)."""
         files = sorted(self.dir.glob("*.json"), reverse=True)
