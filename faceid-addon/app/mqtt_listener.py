@@ -234,7 +234,12 @@ class EventProcessor:
             st["end_time"] = after.get("end_time") or time.time()
         if st["done"] or st["attempts"] >= self.max_attempts:
             return
-        if after.get("has_snapshot") and time.time() - st["last_try"] >= self.retry_secs:
+        # Ohne Snapshot gibt es fuer den Normalweg nichts zu holen. Ist der Vollbild-Weg
+        # fuer diese Kamera aber eingeschaltet, ist genau das der Fall, fuer den er gebaut
+        # wurde: Frigate verweigert den Snapshot an einer Zonenbedingung, waehrend die
+        # Person klar im Bild steht — und FaceID tat bisher gar nichts (Issue #14).
+        if ((after.get("has_snapshot") or self._live_possible(st["camera"]))
+                and time.time() - st["last_try"] >= self.retry_secs):
             st["last_try"] = time.time()
             try:
                 self.queue.put_nowait({"eid": eid})
@@ -263,6 +268,10 @@ class EventProcessor:
         img = self.frigate.snapshot(eid, crop=True)
         if img is None:
             log.info("event %s (%s): no snapshot from Frigate", eid, st["camera"])
+            # always=True, weil ohne Snapshot niemand sagt, WER zu diesem Ereignis
+            # gehoert: melden und zur Anwesenheit zaehlen ja, sub_label nein. Genau
+            # dieselbe Begruendung wie im always-Modus.
+            self._try_live_hires(eid, st, always=True)
             return
         found = self.engine.faces(img)
         face = FaceEngine.best_face(found, min_px=self.min_face_px)
@@ -279,6 +288,12 @@ class EventProcessor:
             self._try_live_hires(eid, st)
             return
         self._handle_face(eid, st, img, face)
+
+    def _live_possible(self, camera: str) -> bool:
+        """Koennte der Vollbild-Weg fuer diese Kamera ueberhaupt greifen?"""
+        if not self.live_hires:
+            return False
+        return not self.live_hires_cameras or camera in self.live_hires_cameras
 
     def _try_live_hires(self, eid: str, st: dict, always: bool = False):
         """Der Snapshot gab nichts her — sofort einen Haupt-Stream-Frame nachschieben.
@@ -409,6 +424,10 @@ class EventProcessor:
         while True:
             time.sleep(self.poll_interval)
             try:
+                # Hier bleibt der Snapshot Pflicht, anders als im MQTT-Weg: der Poll
+                # holt Nachzuegler von vor bis zu fuenf Minuten, und ein Vollbild von
+                # JETZT zeigt die Person von damals nicht mehr. Ohne Snapshot gaebe es
+                # dort also nichts zu gewinnen.
                 batch = self.frigate.events(label="person", has_snapshot=1,
                                             limit=50, after=since - 30)
             except (requests.RequestException, ValueError) as e:

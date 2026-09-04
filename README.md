@@ -687,7 +687,7 @@ that matter most:
 | `hires_enroll` (true) | fetch new review-queue faces from the recording (sharper references) |
 | `clip_fallback` (true) | when a snapshot yields no face at all, scan the recording — on most setups the single biggest gain, see [the pipeline doc](docs/recognition-pipeline.md) |
 | `clip_fallback_cameras` (all) | restrict the fallback to cameras where it actually pays off — the gain depends on the camera angle |
-| `live_hires_fallback` (false) | on a failed snapshot, ask go2rtc for a full-resolution frame right away instead of waiting for the event to end ([details](docs/recognition-pipeline.md)) |
+| `live_hires_fallback` (false) | when the snapshot fails — no face in it, or Frigate not producing one at all — ask go2rtc for a full-resolution frame right away instead of waiting for the event to end. Reports every face in that frame, not just the largest ([details](docs/recognition-pipeline.md)) |
 | `live_hires_fallback_cameras` (all) | restrict that to specific cameras |
 | `live_hires_mode` (fallback) | `always` scans the full frame on every event instead of only after a failed snapshot — measure first, it found nothing extra here |
 | `clip_fallback_frames` (12) | how many frames to sample from the clip |
