@@ -14,6 +14,7 @@ und was passiert waere, haette es dieses Foto nicht gegeben.
 """
 import json
 import logging
+import os
 import threading
 import time
 from pathlib import Path
@@ -31,9 +32,72 @@ class History:
         self.dir = data_dir / "history"
         self.dir.mkdir(parents=True, exist_ok=True)
         self.keep = int(keep)
-        self._lock = threading.Lock()
+        # RLock, nicht Lock: delete() nimmt die Sperre selbst, und ein Aufrufer, der sie
+        # schon haelt, wuerde sich sonst selbst blockieren.
+        self._lock = threading.RLock()
 
     # ---------- Schreiben ----------
+
+    def _img_name(self, payload: dict, hid: str) -> str:
+        """Dateiname des Bildes einer Zeile. Aeltere Zeilen kennen das Feld nicht.
+
+        Nur der Basisname wird uebernommen: der Wert stammt aus einer Datei, und ein
+        Pfad darin duerfte nie mit ``self.dir`` zusammengesetzt werden.
+        """
+        name = Path(str(payload.get("img") or "")).name
+        return name or f"{hid}.jpg"
+
+    @staticmethod
+    def _row_of(img: Path) -> str:
+        """Zu welcher Zeile gehoert dieses Bild? ``<id>.jpg`` oder ``<id>.vN.jpg``.
+
+        Die einzige Stelle, die den Namensaufbau kennt — vorher fragten Verdraengung
+        und Waisensuche dasselbe auf zwei Arten.
+        """
+        name = img.name[:-len(".jpg")]
+        head, sep, tail = name.rpartition(".v")
+        return head if sep and tail.isdigit() else name
+
+    def _images_of(self, stem: str):
+        """Alle Bildfassungen einer Zeile.
+
+        Bewusst ohne Muster aus der Kennung: die ist Nutzdatum, und ein ``*`` oder
+        ``[`` darin traefe als Glob fremde Zeilen.
+        """
+        for f in self.dir.glob("*.jpg"):
+            if f.stem == stem or self._row_of(f) == stem:
+                yield f
+
+    def _write_json(self, js: Path, payload: dict) -> bool:
+        """JSON atomar ersetzen — der einzige Moment, in dem eine Zeile umschaltet."""
+        tmpdir = self.dir / ".tmp"
+        tmpdir.mkdir(exist_ok=True)
+        tmp = tmpdir / f"{js.stem}.json"
+        try:
+            tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            os.replace(tmp, js)
+            return True
+        except (OSError, TypeError, ValueError):
+            # json.dumps scheitert an nicht serialisierbaren Werten mit TypeError —
+            # faengt man nur OSError, reisst es die ganze Erkennung mit.
+            log.exception("could not write the history entry %s", js.stem)
+            return False
+        finally:
+            tmp.unlink(missing_ok=True)
+
+    def _write_image(self, name: str, crop_bgr) -> bool:
+        """Bild unter seinem endgueltigen Namen schreiben.
+
+        ``cv2.imwrite`` wirft bei einem Fehler nicht immer, es gibt auch ``False``
+        zurueck (volle Platte, unbeschreibbarer Pfad) — beides muss abgefangen werden,
+        sonst beschriebe die JSON danach ein Bild, das es nicht gibt.
+        """
+        try:
+            return bool(cv2.imwrite(str(self.dir / name), crop_bgr,
+                                    [cv2.IMWRITE_JPEG_QUALITY, 88]))
+        except cv2.error:
+            log.warning("could not encode the history image %s", name)
+            return False
 
     def add(self, crop_bgr, embedding, meta: dict) -> str | None:
         """Einen veroeffentlichten Treffer ablegen. Fehler hier duerfen die Erkennung
@@ -50,23 +114,148 @@ class History:
                 while (self.dir / f"{hid}.json").exists():
                     n += 1
                     hid = f"{base}_{n}"
-                cv2.imwrite(str(self.dir / f"{hid}.jpg"), crop_bgr, [cv2.IMWRITE_JPEG_QUALITY, 88])
                 payload = dict(meta)
                 payload["embedding"] = [round(float(v), 6) for v in embedding]
-                (self.dir / f"{hid}.json").write_text(
-                    json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+                payload["img"] = f"{hid}.jpg"
+                # Reihenfolge ist der ganze Trick: Erst das Bild, dann die JSON. Gelistet
+                # wird ueber *.json, die Zeile entsteht also genau in dem Moment, in dem
+                # die JSON da ist — und dann liegt das Bild schon bereit.
+                if not self._write_image(payload["img"], crop_bgr):
+                    return None
+                if not self._write_json(self.dir / f"{hid}.json", payload):
+                    (self.dir / payload["img"]).unlink(missing_ok=True)
+                    return None
                 self._enforce_cap()
                 return hid
         except Exception:
             log.exception("could not record a recognition in the history")
             return None
 
+    def improve(self, hid: str, crop_bgr, embedding, score: float,
+                attempt=None, ts=None, reported: bool = False) -> bool | None:
+        """Einen spaeteren, besseren Treffer derselben Person im selben Ereignis
+        einarbeiten — ohne eine zweite Zeile anzulegen.
+
+        Gemeldet wurde nur der erste Treffer (das ``announced``-Set unterdrueckt
+        weitere), eine zweite Zeile behauptete also eine Meldung, die es nie gab. Der
+        spaetere Ausschnitt ist aber haeufig der weit bessere Beleg — gemessen bis zu
+        94 KB gegen 8 KB derselben Person —, und genau der macht eine Fehlerkennung
+        nachpruefbar. Also: eine Zeile, aber mit dem besten Bild.
+
+        Bild UND Embedding werden zusammen ersetzt. Sie getrennt zu behandeln waere der
+        eigentliche Fehler: Die Analyse liefe sonst auf einem anderen Gesicht, als die
+        Zeile zeigt. ``score``/``ts`` bleiben die der Meldung, damit der Verlauf weiter
+        beantwortet, womit sie ausgeloest wurde.
+
+        Rueckgabe: ``True`` uebernommen; ``False`` nicht uebernommen, die Zeile steht
+        unveraendert (nicht besser, oder das Schreiben schlug fehl); ``None`` die Zeile
+        gibt es nicht mehr oder sie ist unlesbar — dann muss der Aufrufer neu anlegen,
+        sonst faellt die Erkennung stillschweigend aus dem Verlauf.
+
+        Ein unerwarteter Fehler ergibt bewusst ``False`` und nicht ``None``: die Zeile
+        existiert ja noch, und ein Neuanlegen brauechte genau das Duplikat, das diese
+        Funktion vermeiden soll.
+
+        ``reported`` uebergibt, ob DIESE Erkennung hinausging. Trug die Zeile bisher eine
+        Erkennung, die nie gemeldet wurde (Broker weg), uebernimmt die erste tatsaechlich
+        gemeldete deren ``score``/``ts`` — sonst behauptete eine mit "was FaceID gemeldet
+        hat" ueberschriebene Karte einen Wert, den nie jemand bekommen hat.
+        """
+        if self.keep <= 0 or crop_bgr is None or embedding is None or not hid:
+            return False
+        new_img = None
+        try:
+            with self._lock:
+                jf = self.dir / f"{hid}.json"
+                if not jf.exists():
+                    return None
+                try:
+                    payload = json.loads(jf.read_text(encoding="utf-8"))
+                except (ValueError, OSError):
+                    # Unlesbare Zeile: wie eine fehlende behandeln, damit der Aufrufer
+                    # neu anlegt statt sie fuer den Rest des Ereignisses einzufrieren.
+                    log.warning("history entry %s is unreadable — will be replaced", hid)
+                    return None
+                # Ein unlesbarer gespeicherter Wert darf nicht dazu fuehren, dass jede
+                # weitere Verbesserung still unterbleibt — dann lieber ersetzen.
+                try:
+                    best = round(float(payload.get("best_score",
+                                                   payload.get("score", 0))), 3)
+                except (TypeError, ValueError):
+                    best = 0.0
+                # Die erste wirklich gemeldete Erkennung darf die Zeile auch dann
+                # uebernehmen, wenn ihr Wert niedriger ist: sie ist die, die zaehlt.
+                takeover = bool(reported) and not payload.get("reported")
+                better = round(float(score), 3) > best
+                if not better and not takeover:
+                    return False
+                # Das neue Bild bekommt einen EIGENEN Namen, das alte bleibt liegen.
+                # Damit aendert sich die Zeile ausschliesslich beim Ersetzen der JSON —
+                # scheitert irgendetwas davor oder dabei, zeigt sie unveraendert auf ihr
+                # altes, stimmiges Bild. Ein Zurueckspielen von Sicherungskopien braucht
+                # es dafuer nicht.
+                old_img = self._img_name(payload, hid)
+                if better:
+                    n = 1
+                    while (self.dir / f"{hid}.v{n}.jpg").exists():
+                        n += 1
+                    new_img = f"{hid}.v{n}.jpg"
+                    if not self._write_image(new_img, crop_bgr):
+                        # Ein halb geschriebenes Bild wuerde bis zum naechsten
+                        # Aufraeumen als Waise herumliegen.
+                        (self.dir / new_img).unlink(missing_ok=True)
+                        return False
+                    payload["embedding"] = [round(float(v), 6) for v in embedding]
+                    payload["best_score"] = round(float(score), 3)
+                    payload["img"] = new_img
+                    if attempt is not None:
+                        payload["best_attempt"] = attempt
+                if takeover:
+                    payload["reported"] = True
+                    payload["score"] = round(float(score), 3)
+                    if ts is not None:
+                        payload["ts"] = ts
+                    if attempt is not None:
+                        payload["attempt"] = attempt
+                if not self._write_json(jf, payload):
+                    (self.dir / new_img).unlink(missing_ok=True)
+                    return False
+                if new_img and old_img != new_img:
+                    # Nur noch Aufraeumen — die Zeile steht bereits richtig. Ein Fehler
+                    # hier darf nicht als Fehlschlag zurueckgemeldet werden; das Bild
+                    # holt spaetestens der naechste Durchlauf von _enforce_cap.
+                    try:
+                        (self.dir / old_img).unlink(missing_ok=True)
+                    except OSError:
+                        log.warning("could not remove the superseded image %s", old_img)
+                return True
+        except Exception:
+            # Ein schon geschriebenes neues Bild wuerde sonst liegen bleiben: der
+            # Aufraeumlauf haelt es fuer gueltig, weil seine Zeile ja noch existiert.
+            if new_img:
+                (self.dir / new_img).unlink(missing_ok=True)
+            log.exception("could not update history entry %s", hid)
+            return False
+
     def _enforce_cap(self):
         """Aelteste ueber dem Limit entfernen (Aufrufer haelt das Lock)."""
-        files = sorted(self.dir.glob("*.json"), reverse=True)
-        for old in files[self.keep:]:
+        for old in sorted(self.dir.glob("*.json"), reverse=True)[self.keep:]:
             old.unlink(missing_ok=True)
-            (self.dir / f"{old.stem}.jpg").unlink(missing_ok=True)
+        # Danach EIN Durchlauf ueber die Bilder: das raeumt die eben verdraengten Zeilen
+        # mit weg und ebenso Bilder, die auf anderem Weg ihre Zeile verloren haben — die
+        # wuerden sonst nie wieder gezaehlt, weil ueber *.json gelistet wird.
+        # Vorher lief _images_of je Zeile einmal ueber das ganze Verzeichnis.
+        # Gefahrlos, weil beide Schreibwege das Lock halten und ein Bild nur innerhalb
+        # dieses Abschnitts kurz ohne seine Zeile existiert.
+        stems = {j.stem for j in self.dir.glob("*.json")}
+        for img in self.dir.glob("*.jpg"):
+            # Erst der volle Name: gaebe es je eine Kennung, die selbst auf ".v<Ziffern>"
+            # endet, wuerde _row_of sie einer fremden Zeile zuschlagen und ihr lebendes
+            # Bild loeschen. Die Kennungen entstehen zwar aus time.time() und koennen
+            # keinen Punkt enthalten — aber das hier ist ein Aufraeumpfad, und der darf
+            # sich auf keine Annahme stuetzen, die er selbst nicht prueft.
+            if img.stem not in stems and self._row_of(img) not in stems:
+                img.unlink(missing_ok=True)
 
     # ---------- Lesen ----------
 
@@ -85,9 +274,12 @@ class History:
                 m = json.loads(jf.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
                 continue
-            if not (self.dir / f"{jf.stem}.jpg").exists():
+            if not (self.dir / self._img_name(m, jf.stem)).exists():
                 continue
             item = {"id": jf.stem, **{k: v for k, v in m.items() if k != "embedding"}}
+            # Den geprueften Namen auch ausliefern: sonst pruefte die Zeile oben den
+            # bereinigten Wert, waehrend die Oberflaeche den rohen aus der Datei bekaeme.
+            item["img"] = self._img_name(m, jf.stem)
             if gallery is not None and m.get("embedding"):
                 try:
                     emb = np.array(m["embedding"], dtype=np.float32)
@@ -178,8 +370,13 @@ class History:
     # ---------- Aufraeumen ----------
 
     def delete(self, hid: str):
-        (self.dir / f"{hid}.json").unlink(missing_ok=True)
-        (self.dir / f"{hid}.jpg").unlink(missing_ok=True)
+        # Unter derselben Sperre wie die Schreibwege: sonst koennte zwischen dem
+        # Entfernen der Zeile und ihrer Bilder ein laufendes improve() ein neues Bild
+        # anlegen, das anschliessend niemandem mehr gehoert.
+        with self._lock:
+            (self.dir / f"{hid}.json").unlink(missing_ok=True)
+            for img in self._images_of(hid):
+                img.unlink(missing_ok=True)
 
     def clear(self) -> int:
         n = 0

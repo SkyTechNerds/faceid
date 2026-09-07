@@ -3,6 +3,27 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.22.2 — 2026-09-04
+
+- **The history shows one row per event and named person again** (unknown faces keep one row
+  each — several strangers in a single frame all carry that label, and merging them would
+  swap their pictures against each other). It is titled "What FaceID
+  reported", but only the *first* match per person and event is ever reported — the
+  `announced` set suppresses the rest. Every further row therefore claimed a notification
+  that never happened, and pushed genuine older entries out: 27 such rows out of 200 slots
+  on the reference instance, so the history reached 13% less far back than it should.
+- **Later matches are not discarded, they improve the row.** Checking the stored crops
+  first showed why that matters: all ten sampled duplicate pairs held *different* pictures,
+  sometimes drastically so — 8 KB against 94 KB of the same person, a distant crop against
+  a close one. Those later pictures are exactly what makes a wrong recognition checkable.
+  So a later match now improves the existing row instead of adding one: it replaces the
+  picture when its score is higher, and the card shows "best view 0.687" beside the
+  reported score. Independently of that, the first match that is actually published takes
+  over the row's score and timestamp even when it scores *lower* — it is the one somebody
+  received, and the card is headed "What FaceID reported".
+- Picture and embedding are always replaced together. Keeping them apart would let the
+  "was wrong" analysis run on a different face than the row displays.
+
 ## 0.22.1 — 2026-09-04
 
 - **`live_hires_fallback` now also covers the case its name promises: no snapshot at all.**
