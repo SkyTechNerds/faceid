@@ -5,6 +5,14 @@ update dialog; standalone users can watch GitHub releases.
 
 ## 0.22.2 — 2026-09-04
 
+- **Security: a person's name could execute JavaScript in the web UI.** Captions were
+  spliced into a single-quoted JS string inside an `onclick` attribute. The HTML escaper
+  does not escape apostrophes — and even if it did, the browser decodes them before the JS
+  parser runs — so a name like `O'Brien`, or a camera name from Frigate containing one,
+  terminated the string and ran arbitrary script. It affected four places: the history
+  card, the unknown queue (twice, fed by Frigate camera names) and the person cards. All of
+  them now pass the value through a `data-` attribute, where escaping is correct for the
+  context. Found while reviewing this release; it predates it.
 - **The history shows one row per event and named person again** (unknown faces keep one row
   each — several strangers in a single frame all carry that label, and merging them would
   swap their pictures against each other). It is titled "What FaceID
