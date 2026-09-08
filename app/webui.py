@@ -251,12 +251,12 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     @app.get("/api/unknowns")
     def unknowns():
         clusters = gallery.unknown_clusters(eps=float(cfg["faceid"].get("cluster_eps", 0.45)))
-        frigate_url = cfg["frigate"]["url"].rstrip("/")
+        frigate_url = (cfg.get("frigate") or {}).get("url", "").rstrip("/")
         for c in clusters:
             for u in c:
                 if u.pop("has_full", False):
                     u["full_url"] = f"data/unknowns/{u['id']}_full.jpg"
-                elif u.get("event_id"):
+                elif frigate_url and u.get("event_id"):
                     # Backfill-Bestand: Vollbild live aus Frigate (solange Event-Retention reicht)
                     u["full_url"] = f"{frigate_url}/api/events/{u['event_id']}/snapshot.jpg"
         return JSONResponse(clusters)
@@ -278,7 +278,7 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             if gallery.assign_unknown(uid, slug):
                 n += 1
                 # Zuordnung ans Original-Event zurückspielen (Mensch bestätigt -> Score 1.0)
-                if meta.get("event_id"):
+                if getattr(processor.frigate, "enabled", True) and meta.get("event_id"):
                     processor.frigate.set_sub_label(meta["event_id"], name, 1.0)
         gallery.refresh_guesses()
         return {"assigned": n, "slug": slug}
@@ -292,7 +292,7 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             slug, name, score = gallery.match(it["embedding"])
             if slug and score >= thr and gallery.assign_unknown(it["id"], slug):
                 assigned[name] = assigned.get(name, 0) + 1
-                if it.get("event_id"):
+                if getattr(processor.frigate, "enabled", True) and it.get("event_id"):
                     processor.frigate.set_sub_label(it["event_id"], name, score)
         gallery.refresh_guesses()
         return {"assigned": assigned, "total": sum(assigned.values())}
@@ -354,7 +354,10 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     # denselben Zustand schreiben. Die Sperre haelt nur den Check-and-Set, nie den Lauf.
     job_lock = threading.Lock()
 
-    backfill_state = {"running": False, "processed": 0, "total": 0, "result": None, "days": 0}
+    folder_input = getattr(processor, "folder_ingest", None)
+    folder_mode = bool(folder_input and folder_input.enabled)
+    backfill_state = {"running": False, "processed": 0, "total": 0, "result": None,
+                      "days": 0, "mode": "folder" if folder_mode else "frigate"}
 
     class BackfillBody(BaseModel):
         days: int = 14
@@ -372,13 +375,18 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
 
         def worker():
             try:
-                from .backfill import run_backfill
-                stats = run_backfill(
-                    engine, gallery, processor.frigate, cfg["frigate"]["url"], days=days,
-                    tag=bool(cfg["faceid"].get("set_sub_label", True)),
-                    match_thr=float(cfg["faceid"].get("match_threshold", 0.5)),
-                    progress=progress,
-                    hires=bool(cfg["faceid"].get("hires_enroll", True)))
+                if folder_mode:
+                    stats = folder_input.scan_once()
+                    backfill_state.update(processed=stats.get("processed", 0),
+                                          total=stats.get("found", 0))
+                else:
+                    from .backfill import run_backfill
+                    stats = run_backfill(
+                        engine, gallery, processor.frigate, cfg["frigate"]["url"], days=days,
+                        tag=bool(cfg["faceid"].get("set_sub_label", True)),
+                        match_thr=float(cfg["faceid"].get("match_threshold", 0.5)),
+                        progress=progress,
+                        hires=bool(cfg["faceid"].get("hires_enroll", True)))
                 backfill_state["result"] = stats
             except Exception as e:
                 log.exception("history scan failed")
@@ -427,6 +435,8 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             gallery.max_ignore_anchors = int(updates["max_ignore_anchors"])
         if "min_face_px" in updates:
             processor.min_face_px = int(updates["min_face_px"])
+            if folder_input is not None:
+                folder_input.min_face_px = int(updates["min_face_px"])
         if "max_attempts" in updates:
             processor.max_attempts = int(updates["max_attempts"])
         if "dedupe_threshold" in updates:
@@ -458,6 +468,8 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     def get_settings():
         f = cfg["faceid"]
         return {
+            "input_mode": "folder" if folder_mode else "frigate",
+            "folder": folder_input.status() if folder_mode else None,
             "thresholds": {k: float(f.get(k, {"match_threshold":0.5,"unknown_threshold":0.35,
                 "suggest_threshold":0.40,"cluster_eps":0.55,"ignore_threshold":0.5,"dedupe_threshold":0.65}[k]))
                 for k in SETTINGS_SPEC},
@@ -713,10 +725,13 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     def health():
         # "queue" ist die Review-Queue — das ist es, was der Header zeigt. Die interne
         # Verarbeitungs-Warteschlange steht separat unter "processing".
+        folder = getattr(processor, "folder_ingest", None)
         return {"status": "ok", "persons": len(gallery.persons()),
                 "queue": len(list((data_dir / "unknowns").glob("*.json"))),
                 "processing": processor.queue.qsize(),
                 "open_events": len(processor.events),
+                "source": "folder" if folder and folder.enabled else "frigate",
+                "folder": folder.status() if folder and folder.enabled else None,
                 "suggest_threshold": float(cfg["faceid"].get("suggest_threshold", 0.40))}
 
     return app

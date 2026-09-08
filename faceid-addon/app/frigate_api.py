@@ -17,6 +17,8 @@ log = logging.getLogger("faceid.frigate")
 
 
 class FrigateAPI:
+    enabled = True
+
     def __init__(self, base_url: str, timeout: float = 6.0, user: str | None = None,
                  password: str | None = None, verify_tls: bool = False,
                  go2rtc_url: str | None = None):
@@ -190,7 +192,42 @@ class FrigateAPI:
 
 def frigate_client(cfg: dict, timeout: float = 6.0) -> FrigateAPI:
     """FrigateAPI aus der Konfiguration — mit Anmeldung, falls Zugangsdaten gesetzt sind."""
-    f = cfg["frigate"]
+    f = cfg.get("frigate") or {}
+    if not bool(f.get("enabled", True)):
+        return DisabledFrigateAPI()
     return FrigateAPI(f["url"], timeout=timeout, user=f.get("user"),
                       password=f.get("password"), verify_tls=bool(f.get("verify_tls", False)),
                       go2rtc_url=f.get("go2rtc_url"))
+
+
+class DisabledFrigateAPI:
+    """No-op client used when another input source, such as a folder, feeds FaceID.
+
+    Keeping the same small interface lets the gallery and review UI remain usable without
+    scattering ``if frigate`` checks through every assignment endpoint.
+    """
+
+    enabled = False
+    base = ""
+    go2rtc = ""
+
+    def snapshot(self, event_id: str, crop: bool = True):
+        return None
+
+    def recording_frame(self, camera: str, ts: float):
+        return None
+
+    def live_frame(self, camera: str, timeout: float = 3.0):
+        return None
+
+    def download_clip(self, event_id: str, dest: str, max_bytes: int = 80_000_000):
+        return False
+
+    def config(self):
+        return {"cameras": {}}
+
+    def events(self, **params):
+        return []
+
+    def set_sub_label(self, event_id: str, label: str, score: float):
+        return None

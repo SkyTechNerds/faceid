@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — completed-recording folder input
+
+- Add a no-Frigate mode that watches a directory for completed video/image files.
+- Require stable file size and mtime before processing, persist fingerprints across
+  restarts, and bound retries for unreadable media.
+- Sample video frames, collapse repeated views of the same person within each file, and
+  reuse the existing gallery, unknown clustering, history, MQTT, and review UI.
+- Add folder-aware health and manual-scan UI plus a low-priority hardened systemd unit.
+
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 

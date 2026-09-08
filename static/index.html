@@ -136,7 +136,7 @@ td.p{color:var(--acc)} td.u{color:var(--warn)}
   <button data-t="persons" title="your gallery: enrolled people and their reference faces">PERSONS</button>
   <button data-t="ignored" title="people you don't track: never notified, matched or resurfaced">IGNORED</button>
   <button data-t="settings" title="matching thresholds, backup and restore">SETTINGS</button>
-  <button data-t="history" title="what FaceID actually reported — with the face image it used, and a way to say it was wrong">HISTORY</button>
+  <button data-t="history" title="recognition history — with the face image FaceID used, and a way to say it was wrong">HISTORY</button>
   <button data-t="log" title="recent service log — what FaceID is doing, and why nothing was recognised">LOG</button>
   <button data-t="tools" title="deeper measurements: speed, gallery coverage, why events yield no face" hidden>TOOLS</button>
 </nav>
@@ -163,7 +163,8 @@ document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
 
 async function health(){try{const h=await j('api/health');
   if(typeof h.suggest_threshold==='number')suggestThr=h.suggest_threshold;
-  $('#health').textContent=`${h.persons} persons · queue ${h.queue} · events ${h.open_events}`}catch(e){$('#health').textContent='offline'}}
+  const src=h.source==='folder'&&h.folder?`files ${h.folder.processed}${h.folder.scanning?' · scanning':''}`:`events ${h.open_events}`;
+  $('#health').textContent=`${h.persons} persons · queue ${h.queue} · ${src}`}catch(e){$('#health').textContent='offline'}}
 
 function personOptions(sel){
   const es=Object.entries(persons).sort((a,b)=>a[1].name.localeCompare(b[1].name,undefined,{sensitivity:'base'}));
@@ -194,21 +195,24 @@ async function render(){
 }
 
 function backfillRow(bf){
+  const folder=bf.mode==='folder';
   const status = bf.running
-    ? `scanning history… ${bf.processed}/${bf.total||'?'} events`
+    ? `${folder?'scanning folder':'scanning history'}… ${bf.processed}/${bf.total||'?'} ${folder?'files':'events'}`
     : bf.result
       ? bf.result.error
         ? `scan failed: ${esc(bf.result.error)}`
-        : `last scan: ${bf.result.faces} new faces, ${bf.result.known} already known, ${bf.result.no_face} without a face`
-      : 'pulls faces from past camera events into the review queue';
+        : folder
+          ? `last scan: ${bf.result.processed} files processed, ${bf.result.faces} faces, ${bf.result.skipped} unchanged`
+          : `last scan: ${bf.result.faces} new faces, ${bf.result.known} already known, ${bf.result.no_face} without a face`
+      : folder?'watches completed recordings and adds faces to the review queue':'pulls faces from past camera events into the review queue';
   return `<div class="row">
-    <select id="bfdays" title="how far back to scan" ${bf.running?'disabled':''}>
+    <select id="bfdays" title="how far back to scan" ${folder?'style="display:none"':''} ${bf.running?'disabled':''}>
       <option value="7">last 7 days</option>
       <option value="14" selected>last 14 days</option>
       <option value="28">last 28 days</option>
     </select>
-    <button class="act" title="pull faces from past Frigate events into this queue; known people get tagged retroactively" onclick="startBackfill()" ${bf.running?'disabled':''}>
-      ${bf.running?'SCANNING…':'SCAN CAMERA HISTORY'}</button>
+    <button class="act" title="${folder?'scan completed media in the configured folder':'pull faces from past Frigate events into this queue; known people get tagged retroactively'}" onclick="startBackfill()" ${bf.running?'disabled':''}>
+      ${bf.running?'SCANNING…':(folder?'SCAN RECORDING FOLDER':'SCAN CAMERA HISTORY')}</button>
     <span class="stat">${status}</span>
   </div>`;
 }
@@ -216,7 +220,7 @@ async function startBackfill(){
   try{
     await j('api/backfill',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({days:+$('#bfdays').value})});
-    toast('History scan started');
+    toast('Scan started');
   }catch(e){toast('Scan already running')}
   render();
 }
@@ -497,7 +501,7 @@ async function renderHistory(){
   const cams=camsOf(all, h=>h.camera);
   const it=camFilter.history ? all.filter(h=>h.camera===camFilter.history) : all;
   main.innerHTML=`<div class="card">
-    <h2>What FaceID reported</h2>
+    <h2>Recognition history</h2>
     <div class="row" style="margin:-2px 0 8px">
       ${camSelect('history', cams)}
       <span class="stat">entries:</span>
@@ -505,13 +509,13 @@ async function renderHistory(){
         ${[30,60,120,200].map(n=>`<option value="${n}"${historyLimit===n?' selected':''}>${n}</option>`).join('')}
       </select>
     </div>
-    <div class="stat">Every published recognition, with the <b>face image it actually used</b> — not the Frigate snapshot. Frigate keeps replacing that snapshot while an event runs, so checking one later usually shows a different moment, and sometimes a different person. Press <b>was wrong</b> on a mistake and FaceID works out which reference photo caused it. Where the gallery has changed since — a face you have assigned in the meantime — the card also shows who it would be matched to <b>now</b>.</div>
-    ${it.length?'':'<div class="stat" style="margin-top:8px">Nothing reported yet.</div>'}
+    <div class="stat">Every recognition, with the <b>face image it actually used</b>. Press <b>was wrong</b> on a mistake and FaceID works out which reference photo caused it. Where the gallery has changed since — a face you have assigned in the meantime — the card also shows who it would be matched to <b>now</b>.</div>
+    ${it.length?'':'<div class="stat" style="margin-top:8px">Nothing detected yet.</div>'}
     <div class="hgrid" style="margin-top:8px">${it.map(h=>`
       <div class="tile hcard">
         <img src="data/history/${esc(h.img||h.id+'.jpg')}" loading="lazy" data-cap="${esc(h.person)} ${esc(h.score)} · ${esc(h.camera||'')}" onclick="showFull(this.src,this.dataset.cap)" title="${esc(h.person)} ${h.score} on ${esc(h.camera||'')}${h.zones&&h.zones.length?' · '+esc(h.zones.join(', ')):''}">
         <div class="meta">
-          ${h.reported===false?`<span class="sub" title="This recognition happened but could not be sent - the broker was unreachable. It is kept because the picture is what a wrong-recognition report needs.">not reported</span> `:''}<b title="Reported as ${esc(h.person)} at ${esc(h.score)}${h.best_score?` — the picture shown is a later, clearer view of the same person from the same event (${esc(h.best_score)}), which is why it does not match the reported score`:''}">${esc(h.person)} ${esc(h.score)}${h.best_score?` <span class="sub">· best view ${esc(h.best_score)}</span>`:''}</b>
+          ${h.reported===false?`<span class="sub" title="This recognition was stored locally but not sent over MQTT (publishing is disabled or the broker was unreachable).">not reported</span> `:''}<b title="Detected as ${esc(h.person)} at ${esc(h.score)}${h.best_score?` — the picture shown is a later, clearer view of the same person from the same event (${esc(h.best_score)}), which is why it does not match the original score`:''}">${esc(h.person)} ${esc(h.score)}${h.best_score?` <span class="sub">· best view ${esc(h.best_score)}</span>`:''}</b>
           <span class="sub">${fmtTs(h.ts)} · ${esc(h.camera||'')}</span>
           ${h.now?(h.now.self
             ? `<div class="nowis" title="You assigned this face to ${esc(h.now.person)}, so it is one of their reference photos now. It matches itself — that says nothing about how well ${esc(h.now.person)} is recognised.">now assigned: ${esc(h.now.person)}</div>`
@@ -679,7 +683,7 @@ async function renderSettings(){
       <input id="set-minface" type="number" min="16" max="200" value="${cfg.min_face_px}" style="width:70px"><span class="stat">px</span>
       <span class="stat">if the LOG tab keeps saying "largest face NNpx &lt; min_face_px", this is the limit it means. Below roughly 40 px ArcFace embeddings get unreliable — lowering it buys attempts, not accuracy.</span>
     </div>
-    <div class="row" style="margin-top:6px">
+    <div class="row" style="margin-top:6px;${cfg.input_mode==='folder'?'display:none':''}">
       <b style="min-width:230px;font:600 13px var(--sans)">Recognition attempts per event</b>
       <input id="set-attempts" type="number" min="1" max="20" value="${cfg.max_attempts}" style="width:70px">
       <span class="stat">FaceID retries while an event is running, so more attempts mean more chances to catch the moment the face is largest. Costs a little CPU per event.</span>
@@ -689,6 +693,9 @@ async function renderSettings(){
       <input id="set-igncap" type="number" min="0" max="200" value="${cfg.max_ignore_anchors}" style="width:70px">
       <span class="stat">per ignore group; 0 = unlimited. When exceeded, the most redundant <em>auto-learned</em> anchor is dropped — manually added ones are never touched. Deleting by age instead would let ignored people resurface, which is the opposite of what the list is for.</span>
     </div>
+    ${cfg.input_mode==='folder'?`<h2 style="margin-top:22px">Recording folder</h2>
+    <div class="stat">Watching <code>${esc(cfg.folder.path)}</code> as <b>${esc(cfg.folder.camera)}</b>. ${cfg.folder.processed} files processed${cfg.folder.scanning?' · scan in progress':''}${cfg.folder.last_error?' · '+esc(cfg.folder.last_error):''}.</div>`:''}
+    <div style="${cfg.input_mode==='folder'?'display:none':''}">
     <h2 style="margin-top:22px">When a snapshot has no face</h2>
     <div class="stat" style="margin:-4px 0 6px">Frigate picks its snapshot by highest <em>person</em> score, which is not the same as "face visible" — on most setups only about a fifth of snapshots hold a usable face. These are the ways back in. <a href="https://github.com/SkyTechNerds/faceid/blob/main/docs/recognition-pipeline.md" target="_blank" rel="noopener" style="color:var(--acc)">How it works ↗</a></div>
     <div class="row" style="margin-top:6px">
@@ -723,6 +730,7 @@ async function renderSettings(){
       <b style="min-width:230px;font:600 13px var(--sans)">…only these cameras</b>
       <input id="set-livecams" type="text" value="${(cfg.live_hires_fallback_cameras||[]).join(', ')}" placeholder="empty = all cameras" style="width:260px">
       <span class="stat">Same idea as above: restrict it to cameras where faces actually appear.${(cfg.known_cameras||[]).length?' Known: '+cfg.known_cameras.join(', ')+'.':''}</span>
+    </div>
     </div>
     <h2 style="margin-top:22px">Keeping the gallery clean</h2>
     <div class="stat" style="margin:-4px 0 6px">Bad reference photos do not just fail to help — they actively make people harder to tell apart.</div>

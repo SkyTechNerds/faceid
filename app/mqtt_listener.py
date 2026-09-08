@@ -34,6 +34,8 @@ class EventProcessor:
         self.events: dict[str, dict] = {}  # event_id -> Zustand
         self.recent = deque(maxlen=100)  # Ringpuffer für die UI
         self.client: mqtt.Client | None = None
+        self.frigate_enabled = bool(getattr(frigate, "enabled", True))
+        self.mqtt_enabled = bool((cfg.get("mqtt") or {}).get("enabled", True))
         f = cfg["faceid"]
         self.match_thr = float(f.get("match_threshold", 0.5))
         self.unknown_thr = float(f.get("unknown_threshold", 0.35))
@@ -106,32 +108,39 @@ class EventProcessor:
     # ---------- MQTT ----------
 
     def start(self):
-        m = self.cfg["mqtt"]
-        c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=self.prefix)
-        self.client = c
-        if m.get("user"):
-            c.username_pw_set(m["user"], m.get("password", ""))
-        c.will_set(f"{self.prefix}/status", "offline", retain=True)
-        c.on_connect = self._on_connect
-        c.on_message = self._on_message
-        c.connect(m["host"], int(m.get("port", 1883)), keepalive=60)
-        c.loop_start()
-        self._check_frigate()
-        threading.Thread(target=self._worker, daemon=True, name="faceid-worker").start()
+        if self.mqtt_enabled:
+            m = self.cfg["mqtt"]
+            c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=self.prefix)
+            self.client = c
+            if m.get("user"):
+                c.username_pw_set(m["user"], m.get("password", ""))
+            c.will_set(f"{self.prefix}/status", "offline", retain=True)
+            c.on_connect = self._on_connect
+            c.on_message = self._on_message
+            c.connect(m["host"], int(m.get("port", 1883)), keepalive=60)
+            c.loop_start()
+        else:
+            log.info("MQTT publishing disabled")
+        if self.frigate_enabled:
+            self._check_frigate()
+            threading.Thread(target=self._worker, daemon=True, name="faceid-worker").start()
         threading.Thread(target=self._finalizer, daemon=True, name="faceid-finalizer").start()
         # Eigener Thread: ein Clip-Scan dauert Sekunden, im Finalizer wuerde er die
         # Anwesenheits-Aktualisierung blockieren, im Worker die naechsten Snapshots.
         # Laeuft unabhaengig von clip_fallback, damit die Option in den Einstellungen
         # sofort greift statt erst nach einem Neustart — er wartet dann nur an der Queue.
-        threading.Thread(target=self._clip_worker, daemon=True, name="faceid-clip").start()
-        # Einschraenkungen sichtbar machen: sonst sucht man spaeter im Log vergeblich
-        # nach Aufnahme-Scans, die per Konfiguration gar nicht stattfinden sollen.
-        if not self.clip_fallback:
-            log.info("Recording fallback is off — events whose snapshot has no face are dropped")
-        elif self.clip_fallback_cameras:
-            log.info("Recording fallback limited to: %s",
-                     ", ".join(sorted(self.clip_fallback_cameras)))
-        self._check_go2rtc()
+        if self.frigate_enabled:
+            threading.Thread(target=self._clip_worker, daemon=True, name="faceid-clip").start()
+            # Einschraenkungen sichtbar machen: sonst sucht man spaeter im Log vergeblich
+            # nach Aufnahme-Scans, die per Konfiguration gar nicht stattfinden sollen.
+            if not self.clip_fallback:
+                log.info("Recording fallback is off — events whose snapshot has no face are dropped")
+            elif self.clip_fallback_cameras:
+                log.info("Recording fallback limited to: %s",
+                         ", ".join(sorted(self.clip_fallback_cameras)))
+            self._check_go2rtc()
+        else:
+            log.info("Frigate input disabled; waiting for folder media")
 
     def _check_go2rtc(self):
         """Einmal beim Start pruefen, ob der Live-Rueckgriff moeglich waere.
@@ -184,8 +193,11 @@ class EventProcessor:
         # still, ohne weitere Meldung. Genau so trat Issue #11 auf. Deshalb faengt jeder
         # Callback hier ab und protokolliert, statt die Verbindung mitzureissen.
         try:
-            log.info("MQTT connected (%s), subscribing to %s/events", reason_code, self.frigate_topic)
-            client.subscribe(f"{self.frigate_topic}/events")
+            if self.frigate_enabled:
+                log.info("MQTT connected (%s), subscribing to %s/events", reason_code, self.frigate_topic)
+                client.subscribe(f"{self.frigate_topic}/events")
+            else:
+                log.info("MQTT connected (%s), folder input mode", reason_code)
             client.publish(f"{self.prefix}/status", "online", retain=True)
             self._publish_discovery()
         except Exception:
@@ -365,6 +377,7 @@ class EventProcessor:
             # Gesicht steht auf der Ignore-Liste: nicht melden, nicht taggen, nicht vorlegen
             st["best_unknown"] = None
             st["done"] = True
+            st["ignored"] = True
             # Anker-Lernen nur bei eindeutigen Fällen: klarer Ignore-Match UND deutlicher
             # Abstand zum besten Personen-Match — so wird nie ein Familienmitglied still
             # zum Negativ-Anker. Nur neue Erscheinungsformen werden gespeichert.
@@ -391,7 +404,7 @@ class EventProcessor:
             if score > st["best_score"]:
                 st["best_score"], st["best_person"] = score, name
                 self._publish_recognition(eid, st, name, score, crop=crop, emb=emb)
-                if self.set_sub_label:
+                if self.set_sub_label and not st.get("local_media"):
                     self.frigate.set_sub_label(eid, name, score)
             if score >= self.match_thr + 0.1:
                 st["done"] = True  # sehr sicherer Treffer -> keine weiteren Versuche
@@ -408,6 +421,45 @@ class EventProcessor:
                                       # aus der Aufnahme ist bereits das schaerfste Bild —
                                       # ein zweiter Durchgang durch hires waere derselbe Clip
                                       "from_clip": source != "snapshot"}
+
+    def process_local_face(self, eid: str, camera: str, event_ts: float, img, face,
+                           media_path: str) -> dict:
+        """Run one face found in a completed local media file through the normal policy.
+
+        Each distinct face in the file receives its own synthetic event, matching the
+        one-person-per-event assumption of the Frigate path. This preserves notification,
+        history, ignore and review-queue behavior without pretending the file is a
+        Frigate event.
+        """
+        self._ensure_discovery(camera)
+        st = {
+            "camera": camera, "attempts": 1, "best_score": 0.0,
+            "best_person": None, "best_unknown": None, "last_try": time.time(),
+            "done": False, "ended": True, "created": time.time(), "zones": [],
+            "start_time": event_ts, "end_time": event_ts, "local_media": True,
+            "media_path": media_path,
+        }
+        self._handle_face(eid, st, img, face, source="folder recording")
+        uid = None
+        if st["best_person"] is None and st["best_unknown"] is not None:
+            u = st["best_unknown"]
+            uid = self.gallery.save_unknown(
+                u["crop"], u["emb"],
+                {"camera": camera, "event_id": eid, "event_ts": event_ts,
+                 "media_path": media_path, "guess": u["guess"],
+                 "guess_score": round(u["guess_score"], 3)},
+                full_bgr=u.get("full"),
+            )
+            self._publish_recognition(eid, st, "unknown", u["guess_score"],
+                                      crop=u["crop"], emb=u["emb"])
+            log.info("folder event %s: unknown face stored (%s)", eid, uid or "deduplicated")
+        return {
+            "event_id": eid,
+            "person": st["best_person"] or ("ignored" if st.get("ignored") else "unknown"),
+            "score": round(float(st.get("best_score") or
+                                 (st.get("best_unknown") or {}).get("guess_score", 0.0)), 3),
+            "unknown_id": uid,
+        }
 
     def _poller(self):
         """Frigate-Ereignisse abfragen, die per MQTT nie ankommen.
@@ -602,6 +654,8 @@ class EventProcessor:
             # ausserhalb" bauen.
             "zones": list(st.get("zones") or []),
         }
+        if st.get("media_path"):
+            payload["media_file"] = str(st["media_path"]).rsplit("/", 1)[-1]
         self.recent.appendleft(payload)
         # faceid/event genau einmal pro (Event, Person) — Score-Verbesserungen lösen keine
         # erneute Meldung aus (sonst mehrere Notifications für dieselbe Sichtung).
@@ -749,6 +803,8 @@ class EventProcessor:
 
     def _frigate_cameras(self) -> set:
         """Kameranamen von Frigate holen — fuer den Fall, dass keine konfiguriert sind."""
+        if not self.frigate_enabled:
+            return set()
         try:
             conf = self.frigate.config()
             if conf is not None:
