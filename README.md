@@ -5,6 +5,20 @@ on top of [Frigate](https://frigate.video). It uses the same model family as Imm
 CompreFace (**InsightFace `buffalo_l`**: SCRFD detection + ArcFace embeddings) and was
 built because Frigate's built-in face recognition UX didn't cut it:
 
+## Contents
+
+**What it is** — [Screenshots](#screenshots) · [How it works](#how-it-works) · [Local-only, and what gets downloaded](#local-only-and-what-gets-downloaded)
+
+**Setting it up** — [Requirements](#requirements) · [Install as a Home Assistant app](#install-as-a-home-assistant-app-recommended-for-haos) · [Install standalone](#install-standalone-lxc-vm-bare-metal) · [Connecting to Frigate](#connecting-to-frigate) · [Getting started](#getting-started)
+
+**Living with it** — [Ignoring people](#ignoring-people) · [Sharper reference photos](#sharper-reference-photos) · [How training stays healthy](#how-training-stays-healthy) · [Backup & restore](#backup--restore)
+
+**When it does not recognise someone** — [When the snapshot has no face](#when-the-snapshot-has-no-face) · [Events MQTT never announces](#events-mqtt-never-announces) · [Calibrating the threshold](#calibrating-the-threshold) · [Seeing what it is doing](#seeing-what-it-is-doing) · [Measuring instead of guessing](#measuring-instead-of-guessing)
+
+**Home Assistant** — [Home Assistant](#home-assistant) · [Getting the name into your Frigate notification](#getting-the-name-into-your-frigate-notification)
+
+**Reference** — [Updates](#updates) · [Security & privacy notes](#security--privacy-notes) · [Configuration reference](#configuration-reference)
+
 - **No train-tab treadmill.** Matching is nearest-neighbor over face embeddings — every
   image you assign is a visible reference point, with no training cycles and no queue
   that refills with already-known faces. To be clear: this is not immune to bad data —
@@ -40,19 +54,6 @@ built because Frigate's built-in face recognition UX didn't cut it:
   auto-backup** — your hand-curated face data is the one irreplaceable thing, so it's
   easy to safeguard.
 
-## Contents
-
-**What it is** — [Screenshots](#screenshots) · [How it works](#how-it-works) · [Local-only, and what gets downloaded](#local-only-and-what-gets-downloaded)
-
-**Setting it up** — [Requirements](#requirements) · [Install as a Home Assistant app](#install-as-a-home-assistant-app-recommended-for-haos) · [Install standalone](#install-standalone-lxc-vm-bare-metal) · [Connecting to Frigate](#connecting-to-frigate) · [Getting started](#getting-started)
-
-**Living with it** — [Ignoring people](#ignoring-people) · [Sharper reference photos](#sharper-reference-photos) · [How training stays healthy](#how-training-stays-healthy) · [Backup & restore](#backup--restore)
-
-**When it does not recognise someone** — [When the snapshot has no face](#when-the-snapshot-has-no-face) · [Events MQTT never announces](#events-mqtt-never-announces) · [Calibrating the threshold](#calibrating-the-threshold) · [Seeing what it is doing](#seeing-what-it-is-doing) · [Measuring instead of guessing](#measuring-instead-of-guessing)
-
-**Home Assistant** — [Home Assistant](#home-assistant) · [Getting the name into your Frigate notification](#getting-the-name-into-your-frigate-notification)
-
-**Reference** — [Updates](#updates) · [Security & privacy notes](#security--privacy-notes) · [Configuration reference](#configuration-reference)
 
 
 ## Screenshots
