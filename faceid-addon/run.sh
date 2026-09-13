@@ -26,6 +26,11 @@ cfg() { jq -r "$1 // empty" "${OPT}"; }
 # Lesen aus options.json wuerde genau diese Erkennung aushebeln.
 yml() { jq "$1 // \"\"" "${OPT}"; }
 jstr() { jq -Rn --arg v "$1" '$v'; }
+# ⚠️ Regel fuer die Vorlage unten: Alles, was im Schema `str`, `password`, `url` oder eine
+# Liste davon ist, MUSS ueber yml/jstr laufen. Direkt per cfg() eingesetzt werden nur
+# Werte, die der Supervisor gegen einen Zahlen-, Bool- oder Auswahltyp geprueft hat — die
+# koennen kein Anfuehrungszeichen und keinen Zeilenumbruch enthalten. Wird ein solches
+# Feld im Schema spaeter zu `str`, gehoert es hier mit umgestellt.
 MQTT_HOST=$(cfg '.mqtt_host')
 MQTT_PORT=$(cfg '.mqtt_port')
 MQTT_USER=$(cfg '.mqtt_user')
