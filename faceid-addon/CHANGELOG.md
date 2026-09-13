@@ -3,6 +3,31 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.22.3 — 2026-09-13
+
+- **Frigate credentials work in the app at last.** `frigate_user` and `frigate_password`
+  have been offered as options for a long time, but `run.sh` never wrote them into the
+  generated config — so anyone running Frigate behind its authenticated port 8971 could not
+  connect FaceID as a Home Assistant app at all. The options looked usable and did nothing.
+  Reported in #24, where the visible symptom was a different one.
+- **Supervisor stops warning about them.** Both keys were listed under `options` but missing
+  from `schema`, which produced `Option 'frigate_user' does not exist in the schema for
+  FaceID` on every start. That is what the report was about; the dead pass-through was the
+  larger half underneath.
+- Nothing changes for existing installs: an empty value and a missing key both end up as
+  `user=None`, exactly as before, so the open API on port 5000 stays the default.
+- **Free-text options no longer break the generated config.** Credentials, prefixes and the
+  URL were interpolated raw into quoted YAML. A password containing a double quote produced
+  an unparseable file — and a crafted value could write further keys into the config. They
+  now go through `jq`, which emits a properly escaped JSON string, and JSON is valid YAML.
+  This applied to the MQTT credentials as well, which predates this release.
+  The same applied to the four camera lists, which were joined into a string and wrapped in
+  brackets by the template — a camera name containing a comma or a quote broke the list.
+  They are emitted as JSON arrays now.
+- Fixed alongside it: an emptied `frigate_topic_prefix` or `mqtt_prefix` became YAML `null`,
+  and `str(None).strip("/") or "frigate"` yields the string `"None"` — FaceID would have
+  subscribed to `None/events` and never seen an event. They now degrade to the default.
+
 ## 0.22.2 — 2026-09-04
 
 - **Security: a person's name could execute JavaScript in the web UI.** Captions were
