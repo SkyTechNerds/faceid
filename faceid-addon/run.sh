@@ -14,6 +14,14 @@ if [ "$(uname -m)" = "x86_64" ] && ! grep -qm1 avx /proc/cpuinfo; then
 fi
 
 OPT=/data/options.json
+# Einmal fruehzeitig pruefen, statt jeden einzelnen Zugriff abzusichern: ist die Datei
+# unlesbar oder kein gueltiges JSON, liefert JEDER jq-Aufruf unten nichts, und FaceID
+# startete mit stillschweigenden Vorgabewerten statt zu sagen, dass die Konfiguration
+# nicht ankam.
+if ! jq -e . "${OPT}" >/dev/null 2>&1; then
+    bashio::log.fatal "Cannot read ${OPT} — the add-on options are missing or not valid JSON."
+    exit 1
+fi
 cfg() { jq -r "$1 // empty" "${OPT}"; }
 
 # Freitext wird als JSON ausgegeben, nicht roh interpoliert: JSON ist gueltiges YAML und
