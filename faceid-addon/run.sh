@@ -16,11 +16,16 @@ fi
 OPT=/data/options.json
 cfg() { jq -r "$1 // empty" "${OPT}"; }
 
-# Freitextfelder werden ueber jq ausgegeben, nicht roh interpoliert: jq liefert einen
-# JSON-String mit korrektem Escaping, und JSON ist gueltiges YAML. Ein Passwort mit
-# Anfuehrungszeichen zerlegte sonst die Datei — schlimmstenfalls liessen sich damit
-# weitere Schluessel in die Konfiguration schreiben.
+# Freitext wird als JSON ausgegeben, nicht roh interpoliert: JSON ist gueltiges YAML und
+# bringt das Escaping mit. Ein Passwort mit Anfuehrungszeichen zerlegte sonst die Datei —
+# schlimmstenfalls liessen sich damit weitere Schluessel in die Konfiguration schreiben.
+#
+# Zwei Wege, weil es zwei Quellen gibt: ``yml`` liest direkt aus options.json, ``jstr``
+# kodiert einen bereits ermittelten Wert. Die MQTT-Daten MUESSEN ueber ``jstr`` laufen —
+# sie werden weiter unten von der Mosquitto-Erkennung ueberschrieben, und ein erneutes
+# Lesen aus options.json wuerde genau diese Erkennung aushebeln.
 yml() { jq "$1 // \"\"" "${OPT}"; }
+jstr() { jq -Rn --arg v "$1" '$v'; }
 MQTT_HOST=$(cfg '.mqtt_host')
 MQTT_PORT=$(cfg '.mqtt_port')
 MQTT_USER=$(cfg '.mqtt_user')
@@ -74,10 +79,10 @@ frigate:
   user: $(yml '.frigate_user')
   password: $(yml '.frigate_password')
 mqtt:
-  host: $(yml '.mqtt_host')
+  host: $(jstr "${MQTT_HOST}")
   port: ${MQTT_PORT:-1883}
-  user: $(yml '.mqtt_user')
-  password: $(yml '.mqtt_password')
+  user: $(jstr "${MQTT_USER}")
+  password: $(jstr "${MQTT_PASSWORD}")
 faceid:
   port: 8600
   mqtt_prefix: $(yml '.mqtt_prefix')
