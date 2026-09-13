@@ -21,6 +21,9 @@ update dialog; standalone users can watch GitHub releases.
   an unparseable file — and a crafted value could write further keys into the config. They
   now go through `jq`, which emits a properly escaped JSON string, and JSON is valid YAML.
   This applied to the MQTT credentials as well, which predates this release.
+  The same applied to the four camera lists, which were joined into a string and wrapped in
+  brackets by the template — a camera name containing a comma or a quote broke the list.
+  They are emitted as JSON arrays now.
 - Fixed alongside it: an emptied `frigate_topic_prefix` or `mqtt_prefix` became YAML `null`,
   and `str(None).strip("/") or "frigate"` yields the string `"None"` — FaceID would have
   subscribed to `None/events` and never seen an event. They now degrade to the default.

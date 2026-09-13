@@ -66,10 +66,13 @@ fi
 # '// []' MUSS vor die Pipe: cfg() haengt nur '// empty' ans Ende, das bindet dann an
 # join() und faengt eine fehlende Option nicht ab — jq bricht mit "Cannot iterate over
 # null" ab. Passiert, wenn eine Liste neu dazukommt und options.json sie noch nicht hat.
-CAMERAS=$(cfg '.cameras // [] | join(", ")')
-DISCOVERY=$(cfg '.discovery_cameras // [] | join(", ")')
-CLIPCAMS=$(cfg '.clip_fallback_cameras // [] | join(", ")')
-LIVECAMS=$(cfg '.live_hires_fallback_cameras // [] | join(", ")')
+# Als JSON-Array, nicht als zusammengefuegte Zeichenkette: Kameranamen sind Freitext, und
+# ein Komma oder Anfuehrungszeichen darin zerlegte die erzeugte Liste. JSON ist gueltiges
+# YAML, die eckigen Klammern kommen deshalb aus jq und nicht aus der Vorlage.
+CAMERAS=$(jq -c '.cameras // []' "${OPT}")
+DISCOVERY=$(jq -c '.discovery_cameras // []' "${OPT}")
+CLIPCAMS=$(jq -c '.clip_fallback_cameras // []' "${OPT}")
+LIVECAMS=$(jq -c '.live_hires_fallback_cameras // []' "${OPT}")
 
 cat > /opt/faceid/config.yaml << EOF
 frigate:
@@ -95,9 +98,9 @@ faceid:
   dedupe_threshold: $(cfg '.dedupe_threshold')
   hires_enroll: $(cfg '.hires_enroll')
   clip_fallback: $(cfg '.clip_fallback')
-  clip_fallback_cameras: [${CLIPCAMS}]
+  clip_fallback_cameras: ${CLIPCAMS}
   live_hires_fallback: $(cfg '.live_hires_fallback')
-  live_hires_fallback_cameras: [${LIVECAMS}]
+  live_hires_fallback_cameras: ${LIVECAMS}
   live_hires_mode: $(cfg '.live_hires_mode')
   live_hires_cooldown: $(cfg '.live_hires_cooldown')
   frigate_topic_prefix: $(yml '.frigate_topic_prefix')
@@ -111,8 +114,8 @@ faceid:
   det_size: $(cfg '.det_size')
   max_attempts: $(cfg '.max_attempts')
   retry_seconds: 2.5
-  cameras: [${CAMERAS}]
-  discovery_cameras: [${DISCOVERY}]
+  cameras: ${CAMERAS}
+  discovery_cameras: ${DISCOVERY}
 EOF
 
 # Galerie + Modell-Cache im persistenten /data-Volume (überlebt Updates)
