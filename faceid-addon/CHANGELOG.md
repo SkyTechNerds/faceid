@@ -16,6 +16,14 @@ update dialog; standalone users can watch GitHub releases.
   larger half underneath.
 - Nothing changes for existing installs: an empty value and a missing key both end up as
   `user=None`, exactly as before, so the open API on port 5000 stays the default.
+- **Free-text options no longer break the generated config.** Credentials, prefixes and the
+  URL were interpolated raw into quoted YAML. A password containing a double quote produced
+  an unparseable file — and a crafted value could write further keys into the config. They
+  now go through `jq`, which emits a properly escaped JSON string, and JSON is valid YAML.
+  This applied to the MQTT credentials as well, which predates this release.
+- Fixed alongside it: an emptied `frigate_topic_prefix` or `mqtt_prefix` became YAML `null`,
+  and `str(None).strip("/") or "frigate"` yields the string `"None"` — FaceID would have
+  subscribed to `None/events` and never seen an event. They now degrade to the default.
 
 ## 0.22.2 — 2026-09-04
 

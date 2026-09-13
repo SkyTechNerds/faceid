@@ -16,8 +16,11 @@ fi
 OPT=/data/options.json
 cfg() { jq -r "$1 // empty" "${OPT}"; }
 
-FRIGATE_USER=$(cfg '.frigate_user')
-FRIGATE_PASSWORD=$(cfg '.frigate_password')
+# Freitextfelder werden ueber jq ausgegeben, nicht roh interpoliert: jq liefert einen
+# JSON-String mit korrektem Escaping, und JSON ist gueltiges YAML. Ein Passwort mit
+# Anfuehrungszeichen zerlegte sonst die Datei — schlimmstenfalls liessen sich damit
+# weitere Schluessel in die Konfiguration schreiben.
+yml() { jq "$1 // \"\"" "${OPT}"; }
 MQTT_HOST=$(cfg '.mqtt_host')
 MQTT_PORT=$(cfg '.mqtt_port')
 MQTT_USER=$(cfg '.mqtt_user')
@@ -65,19 +68,19 @@ LIVECAMS=$(cfg '.live_hires_fallback_cameras // [] | join(", ")')
 
 cat > /opt/faceid/config.yaml << EOF
 frigate:
-  url: $(cfg '.frigate_url')
+  url: $(yml '.frigate_url')
   # Nur fuer Frigates authentifizierten Port 8971 noetig. Leer lassen heisst offene API:
   # FrigateAPI macht aus dem leeren Wert None, genau wie im Standalone-Betrieb.
-  user: "${FRIGATE_USER}"
-  password: "${FRIGATE_PASSWORD}"
+  user: $(yml '.frigate_user')
+  password: $(yml '.frigate_password')
 mqtt:
-  host: ${MQTT_HOST}
+  host: $(yml '.mqtt_host')
   port: ${MQTT_PORT:-1883}
-  user: "${MQTT_USER}"
-  password: "${MQTT_PASSWORD}"
+  user: $(yml '.mqtt_user')
+  password: $(yml '.mqtt_password')
 faceid:
   port: 8600
-  mqtt_prefix: $(cfg '.mqtt_prefix')
+  mqtt_prefix: $(yml '.mqtt_prefix')
   match_threshold: $(cfg '.match_threshold')
   unknown_threshold: $(cfg '.unknown_threshold')
   cluster_eps: $(cfg '.cluster_eps')
@@ -92,7 +95,7 @@ faceid:
   live_hires_fallback_cameras: [${LIVECAMS}]
   live_hires_mode: $(cfg '.live_hires_mode')
   live_hires_cooldown: $(cfg '.live_hires_cooldown')
-  frigate_topic_prefix: $(cfg '.frigate_topic_prefix')
+  frigate_topic_prefix: $(yml '.frigate_topic_prefix')
   poll_interval: $(cfg '.poll_interval')
   backup_enabled: $(cfg '.backup_enabled')
   backup_hour: $(cfg '.backup_hour')
