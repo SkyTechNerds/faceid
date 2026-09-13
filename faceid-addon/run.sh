@@ -63,12 +63,12 @@ if [ -z "${MQTT_HOST}" ]; then
     exit 1
 fi
 
-# '// []' MUSS vor die Pipe: cfg() haengt nur '// empty' ans Ende, das bindet dann an
-# join() und faengt eine fehlende Option nicht ab — jq bricht mit "Cannot iterate over
-# null" ab. Passiert, wenn eine Liste neu dazukommt und options.json sie noch nicht hat.
 # Als JSON-Array, nicht als zusammengefuegte Zeichenkette: Kameranamen sind Freitext, und
 # ein Komma oder Anfuehrungszeichen darin zerlegte die erzeugte Liste. JSON ist gueltiges
 # YAML, die eckigen Klammern kommen deshalb aus jq und nicht aus der Vorlage.
+#
+# '// []' bleibt noetig: Kommt eine Liste neu dazu und steht noch nicht in options.json,
+# liefert der Zugriff sonst null statt einer leeren Liste.
 CAMERAS=$(jq -c '.cameras // []' "${OPT}")
 DISCOVERY=$(jq -c '.discovery_cameras // []' "${OPT}")
 CLIPCAMS=$(jq -c '.clip_fallback_cameras // []' "${OPT}")
