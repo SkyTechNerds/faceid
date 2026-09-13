@@ -16,6 +16,8 @@ fi
 OPT=/data/options.json
 cfg() { jq -r "$1 // empty" "${OPT}"; }
 
+FRIGATE_USER=$(cfg '.frigate_user')
+FRIGATE_PASSWORD=$(cfg '.frigate_password')
 MQTT_HOST=$(cfg '.mqtt_host')
 MQTT_PORT=$(cfg '.mqtt_port')
 MQTT_USER=$(cfg '.mqtt_user')
@@ -64,6 +66,10 @@ LIVECAMS=$(cfg '.live_hires_fallback_cameras // [] | join(", ")')
 cat > /opt/faceid/config.yaml << EOF
 frigate:
   url: $(cfg '.frigate_url')
+  # Nur fuer Frigates authentifizierten Port 8971 noetig. Leer lassen heisst offene API:
+  # FrigateAPI macht aus dem leeren Wert None, genau wie im Standalone-Betrieb.
+  user: "${FRIGATE_USER}"
+  password: "${FRIGATE_PASSWORD}"
 mqtt:
   host: ${MQTT_HOST}
   port: ${MQTT_PORT:-1883}

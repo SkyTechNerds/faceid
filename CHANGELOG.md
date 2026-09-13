@@ -3,6 +3,20 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.22.3 — 2026-09-13
+
+- **Frigate credentials work in the app at last.** `frigate_user` and `frigate_password`
+  have been offered as options for a long time, but `run.sh` never wrote them into the
+  generated config — so anyone running Frigate behind its authenticated port 8971 could not
+  connect FaceID as a Home Assistant app at all. The options looked usable and did nothing.
+  Reported in #24, where the visible symptom was a different one.
+- **Supervisor stops warning about them.** Both keys were listed under `options` but missing
+  from `schema`, which produced `Option 'frigate_user' does not exist in the schema for
+  FaceID` on every start. That is what the report was about; the dead pass-through was the
+  larger half underneath.
+- Nothing changes for existing installs: an empty value and a missing key both end up as
+  `user=None`, exactly as before, so the open API on port 5000 stays the default.
+
 ## 0.22.2 — 2026-09-04
 
 - **Security: a person's name could execute JavaScript in the web UI.** Captions were
