@@ -2,6 +2,7 @@
 # config.yaml is gitignored: it contains your MQTT credentials.
 
 frigate:
+  enabled: true                         # false when folder input is used without Frigate
   # Either Frigate's open API (port 5000) or its authenticated one (8971, https).
   # For 8971 add user/password below; see README "Connecting to Frigate".
   url: http://192.168.1.10:5000        # your Frigate base URL
@@ -10,10 +11,30 @@ frigate:
   # verify_tls: false       # Frigate ships a self-signed certificate by default
 
 mqtt:
+  enabled: true                         # false keeps the UI working without an MQTT broker
   host: 192.168.1.2                    # your MQTT broker (same one Frigate uses)
   port: 1883
   user: mqtt-user
   password: "mqtt-password"
+
+# Optional alternative input: watch completed recordings instead of Frigate events.
+# Files are never changed or deleted. Size and mtime must remain stable across two scans,
+# and successful fingerprints are remembered in data/folder_ingest.json across restarts.
+folder:
+  enabled: false
+  path: /recordings
+  camera: front_door
+  recursive: true
+  process_existing: true                # false starts with files created after first launch
+  extensions: [.mp4, .mkv, .mov, .avi, .webm, .m4v]
+  poll_interval: 10                     # seconds between directory scans
+  settle_seconds: 10                    # final filename must also be this old
+  max_frames: 24                        # evenly sampled across each recording
+  min_detection_score: 0.65
+  same_person_similarity: 0.55          # collapse repeated views within one recording
+  max_people_per_file: 6
+  max_retries: 3
+  retry_seconds: 60
 
 faceid:
   port: 8600                           # web UI / API port

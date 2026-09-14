@@ -5,6 +5,12 @@ on top of [Frigate](https://frigate.video). It uses the same model family as Imm
 CompreFace (**InsightFace `buffalo_l`**: SCRFD detection + ArcFace embeddings) and was
 built because Frigate's built-in face recognition UX didn't cut it:
 
+FaceID can also run without Frigate by watching a directory of completed recordings.
+It samples frames from each new video, groups repeated views of the same face within the
+clip, and sends each distinct face through the normal gallery, unknown-review, history,
+and MQTT pipeline. Processed file fingerprints survive restarts, and input files are
+opened read-only and never changed.
+
 - **No train-tab treadmill.** Matching is nearest-neighbor over face embeddings — every
   image you assign is a visible reference point, with no training cycles and no queue
   that refills with already-known faces. To be clear: this is not immune to bad data —
@@ -99,8 +105,9 @@ never leave your machine.
 
 ## Requirements
 
-- Frigate 0.16+ (snapshot + sub_label APIs), reachable over HTTP
-- An MQTT broker (the one Frigate already uses is fine)
+- Either Frigate 0.16+ with MQTT, or a readable directory of completed recordings.
+  MQTT remains optional in folder mode; enable it only when Home Assistant discovery and
+  recognition events are wanted.
 - A CPU with AVX (any Intel/AMD from the last decade; no GPU needed).
   **Running HAOS/your host in a VM?** The default virtual CPU model (e.g. Proxmox `kvm64`)
   hides AVX — set the VM CPU type to `host` and cold-restart the VM, or the recognition
@@ -224,6 +231,36 @@ names in Frigate's Explore view, or requires admin credentials in a config file.
 
 Trade-offs, TLS, what FaceID actually requests, and which setup fits which network:
 **[docs/frigate-connection.md](docs/frigate-connection.md)**.
+
+## Completed-recording folder mode (without Frigate)
+
+Contributed by [@thethereza](https://github.com/thethereza) — the idea and the implementation are his. FaceID began as a Frigate companion, but the recognition, gallery, unknown review and history were never Frigate-specific; only the source of the images was.
+
+Set `frigate.enabled: false` and add a `folder` section to `config.yaml`:
+
+```yaml
+frigate:
+  enabled: false
+  url: ""
+
+folder:
+  enabled: true
+  path: /recordings
+  camera: front_door
+  poll_interval: 10
+  settle_seconds: 10
+  max_frames: 24
+
+mqtt:
+  enabled: false  # enable later if Home Assistant notifications are wanted
+```
+
+Only completed files with configured extensions are considered. A file must keep the
+same size and modification time over two polls and be older than `settle_seconds`.
+Successful files are indexed in `data/folder_ingest.json`, so restarts do not create
+duplicate sightings. Replacing a file at the same path gives it a new fingerprint and
+processes it again. The Unknown-tab button becomes **Scan recording folder**, and the
+header shows the number of processed files.
 
 ## Getting started
 

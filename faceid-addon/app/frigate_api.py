@@ -17,6 +17,8 @@ log = logging.getLogger("faceid.frigate")
 
 
 class FrigateAPI:
+    enabled = True
+
     def __init__(self, base_url: str, timeout: float = 6.0, user: str | None = None,
                  password: str | None = None, verify_tls: bool = False,
                  go2rtc_url: str | None = None):
@@ -190,7 +192,72 @@ class FrigateAPI:
 
 def frigate_client(cfg: dict, timeout: float = 6.0) -> FrigateAPI:
     """FrigateAPI aus der Konfiguration — mit Anmeldung, falls Zugangsdaten gesetzt sind."""
-    f = cfg["frigate"]
-    return FrigateAPI(f["url"], timeout=timeout, user=f.get("user"),
+    f = cfg.get("frigate") or {}
+    url = str(f.get("url") or "").strip()
+    # Die Vorgabe fuer ``enabled`` haengt an der URL, nicht an True: wer den Ordner nutzt,
+    # loescht den frigate-Block oft ganz, statt ``enabled: false`` hineinzuschreiben. Mit
+    # fester Vorgabe True landete das beim Start in ``f["url"]`` und damit im KeyError.
+    # Bestehende Konfigurationen haben eine URL und bleiben deshalb unveraendert an.
+    if not bool(f.get("enabled", bool(url))):
+        return DisabledFrigateAPI()
+    if not url:
+        raise ValueError("frigate.enabled is on but frigate.url is empty — set a URL, "
+                         "or switch Frigate off with frigate.enabled: false")
+    return FrigateAPI(url, timeout=timeout, user=f.get("user"),
                       password=f.get("password"), verify_tls=bool(f.get("verify_tls", False)),
                       go2rtc_url=f.get("go2rtc_url"))
+
+
+class _NoNetwork:
+    """Platzhalter fuer die Sitzung: macht das Versehen laut statt raetselhaft."""
+
+    def __getattr__(self, name):
+        raise RuntimeError(
+            f"FrigateAPI.{name} was called while Frigate is disabled — this path needs an "
+            "override in DisabledFrigateAPI or a guard at the call site")
+
+
+class DisabledFrigateAPI(FrigateAPI):
+    """No-op client used when another input source, such as a folder, feeds FaceID.
+
+    Keeping the same small interface lets the gallery and review UI remain usable without
+    scattering ``if frigate`` checks through every assignment endpoint.
+
+    Erbt bewusst von ``FrigateAPI``, obwohl nichts davon benutzt wird: nur so stimmt die
+    Annotation ``frigate_client(...) -> FrigateAPI``, und eine spaeter hinzugefuegte
+    Methode fehlt hier nicht stillschweigend. ``__init__`` ruft absichtlich nicht die
+    Oberklasse — es gibt keine Adresse, keine Sitzung und keine Anmeldung; ein trotzdem
+    geerbter Netzpfad laeuft in ``_NoNetwork`` und sagt, was zu tun ist.
+    """
+
+    enabled = False
+
+    def __init__(self):
+        self.base = ""
+        self.go2rtc = ""
+        self.timeout = 0.0
+        self.session = _NoNetwork()
+        self.user = None
+        self.password = ""
+        self._logged_in_at = 0.0
+
+    def snapshot(self, event_id: str, crop: bool = True):
+        return None
+
+    def recording_frame(self, camera: str, ts: float):
+        return None
+
+    def live_frame(self, camera: str, timeout: float = 3.0):
+        return None
+
+    def download_clip(self, event_id: str, dest: str, max_bytes: int = 80_000_000):
+        return False
+
+    def config(self):
+        return {"cameras": {}}
+
+    def events(self, **params):
+        return []
+
+    def set_sub_label(self, event_id: str, label: str, score: float):
+        return None

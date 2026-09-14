@@ -14,6 +14,7 @@ from .history import History
 from .mqtt_listener import EventProcessor
 from .webui import build_app
 from .backup_util import start_auto_backup
+from .folder_ingest import FolderIngest
 
 BASE = Path(__file__).resolve().parent.parent
 
@@ -63,7 +64,13 @@ def main():
     history = History(data_dir, keep=int(cfg["faceid"].get("history_keep", 200)))
     processor = EventProcessor(cfg, engine, gallery, frigate)
     processor.history = history if history.keep > 0 else None
+    # Erst zuweisen, dann starten: die Threads aus start() lesen den Zustand des
+    # Prozessors, und ein halb aufgebautes Objekt ist kein Zustand, auf den man sich
+    # verlassen kann.
+    folder = FolderIngest(cfg, data_dir, engine, processor)
+    processor.folder_ingest = folder
     processor.start()
+    folder.start()
     start_auto_backup(cfg["faceid"], data_dir)
     app = build_app(cfg, engine, gallery, processor, data_dir, BASE / "static")
     uvicorn.run(app, host="0.0.0.0", port=int(cfg["faceid"].get("port", 8600)), log_level="warning")
