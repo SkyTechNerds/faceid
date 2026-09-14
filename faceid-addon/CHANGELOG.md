@@ -3,7 +3,7 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
-## Unreleased — completed-recording folder input
+## 0.23.0 — 2026-09-14 — completed-recording folder input
 
 Contributed by [@thethereza](https://github.com/thethereza), who brought the idea and
 built the input; the review follow-ups below were finished on his branch.
