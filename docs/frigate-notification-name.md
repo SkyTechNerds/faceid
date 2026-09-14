@@ -20,7 +20,7 @@ probably noticed the name never appears in it. Two measured reasons:
   That was wrong: the test behind it ran against an *already finished* event, where nothing
   more is sent. On a **running** event, Frigate 0.17.2 forwards it in the same second, as
   `after.sub_label` = `["Eli", 0.514]` — an array of name and score.
-- The catch is *where* it appears. At least one widely used Frigate notification blueprint
+  The catch is *where* it appears. At least one widely used Frigate notification blueprint
   reads `after.data.sub_labels`, which is `null` on 0.17.2. The name is in the payload, just
   not at the field being read — so the notification stays nameless and it looks like FaceID
   never wrote anything.

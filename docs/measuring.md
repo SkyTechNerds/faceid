@@ -18,9 +18,10 @@ analyses in the service itself and shows them as tables:
 | Why do events yield no face? | no face at all / too small / detector unsure, per camera | downloads one snapshot per event |
 
 This is not a wrapper around the scripts below, because it could not be: `scripts/` is not
-part of the app image at all, and the delay measurement there reads `journalctl`, which does
-not exist in a container without systemd. If you run FaceID as a Home Assistant app, the tab
-is the only way to get these numbers.
+part of the app image at all, and the script it would have wrapped for the delay figures,
+`scripts/measure-delay.py`, reads `journalctl` — which does not exist in a container without
+systemd. If you run FaceID as a Home Assistant app, the tab is the only way to get these
+numbers.
 
 The delay figures therefore come from the history rather than the log, which also means they
 need no camera access. Recognitions produced by a history scan are excluded instead of being
@@ -28,11 +29,12 @@ averaged in — they lag their event by weeks — and the tab says how many it d
 
 ## With a terminal: the scripts
 
-Three scripts answer the questions that otherwise invite guesswork:
+Four scripts answer the questions that otherwise invite guesswork:
 
 ```bash
 python scripts/why-no-face.py --days 7 --clip 12   # why do events yield no face?
 python scripts/coverage.py                         # what is each person missing?
+python scripts/measure-delay.py --days 3           # how long until the name is published?
 python scripts/measure-recognition.py --baseline /tmp/old --days 3
 ```
 
@@ -46,6 +48,11 @@ recognises anyone" reports turn out not to be gallery problems at all.
 `coverage.py` reports, per person: photo count, diversity, viewing angles from the
 landmarks, which cameras she was enrolled from, greyscale/IR shots, and a leave-one-out
 self test — then names the concrete gap.
+
+`measure-delay.py` is the fourth and the one the Tools tab has superseded: it derives the
+same delay figures from `journalctl`, so it only runs on a systemd host and only as far back
+as the log is kept. The tab reads the history instead, which is why its numbers are
+available in the app and survive log rotation.
 
 `measure-recognition.py` compares the current gallery against an older one (unpack a
 backup from `data/backups`) and adds a practical probe against recent Frigate events,
