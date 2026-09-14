@@ -40,6 +40,18 @@ class DisabledClientTests(unittest.TestCase):
             DisabledFrigateAPI().session.get("http://example.invalid")
         self.assertIn("Frigate is disabled", str(ctx.exception))
 
+    def test_a_missing_frigate_section_is_the_same_as_off(self):
+        # Wer den Ordner nutzt, loescht den Block oft ganz. Mit fester Vorgabe True
+        # stuerzte der Start hier mit KeyError: 'url' ab, bevor irgendetwas lief.
+        for cfg in ({}, {"frigate": {}}, {"frigate": None}, {"frigate": {"url": ""}}):
+            with self.subTest(cfg=cfg):
+                self.assertIsInstance(frigate_client(cfg), DisabledFrigateAPI)
+
+    def test_enabled_without_a_url_says_what_is_wrong(self):
+        with self.assertRaises(ValueError) as ctx:
+            frigate_client({"frigate": {"enabled": True}})
+        self.assertIn("frigate.url is empty", str(ctx.exception))
+
     def test_enabled_by_default_so_existing_configs_are_untouched(self):
         client = frigate_client({"frigate": {"url": "http://f:5000"}})
         self.assertIsInstance(client, FrigateAPI)

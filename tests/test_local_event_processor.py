@@ -99,3 +99,10 @@ class LocalEventProcessorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProcessorDefaultsTests(unittest.TestCase):
+    def test_folder_ingest_has_a_class_level_default(self):
+        # Damit kein Leser den Zeitraum zwischen start() und der Zuweisung abfangen muss.
+        from app.mqtt_listener import EventProcessor
+        self.assertIsNone(EventProcessor.folder_ingest)

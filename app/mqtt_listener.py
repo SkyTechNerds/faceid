@@ -25,6 +25,10 @@ log = logging.getLogger("faceid.mqtt")
 
 
 class EventProcessor:
+    # Wird in main() gesetzt, sobald der Ordner-Eingang gebaut ist. Als Klassenvorgabe da,
+    # damit kein Leser den Zeitraum zwischen start() und der Zuweisung abfangen muss.
+    folder_ingest = None
+
     def __init__(self, cfg: dict, engine, gallery, frigate):
         self.cfg = cfg
         self.engine = engine

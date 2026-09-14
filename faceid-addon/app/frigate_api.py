@@ -193,9 +193,17 @@ class FrigateAPI:
 def frigate_client(cfg: dict, timeout: float = 6.0) -> FrigateAPI:
     """FrigateAPI aus der Konfiguration — mit Anmeldung, falls Zugangsdaten gesetzt sind."""
     f = cfg.get("frigate") or {}
-    if not bool(f.get("enabled", True)):
+    url = str(f.get("url") or "").strip()
+    # Die Vorgabe fuer ``enabled`` haengt an der URL, nicht an True: wer den Ordner nutzt,
+    # loescht den frigate-Block oft ganz, statt ``enabled: false`` hineinzuschreiben. Mit
+    # fester Vorgabe True landete das beim Start in ``f["url"]`` und damit im KeyError.
+    # Bestehende Konfigurationen haben eine URL und bleiben deshalb unveraendert an.
+    if not bool(f.get("enabled", bool(url))):
         return DisabledFrigateAPI()
-    return FrigateAPI(f["url"], timeout=timeout, user=f.get("user"),
+    if not url:
+        raise ValueError("frigate.enabled is on but frigate.url is empty — set a URL, "
+                         "or switch Frigate off with frigate.enabled: false")
+    return FrigateAPI(url, timeout=timeout, user=f.get("user"),
                       password=f.get("password"), verify_tls=bool(f.get("verify_tls", False)),
                       go2rtc_url=f.get("go2rtc_url"))
 
