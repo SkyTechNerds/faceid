@@ -612,6 +612,16 @@ the presence sensor, where it stays until the next recognition replaces it — t
 falls back to `nobody` when nobody is around, but `last` keeps answering who was seen there
 most recently. It is absent until the first recognition after a restart.
 
+**So the sensor reads `nobody` most of the time, and that is normal** — it only holds a name
+while someone was seen in the last `presence_window` seconds, and a Frigate event lasts a few
+of those. If you look at the topic between events, you will see `nobody` with `last` still
+naming whoever passed by. A background sweep every 5 seconds clears expired names, so the
+switch to `nobody` happens up to 5 seconds after the window itself ran out. Raising
+`presence_window` makes people count as present for longer; it changes nothing about
+recognition. This is the reason automations should trigger on `faceid/event` rather than poll
+the sensor: the event fires at the moment of recognition, the sensor answers "is anyone there
+right now".
+
 ⚠️ **An empty `zones` does not mean "outside every zone".** It also appears when the camera
 has no zones at all, and when Frigate never registered the person in one — being *visible*
 in a region and being *counted as in a zone* are different things (the zone test uses the
