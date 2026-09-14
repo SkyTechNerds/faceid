@@ -26,6 +26,9 @@ folder:
   camera: front_door
   recursive: true
   process_existing: true                # false starts with files created after first launch
+  # Videos by default. Still images work too — the same face pipeline runs on them —
+  # but they are only picked up if you list their extension here:
+  #   extensions: [.mp4, .mkv, .jpg, .jpeg, .png, .webp]
   extensions: [.mp4, .mkv, .mov, .avi, .webm, .m4v]
   poll_interval: 10                     # seconds between directory scans
   settle_seconds: 10                    # final filename must also be this old
