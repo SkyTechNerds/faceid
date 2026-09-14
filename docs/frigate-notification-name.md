@@ -47,9 +47,20 @@ Home Assistant keeps the copy it has. Use **Settings → Automations & scenes �
 
 ## Or keep the blueprint you already have
 
-Since Frigate does forward the name (see above), a Frigate-side blueprint can show it — it
-just has to read `after.sub_label`, which on 0.17.2 is an array: `["Alice", 0.51]`, so the
-name is `after.sub_label[0]`.
+Since Frigate does forward the name (see above), a Frigate-side blueprint can show it — but
+reading the right field is only half of it.
+
+1. **Read `after.sub_label`**, which on 0.17.2 is an array: `["Alice", 0.51]`, so the name
+   is `after.sub_label[0]` — not `after.data.sub_labels`, which is `null`.
+2. **Act on the `update` message, not only the first one.** Frigate publishes each event on
+   `frigate/events` several times with `type` `new`, `update` and `end`. The name cannot be
+   in the `new` message, for the reason at the top of this page: FaceID has not produced it
+   yet — median 9.9 s, up to 41.7 s. It arrives on a later `update`. A blueprint that
+   triggers only on the event starting will read the correct field and still find it empty,
+   which looks exactly like FaceID never writing anything.
+
+That second point is why replacing an already-sent notification (above) is the simpler
+route: it needs one trigger on `faceid/event`, at the moment the name exists.
 
 If you use SgtBatten's blueprint and would rather extend that than run a second automation,
 **@crunchynuts has published a merged version** covering both routes — the Frigate payload

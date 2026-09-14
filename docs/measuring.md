@@ -65,9 +65,13 @@ your threshold was moved into the UI: Settings → *Does it actually work?* runs
 leave-one-out test and the practical probe as a background job and reports the one number
 that matters, how high a stranger got. That covers threshold and `match_top_k`.
 
-All three reports are in the Tools tab, coverage included. What still needs a shell is
-running them against a **different** gallery than the live one, and neither case is
-required to run FaceID well:
+So every script has a home in the UI, but not all in the same place: `why-no-face.py`,
+`coverage.py` and `measure-delay.py` are the three reports in the **Tools tab**, while
+`measure-recognition.py`'s equivalent is the background job under **Settings → *Does it
+actually work?*** described just above.
+
+What none of them can do from the UI is run against a **different** gallery than the live
+one. That needs a shell, and neither case is required to run FaceID well:
 
 * `coverage.py --data <dir>` — point it at an unpacked backup from `data/backups` to see
   what a past gallery looked like
