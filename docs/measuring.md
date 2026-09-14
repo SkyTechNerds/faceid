@@ -1,0 +1,79 @@
+# Measuring instead of guessing
+
+Every number in this project came from one of these reports rather than from intuition.
+Run them on your own instance before changing a setting — the answer is usually not the
+one that feels obvious.
+
+← back to the [README](../README.md)
+
+## Without a terminal: the Tools tab
+
+Switch it on under **Settings → *Does it actually work?* → show the Tools tab**. It runs the same
+analyses in the service itself and shows them as tables:
+
+| Tool | Answers | Cost |
+|---|---|---|
+| How fast is a recognition? | delay from the start of the event to the published name, per attempt and camera | instant, reads the history |
+| How well is each person covered? | angles, cameras, day and night per person, and what photo is concretely missing | re-reads every reference photo |
+| Why do events yield no face? | no snapshot / no face at all / too small / detector unsure, per camera | downloads one snapshot per event |
+
+This is not a wrapper around the scripts below, because it could not be: `scripts/` is not
+part of the app image at all, and the script it would have wrapped for the delay figures,
+`scripts/measure-delay.py`, reads `journalctl` — which does not exist in a container without
+systemd. If you run FaceID as a Home Assistant app, the tab is the only way to get these
+numbers.
+
+The delay figures therefore come from the history rather than the log, which also means they
+need no camera access. Recognitions produced by a history scan are excluded instead of being
+averaged in — they lag their event by weeks — and the tab says how many it dropped.
+
+## With a terminal: the scripts
+
+Four scripts answer the questions that otherwise invite guesswork:
+
+```bash
+python scripts/why-no-face.py --days 7 --clip 12   # why do events yield no face?
+python scripts/coverage.py                         # what is each person missing?
+python scripts/measure-delay.py --days 3           # how long until the name is published?
+python scripts/measure-recognition.py --baseline /tmp/old --days 3
+```
+
+Start with `why-no-face.py` if recognition feels rare. It counts *why* events are
+discarded — no snapshot, no face at all, too small, detection uncertain — and separates
+the hopeless cases (person too far away) from the recoverable ones (the snapshot moment
+was bad). With
+`--clip` it re-checks discarded events against the recording, which tells you what
+`clip_fallback` is worth **on your cameras** rather than on mine. Most "it barely
+recognises anyone" reports turn out not to be gallery problems at all.
+
+`coverage.py` reports, per person: photo count, diversity, viewing angles from the
+landmarks, which cameras she was enrolled from, greyscale/IR shots, and a leave-one-out
+self test — then names the concrete gap.
+
+`measure-delay.py` is the one the Tools tab has superseded: it derives the
+same delay figures from `journalctl`, so it only runs on a systemd host and only as far back
+as the log is kept. The tab reads the history instead, which is why its numbers are
+available in the app and survive log rotation.
+
+`measure-recognition.py` compares the current gallery against an older one (unpack a
+backup from `data/backups`) and adds a practical probe against recent Frigate events,
+including how much headroom each recognition has above the threshold. Events whose face
+is already in the gallery are excluded — they score ~1.0 and measure nothing.
+
+**Running FaceID as a Home Assistant app?** You have no shell, so the part that decides
+your threshold was moved into the UI: Settings → *Does it actually work?* runs the
+leave-one-out test and the practical probe as a background job and reports the one number
+that matters, how high a stranger got. That covers threshold and `match_top_k`.
+
+So every script has a home in the UI, but not all in the same place: `why-no-face.py`,
+`coverage.py` and `measure-delay.py` are the three reports in the **Tools tab**, while
+`measure-recognition.py`'s equivalent is the background job under **Settings → *Does it
+actually work?*** described just above.
+
+What none of them can do from the UI is run against a **different** gallery than the live
+one. That needs a shell, and neither case is required to run FaceID well:
+
+* `coverage.py --data <dir>` — point it at an unpacked backup from `data/backups` to see
+  what a past gallery looked like
+* `measure-recognition.py --baseline <dir>` — compare two galleries after a round of
+  enrolling, to see whether the work actually moved anything

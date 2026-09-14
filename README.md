@@ -50,7 +50,7 @@ opened read-only and never changed.
 
 **What it is** — [Screenshots](#screenshots) · [How it works](#how-it-works) · [Local-only, and what gets downloaded](#local-only-and-what-gets-downloaded)
 
-**Setting it up** — [Requirements](#requirements) · [Install as a Home Assistant app](#install-as-a-home-assistant-app-recommended-for-haos) · [Install standalone](#install-standalone-lxc-vm-bare-metal) · [Connecting to Frigate](#connecting-to-frigate) · [Getting started](#getting-started)
+**Setting it up** — [Requirements](#requirements) · [Install as a Home Assistant app](#install-as-a-home-assistant-app-recommended-for-haos) · [Install standalone](#install-standalone-lxc-vm-bare-metal) · [Connecting to Frigate](#connecting-to-frigate) · [Recording folder instead of Frigate](#completed-recording-folder-mode-without-frigate) · [Getting started](#getting-started)
 
 **Living with it** — [Ignoring people](#ignoring-people) · [Sharper reference photos](#sharper-reference-photos) · [How training stays healthy](#how-training-stays-healthy) · [Backup & restore](#backup--restore)
 
@@ -59,6 +59,8 @@ opened read-only and never changed.
 **Home Assistant** — [Home Assistant](#home-assistant) · [Getting the name into your Frigate notification](#getting-the-name-into-your-frigate-notification)
 
 **Reference** — [Updates](#updates) · [Security & privacy notes](#security--privacy-notes) · [Configuration reference](#configuration-reference)
+
+**In depth** — [Tuning the threshold](docs/tuning-the-threshold.md) · [Measuring](docs/measuring.md) · [Notification name](docs/frigate-notification-name.md) · [Recognition pipeline](docs/recognition-pipeline.md) · [Connecting to Frigate](docs/frigate-connection.md) · [Gallery trimming](docs/trimming.md) · [Camera bridge](docs/camera-bridge.md)
 
 
 ## Screenshots
@@ -403,60 +405,13 @@ box-less snapshots: **[docs/camera-bridge.md](docs/camera-bridge.md)**.
 
 ## Calibrating the threshold
 
-The defaults are deliberately cautious, and on a real gallery that caution turned out to
-be expensive. Measure yours rather than guessing — the Tools tab produces the numbers
-without a terminal, as do `scripts/measure-recognition.py` and `scripts/coverage.py`.
+`match_threshold` is the one number that decides between "a name arrives" and "a stranger
+gets someone else's name". Raising it does not simply make FaceID stricter about
+strangers — in practice the people you enrolled are the ones who fall below the line
+first.
 
-On a 128-photo household gallery the separation was far wider than the defaults assume:
-
-| | correct person | someone else in the gallery |
-|---|---|---|
-| best match score | median 0.50 | median 0.18, **max 0.31** |
-
-With a default threshold of 0.50 sitting exactly on the median of correct matches, half
-of all genuine recognitions were discarded to keep a distance nothing ever came close to.
-Two changes followed, both measured:
-
-* **`match_top_k` 3 → 1.** Averaging the best k photos punishes people whose references
-  cover many angles — their own less similar photos drag the score down, so the
-  best-covered people scored worst.
-* **`match_threshold` 0.50 → 0.45**, still 0.14 above the highest score any stranger
-  ever reached.
-
-Together these lifted recognition on a held-out set of real events from 90% to 100%, and
-moved the weakest favourite's worst match from 0.01 above the cut-off to 0.09 above it —
-without a single misassignment.
-
-**In the UI:** Settings → *Does it actually work?* runs the same analysis as a background
-job — no shell needed, which matters if you run FaceID as a Home Assistant app. The
-scripts remain for scripted or comparative runs (`--baseline`, `--top-k`).
-
-### Strangers are rarely the limit — the people you enrolled are
-
-The obvious question is "how close does a stranger get?", and it is the wrong one to stop
-at. Two numbers matter, and the **higher** of them sets your floor:
-
-| | measured here |
-|---|---|
-| highest score a **stranger** reaches | 0.195 |
-| highest score between two **enrolled** people | **0.411** |
-
-Going by strangers alone, 0.25 would look safe. It is not: at 0.25 the two people in this
-household who resemble each other most become interchangeable — a father and daughter whose
-galleries overlap at 0.411. And a *wrong known name* is worse than no name at all, because
-automations act on it, while "unknown" can simply be ignored.
-
-This is why the analysis reports both, and why lowering the threshold because someone is
-not being recognised is usually the wrong move. (One case where no threshold helps: **small
-children** — a toddler's face is about half the size of an adult's and falls below
-`min_face_px` at the same distance. See
-[the pipeline doc](docs/recognition-pipeline.md#small-children-are-a-hard-case-not-a-tuning-problem).) If a person sits just below the line, the
-fix is more reference photos of the situations they are actually seen in — that raises
-*their* score without moving anyone else closer.
-
-Do not copy any of these numbers. Measure your own gallery: Settings → *Does it actually
-work?* reports the ceiling for both cases, and refuses to suggest lowering anything if it
-finds a misassignment.
+**→ [docs/tuning-the-threshold.md](docs/tuning-the-threshold.md)** — what the number
+trades away, how to find yours from your own data, and why strangers are rarely the limit.
 
 ## Seeing what it is doing
 
@@ -468,64 +423,12 @@ There is a warnings-only filter and a copy button for pasting into an issue.
 
 ## Measuring instead of guessing
 
-### Without a terminal: the Tools tab
+Nothing in this project is tuned by feel. Three reports answer the questions people
+actually have — *how fast is it?*, *is my gallery good enough?*, *why did that event
+produce no face?* — and they run either in the UI or from a terminal.
 
-Switch it on under **Settings → Does it work? → show the Tools tab**. It runs the same
-analyses in the service itself and shows them as tables:
-
-| Tool | Answers | Cost |
-|---|---|---|
-| How fast is a recognition? | delay from the start of the event to the published name, per attempt and camera | instant, reads the history |
-| How well is each person covered? | angles, cameras, day and night per person, and what photo is concretely missing | re-reads every reference photo |
-| Why do events yield no face? | no face at all / too small / detector unsure, per camera | downloads one snapshot per event |
-
-This is not a wrapper around the scripts below, because it could not be: `scripts/` is not
-part of the app image at all, and the delay measurement there reads `journalctl`, which does
-not exist in a container without systemd. If you run FaceID as a Home Assistant app, the tab
-is the only way to get these numbers.
-
-The delay figures therefore come from the history rather than the log, which also means they
-need no camera access. Recognitions produced by a history scan are excluded instead of being
-averaged in — they lag their event by weeks — and the tab says how many it dropped.
-
-### With a terminal: the scripts
-
-Three scripts answer the questions that otherwise invite guesswork:
-
-```bash
-python scripts/why-no-face.py --days 7 --clip 12   # why do events yield no face?
-python scripts/coverage.py                         # what is each person missing?
-python scripts/measure-recognition.py --baseline /tmp/old --days 3
-```
-
-Start with `why-no-face.py` if recognition feels rare. It counts *why* events are
-discarded — no face at all, too small, no snapshot — and separates the hopeless cases
-(person too far away) from the recoverable ones (the snapshot moment was bad). With
-`--clip` it re-checks discarded events against the recording, which tells you what
-`clip_fallback` is worth **on your cameras** rather than on mine. Most "it barely
-recognises anyone" reports turn out not to be gallery problems at all.
-
-`coverage.py` reports, per person: photo count, diversity, viewing angles from the
-landmarks, which cameras she was enrolled from, greyscale/IR shots, and a leave-one-out
-self test — then names the concrete gap.
-
-`measure-recognition.py` compares the current gallery against an older one (unpack a
-backup from `data/backups`) and adds a practical probe against recent Frigate events,
-including how much headroom each recognition has above the threshold. Events whose face
-is already in the gallery are excluded — they score ~1.0 and measure nothing.
-
-**Running FaceID as a Home Assistant app?** You have no shell, so the part that decides
-your threshold was moved into the UI: Settings → *Does it actually work?* runs the
-leave-one-out test and the practical probe as a background job and reports the one number
-that matters, how high a stranger got. That covers threshold and `match_top_k`.
-
-Two things still need a shell, and neither is required to run FaceID well:
-
-* the **coverage report** (`coverage.py`) — which angles, cameras and IR shots each
-  person is missing
-* **comparing two galleries** (`--baseline`) — useful after a round of enrolling, but the
-  UI analysis already tells you where you stand today
-
+**→ [docs/measuring.md](docs/measuring.md)** — the Tools tab, the standalone scripts, and
+how to read what they tell you.
 
 ## How training stays healthy
 
@@ -633,66 +536,12 @@ reaching FaceID, because FaceID only acts on events that have a snapshot.
 
 ## Getting the name into your Frigate notification
 
-If you use a Frigate notification blueprint (SgtBatten's is the common one), you have
-probably noticed the name never appears in it. Two measured reasons:
+Frigate's own notification fires the moment a person is detected — seconds before FaceID
+has a name — and the common blueprints read a field that stays empty even once it exists.
+Both are fixable.
 
-- **The name is not ready yet.** The blueprint fires when the event starts; FaceID first
-  needs a snapshot to exist, a face in it, and a match. Over 155 real recognitions on one
-  household setup the name was ready after a **median of 8 seconds**, the fastest in one.
-  What sets the floor is Frigate's time to a first usable snapshot, and that varies a lot —
-  it is not a fixed few seconds. Measure your own in FaceID's **Tools** tab (switch it on
-  under Settings → *Does it work?*); the numbers depend on your cameras and your hardware.
-- **Waiting can help — but often does not, for a different reason than I first published.**
-  ⚠️ An earlier version of this section claimed Frigate never announces the name over MQTT.
-  That was wrong: the test behind it ran against an *already finished* event, where nothing
-  more is sent. On a **running** event, Frigate 0.17.2 forwards it in the same second, as
-  `after.sub_label` = `["Eli", 0.514]` — an array of name and score.
-- The catch is *where* it appears. At least one widely used Frigate notification blueprint
-  reads `after.data.sub_labels`, which is `null` on 0.17.2. The name is in the payload, just
-  not at the field being read — so the notification stays nameless and it looks like FaceID
-  never wrote anything.
-
-So do it the other way round — react to FaceID's own event and **replace** the notification
-that already went out:
-
-[![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FSkyTechNerds%2Ffaceid%2Fblob%2Fmain%2Fblueprints%2Ffaceid-name-the-person.yaml)
-
-The trick is the **notification tag**: give it the same tag your Frigate blueprint uses (the
-event id, by default) and the phone replaces the earlier message instead of stacking a
-second one.
-
-⚠️ **If the notification arrives without a picture**, the Frigate address is almost always
-the reason. Since v0.20.0 the image comes from Home Assistant by default
-(`/api/frigate/notifications/<event>/snapshot.jpg`), which the phone resolves against its
-own HA connection — leave that setting alone and it works at home and away. If you switch to
-a Frigate address instead, it has to be reachable **from the phone**: `http://ccab4aaf-frigate:5000`
-and similar add-on hostnames exist only inside Home Assistant.
-
-⚠️ **Already imported an older version?** Pasting the URL again does *not* replace it —
-Home Assistant keeps the copy it has. Use **Settings → Automations & scenes → Blueprints →
-⋮ → Re-import blueprint**.
-
-### Or keep the blueprint you already have
-
-Since Frigate does forward the name (see above), a Frigate-side blueprint can show it — it
-just has to read `after.sub_label`, which on 0.17.2 is an array: `["Alice", 0.51]`, so the
-name is `after.sub_label[0]`.
-
-If you use SgtBatten's blueprint and would rather extend that than run a second automation,
-**@crunchynuts has published a merged version** covering both routes — the Frigate payload
-*and* `faceid/event`:
-
-- [blueprint_sgtbatten_faceid](https://github.com/whoisdave/home-automations/blob/06ce3d77193b3bb054eafe97a5ea22a826d97231/blueprints/blueprint_sgtbatten_faceid_v0.5_good_20260831.yaml) ·
-  [thread](https://community.home-assistant.io/t/1018333/51)
-
-A community contribution, not maintained here: I have read it but not run it, and its
-Signal notification path is written for the author's own setup. Which one to pick:
-
-| | |
-|---|---|
-| You already run SgtBatten's blueprint and want its full feature set | take the merged version above |
-| You want the name added with as little machinery as possible | take the blueprint in this repo | Optional filters for cameras, Frigate zones, and whether strangers should be
-announced at all. See [blueprints/faceid-name-the-person.yaml](blueprints/faceid-name-the-person.yaml).
+**→ [docs/frigate-notification-name.md](docs/frigate-notification-name.md)** — the
+blueprint that replaces the sent message, and how to adapt an automation you already have.
 
 ## Updates
 
