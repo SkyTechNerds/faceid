@@ -234,6 +234,8 @@ Trade-offs, TLS, what FaceID actually requests, and which setup fits which netwo
 
 ## Completed-recording folder mode (without Frigate)
 
+Contributed by [@thethereza](https://github.com/thethereza) — the idea and the implementation are his. FaceID began as a Frigate companion, but the recognition, gallery, unknown review and history were never Frigate-specific; only the source of the images was.
+
 Set `frigate.enabled: false` and add a `folder` section to `config.yaml`:
 
 ```yaml

@@ -189,3 +189,44 @@ class FolderWatcherTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ScanLockTests(unittest.TestCase):
+    """Die Sperre muss den ganzen Lauf halten und einen zweiten Anlauf ausfallen lassen."""
+
+    def _ingest(self, tmp):
+        cfg = {"folder": {"enabled": True, "path": tmp, "process_existing": True},
+               "faceid": {}}
+        return FolderIngest(cfg, Path(tmp), FakeEngine([]), None)
+
+    def test_second_scan_returns_immediately_instead_of_repeating_the_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp)
+            ing._lock.acquire()
+            try:
+                result = ing.scan_once()
+            finally:
+                ing._lock.release()
+            self.assertTrue(result["busy"])
+            self.assertEqual(result["processed"], 0)
+            # Nicht gewartet und danach doch gelaufen: der Zustand ist unberuehrt.
+            self.assertEqual(ing._status["last_scan"], 0.0)
+
+    def test_lock_is_released_after_a_failing_scan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp)
+            ing.path = Path(tmp) / "weg"          # existiert nicht -> FileNotFoundError
+            with self.assertRaises(FileNotFoundError):
+                ing.scan_once()
+            self.assertTrue(ing._lock.acquire(blocking=False), "Sperre haengt nach Fehler")
+            ing._lock.release()
+
+    def test_progress_reports_during_the_scan_not_only_at_the_end(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for n in ("a.mp4", "b.mp4", "c.mp4"):
+                (Path(tmp) / n).write_bytes(b"x")
+            ing = self._ingest(tmp)
+            seen = []
+            ing.scan_once(progress=lambda i, total: seen.append((i, total)))
+            self.assertEqual(seen[0], (0, 3), "Gesamtzahl muss sofort gemeldet werden")
+            self.assertEqual([i for i, _ in seen], [0, 1, 2, 3])

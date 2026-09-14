@@ -1,6 +1,12 @@
 # Changelog
 
+All notable changes to FaceID. The Home Assistant app shows this file in the
+update dialog; standalone users can watch GitHub releases.
+
 ## Unreleased — completed-recording folder input
+
+Contributed by [@thethereza](https://github.com/thethereza), who brought the idea and
+built the input; the review follow-ups below were finished on his branch.
 
 - Add a no-Frigate mode that watches a directory for completed video/image files.
 - Require stable file size and mtime before processing, persist fingerprints across
@@ -8,9 +14,20 @@
 - Sample video frames, collapse repeated views of the same person within each file, and
   reuse the existing gallery, unknown clustering, history, MQTT, and review UI.
 - Add folder-aware health and manual-scan UI plus a low-priority hardened systemd unit.
-
-All notable changes to FaceID. The Home Assistant app shows this file in the
-update dialog; standalone users can watch GitHub releases.
+- **Fixed: the unknown review broke when `url:` was left empty.** `url:` written with no
+  value is YAML `null`, not a missing key, so the `.get("url", "")` default never applied
+  and `None.rstrip("/")` took out `/api/unknowns` with a 500. Reproduced before and after.
+- **Fixed: a history scan with no input configured failed with `KeyError: 'url'`.** The
+  branch was chosen by `folder_mode` rather than by whether an input is usable, so turning
+  Frigate off before setting up the folder landed in the Frigate path without Frigate. The
+  scan is now rejected up front with an explanation instead of dying in the worker.
+- The folder scan reports progress while it runs instead of only at the end, so the bar no
+  longer sits at 0/0 for a long directory and reads as a hang.
+- A manual scan started while the poller is already scanning returns immediately instead of
+  waiting and then walking the same files a second time. The lock now covers the whole run,
+  not just the check-and-set.
+- `DisabledFrigateAPI` inherits from `FrigateAPI`, so `frigate_client(...) -> FrigateAPI`
+  is honest and a method added later cannot silently be missing in folder mode.
 
 ## 0.22.2 — 2026-09-04
 

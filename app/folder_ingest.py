@@ -205,10 +205,24 @@ class FolderIngest:
             self._stop.wait(self.poll_interval)
         self._status["running"] = False
 
-    def scan_once(self, now: float | None = None) -> dict:
-        """Discover and synchronously process stable files; safe to call from tests/UI."""
+    def scan_once(self, now: float | None = None, progress=None) -> dict:
+        """Discover and synchronously process stable files; safe to call from tests/UI.
+
+        Die Sperre haelt den **ganzen** Lauf, nicht nur einen Zaehler: der Poller und ein
+        von Hand ausgeloester Scan wuerden sonst dieselbe Datei gleichzeitig verarbeiten
+        und sich in der Fingerabdruck-Buchhaltung ins Gehege kommen.
+
+        Haelt sie schon jemand, kehrt der zweite Aufruf **sofort** zurueck, statt zu warten.
+        Warten hiesse: der Poller ist fertig, und der Handscan geht anschliessend dieselbe
+        Menge noch einmal durch — Arbeit ohne Ergebnis, und in der Oberflaeche ein Balken,
+        der ein zweites Mal von vorn beginnt.
+        """
         now = time.time() if now is None else now
-        with self._lock:
+        if not self._lock.acquire(blocking=False):
+            log.info("folder scan already running — skipping this request")
+            return {"found": 0, "stable": 0, "processed": 0, "failed": 0,
+                    "faces": 0, "skipped": 0, "busy": True}
+        try:
             self._status.update(scanning=True, last_scan=now, last_error="")
             result = {"found": 0, "stable": 0, "processed": 0, "failed": 0,
                       "faces": 0, "skipped": 0}
@@ -217,6 +231,10 @@ class FolderIngest:
                     raise FileNotFoundError(f"watch folder is unavailable: {self.path}")
                 files = self._files()
                 result["found"] = len(files)
+                # Sofort melden, nicht erst am Ende: bei einem grossen Ordner steht der
+                # Balken sonst den ganzen Lauf auf 0/0 und liest sich wie ein Haenger.
+                if progress:
+                    progress(0, len(files))
                 # ``process_existing: false`` is a one-time baseline, not a permanent
                 # instruction to ignore every file that has never been seen before. Record
                 # startup contents now; later arrivals follow the normal settle path.
@@ -238,7 +256,9 @@ class FolderIngest:
                     self._save_state()
                     self._status["last_result"] = result
                     return result
-                for path in files:
+                for index, path in enumerate(files, 1):
+                    if progress:
+                        progress(index, len(files))
                     key = str(path.resolve())
                     try:
                         signature = self._signature(path)
@@ -292,6 +312,8 @@ class FolderIngest:
                 raise
             finally:
                 self._status["scanning"] = False
+        finally:
+            self._lock.release()
 
     def _process(self, path: Path, signature: tuple[int, int]) -> dict:
         t0 = time.time()

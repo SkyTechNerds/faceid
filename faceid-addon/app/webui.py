@@ -33,6 +33,16 @@ class NameBody(BaseModel):
     name: str
 
 
+def _frigate_url(cfg) -> str:
+    """Basis-URL aus der Konfiguration — leerer String, wenn kein Frigate konfiguriert ist.
+
+    ``url:`` ohne Wert ergibt in YAML ``None``, nicht den fehlenden Schluessel. Ein
+    ``.get("url", "")`` faengt deshalb nur den zweiten Fall ab, und ``None.rstrip("/")``
+    nimmt danach den ganzen Endpunkt mit. Beide Formen muessen hier leer werden.
+    """
+    return ((cfg.get("frigate") or {}).get("url") or "").rstrip("/")
+
+
 def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path) -> FastAPI:
     app = FastAPI(title="FaceID")
 
@@ -251,7 +261,7 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     @app.get("/api/unknowns")
     def unknowns():
         clusters = gallery.unknown_clusters(eps=float(cfg["faceid"].get("cluster_eps", 0.45)))
-        frigate_url = (cfg.get("frigate") or {}).get("url", "").rstrip("/")
+        frigate_url = _frigate_url(cfg)
         for c in clusters:
             for u in c:
                 if u.pop("has_full", False):
@@ -356,6 +366,10 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
 
     folder_input = getattr(processor, "folder_ingest", None)
     folder_mode = bool(folder_input and folder_input.enabled)
+    # Welcher Zweig laeuft, darf nicht allein an folder_mode haengen: wer Frigate
+    # abschaltet, bevor der Ordner eingerichtet ist, landet sonst im Frigate-Zweig ohne
+    # Frigate — und bekommt einen KeyError statt einer Auskunft.
+    frigate_usable = bool(getattr(processor.frigate, "enabled", True) and _frigate_url(cfg))
     backfill_state = {"running": False, "processed": 0, "total": 0, "result": None,
                       "days": 0, "mode": "folder" if folder_mode else "frigate"}
 
@@ -365,10 +379,17 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     @app.post("/api/backfill")
     def start_backfill(body: BackfillBody):
         days = max(1, min(int(body.days), 60))
+        if not folder_mode and not frigate_usable:
+            raise HTTPException(400, "No input configured — enable Frigate with a URL, "
+                                     "or switch on the recording folder")
         with job_lock:
             if backfill_state["running"]:
                 raise HTTPException(409, "History scan already running")
-            backfill_state.update(running=True, processed=0, total=0, result=None, days=days)
+            # ``days`` gilt nur fuer den Frigate-Zweig; der Ordner kennt kein Zeitfenster,
+            # sondern nur „schon verarbeitet oder nicht". 0 statt der angefragten Zahl,
+            # damit der Zustand nicht einen Zeitraum behauptet, nach dem niemand gesucht hat.
+            backfill_state.update(running=True, processed=0, total=0, result=None,
+                                  days=0 if folder_mode else days)
 
         def progress(i, total):
             backfill_state.update(processed=i, total=total)
@@ -376,13 +397,15 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         def worker():
             try:
                 if folder_mode:
-                    stats = folder_input.scan_once()
+                    # Derselbe progress-Rueckruf wie im Frigate-Zweig: der Ordnerlauf
+                    # meldet jetzt waehrenddessen, nicht erst danach.
+                    stats = folder_input.scan_once(progress=progress)
                     backfill_state.update(processed=stats.get("processed", 0),
                                           total=stats.get("found", 0))
                 else:
                     from .backfill import run_backfill
                     stats = run_backfill(
-                        engine, gallery, processor.frigate, cfg["frigate"]["url"], days=days,
+                        engine, gallery, processor.frigate, _frigate_url(cfg), days=days,
                         tag=bool(cfg["faceid"].get("set_sub_label", True)),
                         match_thr=float(cfg["faceid"].get("match_threshold", 0.5)),
                         progress=progress,
