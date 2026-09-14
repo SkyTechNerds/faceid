@@ -537,7 +537,8 @@ reaching FaceID, because FaceID only acts on events that have a snapshot.
 ## Getting the name into your Frigate notification
 
 Frigate's own notification fires the moment a person is detected — seconds before FaceID
-has a name — and the field it prints is not the one FaceID writes. Both are fixable.
+has a name — and the common blueprints read a field that stays empty even once it exists.
+Both are fixable.
 
 **→ [docs/frigate-notification-name.md](docs/frigate-notification-name.md)** — the
 blueprint that replaces the sent message, and how to adapt an automation you already have.

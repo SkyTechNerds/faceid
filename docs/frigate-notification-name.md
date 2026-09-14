@@ -1,7 +1,8 @@
 # Getting the name into your Frigate notification
 
-Frigate's own notification fires before FaceID has a name, and reads a field FaceID does
-not write. This is how to get the name in front of you anyway.
+Frigate's own notification fires before FaceID has a name — and the common blueprints then
+read a field that stays empty. Frigate does forward the name; the notification just does not
+look where it lands. This is how to get it in front of you anyway.
 
 ← back to the [README](../README.md)
 
