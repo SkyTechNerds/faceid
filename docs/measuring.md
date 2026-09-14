@@ -8,7 +8,7 @@ one that feels obvious.
 
 ## Without a terminal: the Tools tab
 
-Switch it on under **Settings → Does it work? → show the Tools tab**. It runs the same
+Switch it on under **Settings → *Does it actually work?* → show the Tools tab**. It runs the same
 analyses in the service itself and shows them as tables:
 
 | Tool | Answers | Cost |

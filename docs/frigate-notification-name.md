@@ -13,7 +13,7 @@ probably noticed the name never appears in it. Two measured reasons:
   household setup the name was ready after a **median of 8 seconds**, the fastest in one.
   What sets the floor is Frigate's time to a first usable snapshot, and that varies a lot —
   it is not a fixed few seconds. Measure your own in FaceID's **Tools** tab (switch it on
-  under Settings → *Does it work?*); the numbers depend on your cameras and your hardware.
+  under Settings → *Does it actually work?*); the numbers depend on your cameras and your hardware.
 - **Waiting can help — but often does not, for a different reason than I first published.**
   ⚠️ An earlier version of this section claimed Frigate never announces the name over MQTT.
   That was wrong: the test behind it ran against an *already finished* event, where nothing
@@ -63,5 +63,8 @@ Signal notification path is written for the author's own setup. Which one to pic
 | | |
 |---|---|
 | You already run SgtBatten's blueprint and want its full feature set | take the merged version above |
-| You want the name added with as little machinery as possible | take the blueprint in this repo | Optional filters for cameras, Frigate zones, and whether strangers should be
-announced at all. See [blueprints/faceid-name-the-person.yaml](../blueprints/faceid-name-the-person.yaml).
+| You want the name added with as little machinery as possible | take the blueprint in this repo |
+
+The blueprint in this repo offers optional filters for cameras, Frigate zones, and whether
+strangers should be announced at all — see
+[blueprints/faceid-name-the-person.yaml](../blueprints/faceid-name-the-person.yaml).
