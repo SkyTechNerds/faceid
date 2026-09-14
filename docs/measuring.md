@@ -15,7 +15,7 @@ analyses in the service itself and shows them as tables:
 |---|---|---|
 | How fast is a recognition? | delay from the start of the event to the published name, per attempt and camera | instant, reads the history |
 | How well is each person covered? | angles, cameras, day and night per person, and what photo is concretely missing | re-reads every reference photo |
-| Why do events yield no face? | no face at all / too small / detector unsure, per camera | downloads one snapshot per event |
+| Why do events yield no face? | no snapshot / no face at all / too small / detector unsure, per camera | downloads one snapshot per event |
 
 This is not a wrapper around the scripts below, because it could not be: `scripts/` is not
 part of the app image at all, and the script it would have wrapped for the delay figures,
@@ -39,8 +39,9 @@ python scripts/measure-recognition.py --baseline /tmp/old --days 3
 ```
 
 Start with `why-no-face.py` if recognition feels rare. It counts *why* events are
-discarded — no face at all, too small, no snapshot — and separates the hopeless cases
-(person too far away) from the recoverable ones (the snapshot moment was bad). With
+discarded — no snapshot, no face at all, too small, detection uncertain — and separates
+the hopeless cases (person too far away) from the recoverable ones (the snapshot moment
+was bad). With
 `--clip` it re-checks discarded events against the recording, which tells you what
 `clip_fallback` is worth **on your cameras** rather than on mine. Most "it barely
 recognises anyone" reports turn out not to be gallery problems at all.
@@ -49,7 +50,7 @@ recognises anyone" reports turn out not to be gallery problems at all.
 landmarks, which cameras she was enrolled from, greyscale/IR shots, and a leave-one-out
 self test — then names the concrete gap.
 
-`measure-delay.py` is the fourth and the one the Tools tab has superseded: it derives the
+`measure-delay.py` is the one the Tools tab has superseded: it derives the
 same delay figures from `journalctl`, so it only runs on a systemd host and only as far back
 as the log is kept. The tab reads the history instead, which is why its numbers are
 available in the app and survive log rotation.
