@@ -57,9 +57,11 @@ your threshold was moved into the UI: Settings → *Does it actually work?* runs
 leave-one-out test and the practical probe as a background job and reports the one number
 that matters, how high a stranger got. That covers threshold and `match_top_k`.
 
-Two things still need a shell, and neither is required to run FaceID well:
+All three reports are in the Tools tab, coverage included. What still needs a shell is
+running them against a **different** gallery than the live one, and neither case is
+required to run FaceID well:
 
-* the **coverage report** (`coverage.py`) — which angles, cameras and IR shots each
-  person is missing
-* **comparing two galleries** (`--baseline`) — useful after a round of enrolling, but the
-  UI analysis already tells you where you stand today
+* `coverage.py --data <dir>` — point it at an unpacked backup from `data/backups` to see
+  what a past gallery looked like
+* `measure-recognition.py --baseline <dir>` — compare two galleries after a round of
+  enrolling, to see whether the work actually moved anything

@@ -23,9 +23,10 @@ Two changes followed, both measured:
   cover many angles — their own less similar photos drag the score down, so the
   best-covered people scored worst.
 * **`match_threshold` 0.50 → 0.45**, which left 0.14 above the 0.31 in the table above.
-  Note what that 0.31 is: the highest score reached by **another enrolled person**, not by
-  a stranger. The margin that actually matters is the one against confusable enrolled
-  faces, and it is measured in the next section — it is smaller.
+  Note what that 0.31 is: the highest score reached by **another enrolled person** *in that
+  128-photo gallery*, not by a stranger. A later run on a larger gallery put the same
+  quantity at 0.411, so 0.14 is not the margin to plan with — the next section measures the
+  one that is, and it is smaller.
 
 Together these lifted recognition on a held-out set of real events from 90% to 100%, and
 moved the weakest favourite's worst match from 0.01 above the cut-off to 0.09 above it —
@@ -44,6 +45,10 @@ at. Two numbers matter, and the **higher** of them sets your floor:
 |---|---|
 | highest score a **stranger** reaches | 0.195 |
 | highest score between two **enrolled** people | **0.411** |
+
+Both come from one run on the larger gallery, which is why they can be compared with each
+other — unlike the 0.31 further up, which is the same quantity measured on the earlier
+128-photo gallery.
 
 Going by strangers alone, 0.25 would look safe. It is not: at 0.25 the two people in this
 household who resemble each other most become interchangeable — a father and daughter whose

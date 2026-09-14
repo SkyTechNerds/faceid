@@ -9,8 +9,9 @@ If you use a Frigate notification blueprint (SgtBatten's is the common one), you
 probably noticed the name never appears in it. Two measured reasons:
 
 - **The name is not ready yet.** The blueprint fires when the event starts; FaceID first
-  needs a snapshot to exist, a face in it, and a match. Over 155 real recognitions on one
-  household setup the name was ready after a **median of 8 seconds**, the fastest in one.
+  needs a snapshot to exist, a face in it, and a match. Measured on one household setup over
+  three days (49 recognitions) the name was ready after a **median of 9.9 seconds** — the
+  fastest in 0.5 s, the slowest in 41.7 s.
   What sets the floor is Frigate's time to a first usable snapshot, and that varies a lot —
   it is not a fixed few seconds. Measure your own in FaceID's **Tools** tab (switch it on
   under Settings → *Does it actually work?*); the numbers depend on your cameras and your hardware.
