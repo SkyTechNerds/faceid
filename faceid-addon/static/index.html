@@ -694,7 +694,12 @@ async function renderSettings(){
       <span class="stat">per ignore group; 0 = unlimited. When exceeded, the most redundant <em>auto-learned</em> anchor is dropped — manually added ones are never touched. Deleting by age instead would let ignored people resurface, which is the opposite of what the list is for.</span>
     </div>
     ${cfg.input_mode==='folder'?`<h2 style="margin-top:22px">Recording folder</h2>
-    <div class="stat">Watching <code>${esc(cfg.folder.path)}</code> as <b>${esc(cfg.folder.camera)}</b>. ${cfg.folder.processed} files processed${cfg.folder.scanning?' · scan in progress':''}${cfg.folder.last_error?' · '+esc(cfg.folder.last_error):''}.</div>`:''}
+    <div class="stat">Watching <code>${esc(cfg.folder.path)}</code> as <b>${esc(cfg.folder.camera)}</b>. ${cfg.folder.processed} files processed${cfg.folder.scanning?' · scan in progress':''}${cfg.folder.last_error?' · '+esc(cfg.folder.last_error):''}.</div>
+    <div class="row" style="margin-top:6px">
+      <b style="min-width:230px;font:600 13px var(--sans)">Remember at most</b>
+      <input id="set-idxcap" type="number" min="0" max="200000" step="500" value="${cfg.folder_max_indexed_files}" style="width:90px">
+      <span class="stat">processed files; 0 = no limit. FaceID keeps a fingerprint per file so a restart does not re-process the whole folder. That index is rewritten on every file, so its cost grows with everything before it — about 320&nbsp;ms per recording at 50,000 entries. Above the limit the oldest entries are dropped; a dropped file is simply read once more if it is still there. <b>Enrolled faces are not affected</b> — those live in the gallery and never expire. Currently holding ${cfg.folder.indexed} of ${cfg.folder.index_cap||'∞'}.</span>
+    </div>`:''}
     <div style="${cfg.input_mode==='folder'?'display:none':''}">
     <h2 style="margin-top:22px">When a snapshot has no face</h2>
     <div class="stat" style="margin:-4px 0 6px">Frigate picks its snapshot by highest <em>person</em> score, which is not the same as "face visible" — on most setups only about a fifth of snapshots hold a usable face. These are the ways back in. <a href="https://github.com/SkyTechNerds/faceid/blob/main/docs/recognition-pipeline.md" target="_blank" rel="noopener" style="color:var(--acc)">How it works ↗</a></div>
@@ -869,6 +874,7 @@ async function saveThresholds(){
   const mf=document.getElementById('set-maxfaces'); if(mf)body.max_faces_per_person=+mf.value;
   const topk=document.getElementById('set-topk'); if(topk)body.match_top_k=+topk.value;
   const ic=document.getElementById('set-igncap'); if(ic)body.max_ignore_anchors=+ic.value;
+  const xc=document.getElementById('set-idxcap'); if(xc)body.folder_max_indexed_files=+xc.value;
   const mp=document.getElementById('set-minface'); if(mp)body.min_face_px=+mp.value;
   const at=document.getElementById('set-attempts'); if(at)body.max_attempts=+at.value;
   const tk=document.getElementById('set-trimkeep'); if(tk)body.trimmed_keep=+tk.value;

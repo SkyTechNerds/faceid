@@ -326,3 +326,82 @@ class ImageExtensionTests(unittest.TestCase):
             # Wartezeit durchgehen lassen.
             self.assertGreaterEqual(entry["next_retry"], failed_at + ing.retry_seconds)
             self.assertEqual(ing.status()["processed"], 0)
+
+
+class IndexCapTests(unittest.TestCase):
+    """Der Fingerabdruck-Index darf nicht unbegrenzt wachsen.
+
+    Gemeldet im HA-Forum am 15.09.2026: nichts raeumte je auf, und weil der Index bei
+    jeder Datei komplett neu geschrieben wird, wachsen die Schreibkosten mit allem, was
+    vorher da war — gemessen 320 ms je Datei bei 50 000 Eintraegen.
+    """
+
+    def _ingest(self, tmp, cap=None, faceid=None):
+        fc = {"enabled": True, "path": tmp, "settle_seconds": 0, "extensions": [".jpg"]}
+        if cap is not None:
+            fc["max_indexed_files"] = cap
+        return FolderIngest({"folder": fc, "faceid": faceid or {}},
+                            Path(tmp), FakeEngine([[FakeFace([1, 0, 0])]]), FakeProcessor())
+
+    def _fill(self, ing, n, start=1000.0):
+        ing._state["files"] = {
+            f"/rec/{i:06d}.jpg": {"signature": [1, i], "status": "processed",
+                                  "processed_at": start + i}
+            for i in range(n)}
+
+    def test_oldest_entries_are_dropped_down_to_the_cap(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp, cap=100)
+            self._fill(ing, 250)
+            self.assertEqual(ing._enforce_index_cap(), 150)
+            keys = ing._state["files"]
+            self.assertEqual(len(keys), 100)
+            # Die juengsten 100 muessen ueberlebt haben, die aeltesten weg sein.
+            self.assertIn("/rec/000249.jpg", keys)
+            self.assertNotIn("/rec/000000.jpg", keys)
+            self.assertNotIn("/rec/000149.jpg", keys)
+
+    def test_zero_means_no_limit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp, cap=0)
+            self._fill(ing, 500)
+            self.assertEqual(ing._enforce_index_cap(), 0)
+            self.assertEqual(len(ing._state["files"]), 500)
+
+    def test_a_file_being_processed_is_never_evicted(self):
+        # Sonst liefe dieselbe Datei doppelt durch die Erkennung.
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp, cap=2)
+            self._fill(ing, 5)
+            ing._state["files"]["/rec/000000.jpg"] = {"signature": [1, 0],
+                                                      "status": "processing", "attempts": 1}
+            ing._enforce_index_cap()
+            self.assertIn("/rec/000000.jpg", ing._state["files"],
+                          "laufender Eintrag darf nicht verdraengt werden")
+
+    def test_the_cap_is_applied_when_the_state_is_written(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp, cap=10)
+            self._fill(ing, 40)
+            ing._save_state()
+            self.assertEqual(len(json.loads(ing.state_file.read_text())["files"]), 10)
+
+    def test_a_limit_set_in_the_settings_tab_survives_a_restart(self):
+        # Der Einstellungen-Tab schreibt nach cfg["faceid"], FolderIngest liest aus
+        # cfg["folder"] — ohne den Rueckgriff waere die Einstellung nach einem Neustart weg.
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp, faceid={"folder_max_indexed_files": 250})
+            self.assertEqual(ing.max_indexed_files, 250)
+
+    def test_an_explicit_folder_value_wins_over_the_settings_overlay(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp, cap=42, faceid={"folder_max_indexed_files": 250})
+            self.assertEqual(ing.max_indexed_files, 42)
+
+    def test_the_status_reports_the_cap_alongside_the_count(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp, cap=100)
+            self._fill(ing, 7)
+            st = ing.status()
+            self.assertEqual(st["indexed"], 7)
+            self.assertEqual(st["index_cap"], 100)

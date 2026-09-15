@@ -126,6 +126,18 @@ class FolderIngest:
         self.same_person_similarity = float(fc.get("same_person_similarity", 0.55))
         self.max_people = max(1, int(fc.get("max_people_per_file", 6)))
         self.max_retries = max(1, int(fc.get("max_retries", 3)))
+        # Obergrenze fuer den Fingerabdruck-Index. Ohne sie waechst er monoton: jede je
+        # verarbeitete Datei bleibt fuer immer stehen, auch wenn sie laengst geloescht ist.
+        # Der Index wird bei JEDER Datei komplett neu geschrieben, die Kosten wachsen also
+        # mit allem, was vorher da war — gemessen 320 ms je Datei bei 50 000 Eintraegen.
+        # 0 schaltet die Begrenzung ab. Die Galerie ist davon nicht beruehrt: gelernte
+        # Gesichter liegen unter data/persons und altern nie.
+        # Wie bei min_face_px: der folder-Block gewinnt, sonst gilt der Wert aus dem
+        # faceid-Block. Der zweite ist der, den der Einstellungen-Tab schreibt — ohne
+        # ihn ueberlebte eine dort gesetzte Grenze den naechsten Neustart nicht.
+        self.max_indexed_files = max(0, int(fc.get(
+            "max_indexed_files",
+            cfg.get("faceid", {}).get("folder_max_indexed_files", 5000))))
         self.retry_seconds = max(1.0, float(fc.get("retry_seconds", 60)))
         exts = fc.get("extensions") or sorted(VIDEO_EXTENSIONS)
         self.extensions = {str(e).lower() if str(e).startswith(".") else f".{str(e).lower()}"
@@ -154,7 +166,35 @@ class FolderIngest:
             log.warning("folder state unreadable; starting with an empty index")
         return {"version": 1, "files": {}}
 
+    def _entry_age_key(self, item: dict) -> float:
+        """Wann wurde dieser Eintrag zuletzt angefasst? Aeltestes zuerst verdraengen."""
+        return float(item.get("processed_at") or item.get("failed_at") or 0.0)
+
+    def _enforce_index_cap(self) -> int:
+        """Aelteste Eintraege verwerfen, bis die Obergrenze eingehalten ist.
+
+        Laufende Eintraege (``processing``) bleiben unangetastet — sie gehoeren zum
+        gerade aktiven Scan, und sie zu verwerfen hiesse, dieselbe Datei doppelt zu
+        verarbeiten. Ein verworfener Eintrag bedeutet nur, dass die Datei bei Bedarf
+        noch einmal gelesen wird; verloren geht nichts.
+        """
+        files = self._state.get("files", {})
+        if not self.max_indexed_files or len(files) <= self.max_indexed_files:
+            return 0
+        removable = [k for k, v in files.items() if v.get("status") != "processing"]
+        removable.sort(key=lambda k: self._entry_age_key(files[k]))
+        drop = len(files) - self.max_indexed_files
+        dropped = 0
+        for key in removable[:drop]:
+            del files[key]
+            dropped += 1
+        if dropped:
+            log.info("folder index trimmed: %d oldest entries dropped, %d kept (cap %d)",
+                     dropped, len(files), self.max_indexed_files)
+        return dropped
+
     def _save_state(self):
+        self._enforce_index_cap()
         self.data_dir.mkdir(parents=True, exist_ok=True)
         tmp = self.state_file.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(self._state, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -341,4 +381,5 @@ class FolderIngest:
         files = dict(self._state.get("files", {}))
         counts = {name: sum(1 for item in files.values() if item.get("status") == name)
                   for name in ("processed", "failed", "processing", "skipped")}
-        return dict(self._status, indexed=len(files), **counts)
+        return dict(self._status, indexed=len(files),
+                    index_cap=self.max_indexed_files, **counts)

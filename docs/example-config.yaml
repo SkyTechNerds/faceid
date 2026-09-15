@@ -39,6 +39,11 @@ folder:
   max_people_per_file: 6
   max_retries: 3
   retry_seconds: 60
+  # Obergrenze fuer den Fingerabdruck-Index (data/folder_ingest.json). Er merkt sich jede
+  # verarbeitete Datei, damit ein Neustart nicht den ganzen Ordner neu einliest, und wird
+  # bei jeder Datei neu geschrieben — ohne Grenze waechst die Schreibzeit mit der Historie.
+  # 0 = unbegrenzt. Aelteste fliegen zuerst raus; gelernte Gesichter sind nicht betroffen.
+  max_indexed_files: 5000
 
 faceid:
   port: 8600                           # web UI / API port
