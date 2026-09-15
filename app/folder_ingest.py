@@ -185,9 +185,13 @@ class FolderIngest:
     def _finish_scan(self, result: dict):
         """Einmal am Ende eines Laufs aufraeumen — nicht zwischendurch."""
         self._status["last_result"] = result
-        if self._pending_cap is not None:
-            self.max_indexed_files = self._pending_cap
-            self._pending_cap = None
+        # Lesen und zuruecksetzen in EINER Anweisung: der HTTP-Thread kann zwischen einem
+        # getrennten Lesen und Loeschen einen neuen Wert einreihen, der dann still
+        # verschwaende — und set_index_cap haette dem Nutzer gerade gemeldet, er werde
+        # am Laufende angewendet.
+        pending, self._pending_cap = self._pending_cap, None
+        if pending is not None:
+            self.max_indexed_files = pending
         if self._enforce_index_cap():
             self._save_state()
         # Wenn der Ordner dauerhaft mehr Dateien haelt als der Index merken darf, wird
@@ -385,6 +389,9 @@ class FolderIngest:
                 return result
             except Exception as exc:
                 self._status["last_error"] = str(exc)
+                # Damit der veroeffentlichte Stand nicht wie ein sauber beendeter Lauf
+                # aussieht: das Ergebnis ist hier nur halb gefuellt.
+                result["aborted"] = True
                 raise
             finally:
                 self._status["scanning"] = False
@@ -392,7 +399,13 @@ class FolderIngest:
                 # im Scan scheitert, wuerde den Index sonst unbegrenzt wachsen lassen —
                 # genau die Kosten, gegen die die Obergrenze da ist. Im finally, damit
                 # kein Rueckgabeweg daran vorbeifuehrt.
-                self._finish_scan(result)
+                try:
+                    self._finish_scan(result)
+                except Exception:
+                    # Aufraeumen darf den eigentlichen Fehler nicht verdecken: eine
+                    # Ausnahme aus dem finally wuerde die aus dem Rumpf ersetzen, und
+                    # der Aufrufer saehe "Platte voll" statt der echten Ursache.
+                    log.exception("folder index cleanup failed")
         finally:
             self._lock.release()
 

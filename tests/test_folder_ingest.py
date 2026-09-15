@@ -590,3 +590,61 @@ class IndexCapSecondRoundTests(unittest.TestCase):
             ing._finish_scan({"found": 0})
             self.assertEqual(ing.max_indexed_files, 10)
             self.assertEqual(len(ing._state["files"]), 10)
+
+
+class IndexCapThirdRoundTests(unittest.TestCase):
+    """Folgefehler der Fixes selbst — alle drei aus dem Review."""
+
+    def _ingest(self, tmp, cap=None):
+        fc = {"enabled": True, "path": tmp, "settle_seconds": 0, "extensions": [".jpg"]}
+        if cap is not None:
+            fc["max_indexed_files"] = cap
+        return FolderIngest({"folder": fc, "faceid": {}},
+                            Path(tmp), FakeEngine([[FakeFace([1, 0, 0])]]), FakeProcessor())
+
+    def test_cleanup_failure_does_not_replace_the_scans_own_error(self):
+        """Eine Ausnahme aus dem finally wuerde die aus dem Rumpf ersetzen."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp, cap=5)
+            ing.path = Path(tmp) / "verschwunden"
+            ing._save_state = lambda: (_ for _ in ()).throw(OSError("disk full"))
+            with self.assertRaises(FileNotFoundError):     # nicht OSError
+                ing.scan_once(now=time.time())
+
+    def test_an_aborted_scan_is_marked_in_the_published_result(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp)
+            ing.path = Path(tmp) / "verschwunden"
+            with self.assertRaises(FileNotFoundError):
+                ing.scan_once(now=time.time())
+            self.assertTrue(ing._status["last_result"]["aborted"],
+                            "ein abgebrochener Lauf darf nicht wie ein fertiger aussehen")
+            self.assertTrue(ing.status()["last_error"])
+
+    def test_a_completed_scan_is_not_marked_aborted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write_image(Path(tmp) / "a.jpg")
+            ing = self._ingest(tmp)
+            now = time.time()
+            ing.scan_once(now=now)
+            ing.scan_once(now=now + 60)
+            self.assertNotIn("aborted", ing._status["last_result"])
+
+    def test_a_cap_queued_during_cleanup_is_not_lost(self):
+        """Getrenntes Lesen und Loeschen wuerde einen dazwischen eingereihten Wert verwerfen."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp, cap=100)
+            ing._pending_cap = 50
+            # Simuliert den HTTP-Thread, der GENAU zwischen Lesen und Loeschen schreibt.
+            original = ing._enforce_index_cap
+            def racing():
+                ing._pending_cap = 7        # neuer Wunsch, waehrend wir aufraeumen
+                return original()
+            ing._enforce_index_cap = racing
+            ing._finish_scan({"found": 0})
+            self.assertEqual(ing.max_indexed_files, 50, "der gelesene Wert gilt")
+            self.assertEqual(ing._pending_cap, 7,
+                             "der neu eingereihte darf nicht verworfen werden")
+            ing._enforce_index_cap = original
+            ing._finish_scan({"found": 0})
+            self.assertEqual(ing.max_indexed_files, 7, "und wird beim naechsten Ende angewandt")
