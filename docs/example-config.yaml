@@ -43,7 +43,9 @@ folder:
   # verarbeitete Datei, damit ein Neustart nicht den ganzen Ordner neu einliest, und wird
   # bei jeder Datei neu geschrieben — ohne Grenze waechst die Schreibzeit mit der Historie.
   # 0 = unbegrenzt. Aelteste fliegen zuerst raus; gelernte Gesichter sind nicht betroffen.
-  max_indexed_files: 5000
+  # Auskommentiert lassen, wenn die Grenze im Einstellungen-Tab gesetzt werden soll: ein
+  # Wert HIER hat Vorrang und wuerde die dort gesetzte bei jedem Neustart ueberschreiben.
+  # max_indexed_files: 5000
 
 faceid:
   port: 8600                           # web UI / API port

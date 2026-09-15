@@ -159,12 +159,41 @@ class FolderIngest:
         try:
             raw = json.loads(self.state_file.read_text(encoding="utf-8"))
             if raw.get("version") == 1 and isinstance(raw.get("files"), dict):
+                # "processing" heisst: ein Lauf hat begonnen und nie abgeschlossen —
+                # der Dienst wurde beendet oder ist abgestuerzt. Solche Eintraege sind
+                # von der Verdraengung ausgenommen, also wuerden sie ewig stehen bleiben
+                # und irgendwann die Obergrenze unerfuellbar machen. Auf "failed" setzen:
+                # die Datei wird erneut versucht, und der Versuchszaehler bleibt erhalten,
+                # damit eine dauerhaft kaputte Datei nicht endlos wiederholt wird.
+                stale = [k for k, v in raw["files"].items()
+                         if v.get("status") == "processing"]
+                for key in stale:
+                    raw["files"][key].update(status="failed", failed_at=time.time(),
+                                             next_retry=0.0,
+                                             error="interrupted before it finished")
+                if stale:
+                    log.info("folder index: %d interrupted entries reset for retry",
+                             len(stale))
                 return raw
         except FileNotFoundError:
             pass
         except (OSError, ValueError):
             log.warning("folder state unreadable; starting with an empty index")
         return {"version": 1, "files": {}}
+
+    def _finish_scan(self, result: dict):
+        """Einmal am Ende eines Laufs aufraeumen — nicht zwischendurch."""
+        self._status["last_result"] = result
+        if self._enforce_index_cap():
+            self._save_state()
+        # Wenn der Ordner dauerhaft mehr Dateien haelt als der Index merken darf, wird
+        # jeder Lauf einen Teil davon erneut verarbeiten. Das ist kein Fehler, aber es
+        # ist Arbeit ohne Ertrag — und man sieht es sonst nirgends.
+        if self.max_indexed_files and result.get("found", 0) > self.max_indexed_files:
+            log.warning("folder holds %d files but the index remembers at most %d — "
+                        "files beyond the limit are re-processed on every scan; "
+                        "raise folder.max_indexed_files or thin out the folder",
+                        result["found"], self.max_indexed_files)
 
     def _entry_age_key(self, item: dict) -> float:
         """Wann wurde dieser Eintrag zuletzt angefasst? Aeltestes zuerst verdraengen."""
@@ -194,7 +223,10 @@ class FolderIngest:
         return dropped
 
     def _save_state(self):
-        self._enforce_index_cap()
+        # Bewusst OHNE Verdraengung: waehrend eines Laufs wird nach jeder Datei
+        # gespeichert, und wer dabei Eintraege wegwirft, laesst genau die Dateien wieder
+        # auflaufen, die er gerade erst verarbeitet hat — beim naechsten Lauf noch einmal,
+        # und so fort. Getrimmt wird einmal am Ende, in _finish_scan().
         self.data_dir.mkdir(parents=True, exist_ok=True)
         tmp = self.state_file.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(self._state, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -294,7 +326,7 @@ class FolderIngest:
                         result["skipped"] += 1
                     self._state["initialized"] = True
                     self._save_state()
-                    self._status["last_result"] = result
+                    self._finish_scan(result)
                     return result
                 for index, path in enumerate(files, 1):
                     if progress:
@@ -345,7 +377,7 @@ class FolderIngest:
                     self._save_state()
                     result["processed"] += 1
                     result["faces"] += details["distinct_faces"]
-                self._status["last_result"] = result
+                self._finish_scan(result)
                 return result
             except Exception as exc:
                 self._status["last_error"] = str(exc)
@@ -373,6 +405,27 @@ class FolderIngest:
                  path.name, stats["frames"], stats["detections"],
                  stats["distinct_faces"], stats["seconds"])
         return stats
+
+    def set_index_cap(self, value: int) -> bool:
+        """Obergrenze aus dem Einstellungen-Tab uebernehmen.
+
+        Laeuft im HTTP-Thread, waehrend der Poller denselben Zustand schreiben kann.
+        Deshalb nur mit der Sperre anfassen — und **nicht blockierend**: ein laufender
+        Scan haelt sie ueber seine ganze Dauer, und eine Einstellungsseite, die minutenlang
+        haengt, waere die schlechtere Antwort. Klappt es nicht, traegt der naechste
+        Laufabschluss die neue Grenze nach.
+        """
+        self.max_indexed_files = max(0, int(value))
+        if not self._lock.acquire(blocking=False):
+            log.info("index cap set to %d; a scan is running, it will apply at its end",
+                     self.max_indexed_files)
+            return False
+        try:
+            if self._enforce_index_cap():
+                self._save_state()
+        finally:
+            self._lock.release()
+        return True
 
     def status(self) -> dict:
         # A scan deliberately holds _lock for its whole run to prevent a UI-triggered

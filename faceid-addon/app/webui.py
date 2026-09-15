@@ -464,11 +464,9 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         if "max_attempts" in updates:
             processor.max_attempts = int(updates["max_attempts"])
         if "folder_max_indexed_files" in updates and folder_input is not None:
-            folder_input.max_indexed_files = int(updates["folder_max_indexed_files"])
-            # Sofort anwenden statt erst beim naechsten Fund: wer die Grenze senkt,
-            # will den Index jetzt kleiner haben, nicht irgendwann.
-            if folder_input._enforce_index_cap():
-                folder_input._save_state()
+            # Ueber die gesperrte Methode statt an den privaten Feldern: dies laeuft im
+            # HTTP-Thread, waehrend der Poller denselben Zustand schreiben kann.
+            folder_input.set_index_cap(int(updates["folder_max_indexed_files"]))
         if "dedupe_threshold" in updates:
             gallery.dedupe_threshold = float(updates["dedupe_threshold"])
         if "hires_enroll" in updates:
