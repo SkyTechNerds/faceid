@@ -7,7 +7,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from app.folder_ingest import FolderIngest, MediaReadError, scan_media
+from app.folder_ingest import (FolderIngest, MediaReadError, _sample_frames,
+                                scan_media)
 
 
 class FakeFace:
@@ -271,3 +272,26 @@ class ImageExtensionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ing = self._ingest(tmp, ["jpg", ".PNG"])
             self.assertEqual(ing.extensions, {".jpg", ".png"})
+
+    def test_a_still_image_decodes_to_exactly_one_frame(self):
+        """Der echte Dekodierpfad, ohne Modell: ein Bild ist EIN Bild.
+
+        ``_sample_frames`` entscheidet an der Endung zwischen ``cv2.imread`` und
+        ``cv2.VideoCapture``. Ginge ein Bild versehentlich in den Videozweig, meldete
+        ``VideoCapture`` null Bilder und die Datei waere still unbrauchbar — genau die
+        Regression, die man der Doku-Zusage „dieselbe Kette" nicht ansieht.
+        """
+        for name in ("visitor.jpg", "visitor.png", "visitor.webp"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / name
+                write_image(path)
+                frames = list(_sample_frames(path, max_frames=24))
+                self.assertEqual(len(frames), 1, "ein Bild muss genau ein Bild liefern")
+                self.assertEqual(frames[0].shape, (120, 120, 3))
+
+    def test_an_unreadable_image_raises_instead_of_counting_as_done(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "kaputt.jpg"
+            path.write_bytes(b"not an image")
+            with self.assertRaises(MediaReadError):
+                list(_sample_frames(path, max_frames=24))

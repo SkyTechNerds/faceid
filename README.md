@@ -267,11 +267,13 @@ of images is silently skipped until you add them:
 
 ```yaml
 folder:
-  extensions: [.mp4, .mkv, .jpg, .jpeg, .png, .webp]
+  # This key REPLACES the default, so keep the video formats you want as well
+  extensions: [.mp4, .mkv, .mov, .avi, .webm, .m4v, .jpg, .jpeg, .png, .webp]
 ```
 
 The default stays video-only on purpose: pointing FaceID at a folder that also holds
 thumbnails or wallpapers should not quietly enrol half of them.
+
 Successful files are indexed in `data/folder_ingest.json`, so restarts do not create
 duplicate sightings. Replacing a file at the same path gives it a new fingerprint and
 processes it again. The Unknown-tab button becomes **Scan recording folder**, and the
