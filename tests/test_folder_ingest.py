@@ -379,11 +379,20 @@ class IndexCapTests(unittest.TestCase):
             self.assertIn("/rec/000000.jpg", ing._state["files"],
                           "laufender Eintrag darf nicht verdraengt werden")
 
-    def test_the_cap_is_applied_when_the_state_is_written(self):
+    def test_saving_alone_does_not_trim(self):
+        # Waehrend eines Laufs wird nach jeder Datei gespeichert. Wuerde dabei verdraengt,
+        # flogen Eintraege raus, die derselbe Lauf gerade erst geschrieben hat.
         with tempfile.TemporaryDirectory() as tmp:
             ing = self._ingest(tmp, cap=10)
             self._fill(ing, 40)
             ing._save_state()
+            self.assertEqual(len(json.loads(ing.state_file.read_text())["files"]), 40)
+
+    def test_the_cap_is_applied_when_a_scan_finishes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp, cap=10)
+            self._fill(ing, 40)
+            ing._finish_scan({"found": 0})
             self.assertEqual(len(json.loads(ing.state_file.read_text())["files"]), 10)
 
     def test_a_limit_set_in_the_settings_tab_survives_a_restart(self):
@@ -405,3 +414,237 @@ class IndexCapTests(unittest.TestCase):
             st = ing.status()
             self.assertEqual(st["indexed"], 7)
             self.assertEqual(st["index_cap"], 100)
+
+
+class IndexCapRegressionTests(unittest.TestCase):
+    """Fuenf Befunde aus dem Review zum Deckel — jeder hier festgenagelt."""
+
+    def _ingest(self, tmp, cap=None, faceid=None):
+        fc = {"enabled": True, "path": tmp, "settle_seconds": 0, "extensions": [".jpg"]}
+        if cap is not None:
+            fc["max_indexed_files"] = cap
+        return FolderIngest({"folder": fc, "faceid": faceid or {}},
+                            Path(tmp), FakeEngine([[FakeFace([1, 0, 0])]]), FakeProcessor())
+
+    def test_a_scan_processes_every_file_once_even_below_the_cap(self):
+        """Verdraengung darf nicht MITTEN im Lauf zuschlagen.
+
+        Sonst wirft der Lauf Eintraege weg, die er selbst gerade geschrieben hat, und
+        verarbeitet dieselben Dateien im selben Durchgang erneut.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            for i in range(6):
+                write_image(Path(tmp) / f"r{i}.jpg")
+            ing = self._ingest(tmp, cap=3)
+            now = time.time()
+            ing.scan_once(now=now)
+            first = ing.scan_once(now=now + 60)
+            self.assertEqual(first["processed"], 6, "jede Datei genau einmal")
+            self.assertEqual(len(ing.processor.calls), 6, "keine Doppelverarbeitung")
+
+    def test_nothing_is_re_processed_when_the_folder_fits_under_the_cap(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for i in range(4):
+                write_image(Path(tmp) / f"r{i}.jpg")
+            ing = self._ingest(tmp, cap=100)
+            now = time.time()
+            ing.scan_once(now=now)
+            self.assertEqual(ing.scan_once(now=now + 60)["processed"], 4)
+            self.assertEqual(ing.scan_once(now=now + 120)["processed"], 0,
+                             "zweiter Durchgang darf nichts wiederholen")
+
+    def test_a_folder_larger_than_the_cap_is_warned_about(self):
+        """Ordner groesser als der Deckel heisst zwangslaeufig Wiederholung — das ist
+        keine Panne, aber es muss sichtbar sein statt still zu passieren."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp, cap=3)
+            with self.assertLogs("faceid.folder", level="WARNING") as logs:
+                ing._finish_scan({"found": 10})
+            self.assertTrue(any("re-processed on every scan" in m for m in logs.output))
+
+    def test_an_interrupted_entry_is_reset_for_retry_on_load(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp, cap=10)
+            ing._state["files"]["/rec/haengt.jpg"] = {"signature": [1, 2],
+                                                      "status": "processing", "attempts": 1}
+            ing._save_state()
+            again = self._ingest(tmp, cap=10)
+            entry = again._state["files"]["/rec/haengt.jpg"]
+            self.assertEqual(entry["status"], "failed")
+            self.assertEqual(entry["attempts"], 1, "Versuchszaehler muss erhalten bleiben")
+            self.assertIn("interrupted", entry["error"])
+
+    def test_interrupted_entries_cannot_make_the_cap_unreachable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp, cap=5)
+            ing._state["files"] = {f"/rec/{i}.jpg": {"signature": [1, i],
+                                                     "status": "processing", "attempts": 1}
+                                   for i in range(20)}
+            ing._save_state()
+            again = self._ingest(tmp, cap=5)
+            again._enforce_index_cap()
+            self.assertEqual(len(again._state["files"]), 5,
+                             "nach dem Zuruecksetzen muessen sie verdraengbar sein")
+
+    def test_set_index_cap_returns_false_while_a_scan_holds_the_lock(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp, cap=10)
+            ing._lock.acquire()
+            try:
+                applied = ing.set_index_cap(3)
+            finally:
+                ing._lock.release()
+            self.assertFalse(applied, "darf nicht auf den laufenden Scan warten")
+            # Der Wert wird VORGEMERKT statt sofort geschrieben: der laufende Scan liest
+            # das Feld und wuerde die neue Grenze sonst mitten im Lauf anwenden, obwohl
+            # hier gerade aufgeschoben wird. Uebernommen wird sie in _finish_scan().
+            self.assertEqual(ing.max_indexed_files, 10, "noch die alte Grenze")
+            self.assertEqual(ing._pending_cap, 3, "die neue ist vorgemerkt")
+
+    def test_set_index_cap_trims_when_the_lock_is_free(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp, cap=100)
+            ing._state["files"] = {f"/rec/{i:04d}.jpg": {"signature": [1, i],
+                                                         "status": "processed",
+                                                         "processed_at": 1000.0 + i}
+                                   for i in range(30)}
+            self.assertTrue(ing.set_index_cap(10))
+            self.assertEqual(len(ing._state["files"]), 10)
+            self.assertEqual(len(json.loads(ing.state_file.read_text())["files"]), 10)
+
+
+class IndexCapSecondRoundTests(unittest.TestCase):
+    """Vier Befunde aus dem Review zum Fix des Deckels."""
+
+    def _ingest(self, tmp, cap=None):
+        fc = {"enabled": True, "path": tmp, "settle_seconds": 0, "extensions": [".jpg"]}
+        if cap is not None:
+            fc["max_indexed_files"] = cap
+        return FolderIngest({"folder": fc, "faceid": {}},
+                            Path(tmp), FakeEngine([[FakeFace([1, 0, 0])]]), FakeProcessor())
+
+    def test_the_cap_is_enforced_even_when_the_scan_raises(self):
+        """Sonst waechst der Index gerade dort unbegrenzt, wo Scans zuverlaessig scheitern."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp, cap=5)
+            ing._state["files"] = {f"/rec/{i:04d}.jpg": {"signature": [1, i],
+                                                         "status": "processed",
+                                                         "processed_at": 1000.0 + i}
+                                   for i in range(30)}
+            ing.path = Path(tmp) / "verschwunden"        # loest FileNotFoundError aus
+            with self.assertRaises(FileNotFoundError):
+                ing.scan_once(now=time.time())
+            self.assertEqual(len(ing._state["files"]), 5,
+                             "auch der gescheiterte Lauf muss aufraeumen")
+
+    def test_attempts_is_already_incremented_before_processing_starts(self):
+        """Gegen die Sorge, ein Absturz waehrend der Verarbeitung erzeuge eine Endlosschleife.
+
+        Der Zaehler wird erhoeht und gespeichert, BEVOR _process laeuft — ein Absturz
+        hinterlaesst also den bereits erhoehten Stand, und max_retries greift.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            write_image(Path(tmp) / "boom.jpg")
+            ing = self._ingest(tmp)
+            ing._process = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("kaputt"))
+            now = time.time()
+            ing.scan_once(now=now)
+            ing.scan_once(now=now + 60)
+            entry = ing._state["files"][str((Path(tmp) / "boom.jpg").resolve())]
+            self.assertEqual(entry["attempts"], 1)
+            self.assertEqual(entry["status"], "failed")
+
+    def test_a_process_crash_cannot_loop_forever(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "boom.jpg"
+            write_image(path)
+            ing = self._ingest(tmp)
+            ing.max_retries = 2
+            ing.retry_seconds = 1.0
+            ing._process = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("kaputt"))
+            now = time.time()
+            ing.scan_once(now=now)
+            # Jeder Durchgang simuliert einen Neustart: Eintrag steht auf processing,
+            # wird beim Laden zurueckgesetzt, naechster Versuch.
+            for i in range(6):
+                ing._state = ing._load_state() if i else ing._state
+                ing.scan_once(now=now + 60 * (i + 1))
+            entry = ing._state["files"][str(path.resolve())]
+            self.assertLessEqual(entry["attempts"], ing.max_retries,
+                                 "max_retries muss die Schleife brechen")
+
+    def test_a_deferred_cap_is_applied_when_the_scan_finishes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp, cap=100)
+            ing._state["files"] = {f"/rec/{i:04d}.jpg": {"signature": [1, i],
+                                                         "status": "processed",
+                                                         "processed_at": 1000.0 + i}
+                                   for i in range(30)}
+            ing._lock.acquire()
+            try:
+                self.assertFalse(ing.set_index_cap(10))
+                self.assertEqual(ing.max_indexed_files, 100,
+                                 "darf nicht am laufenden Scan vorbei geschrieben werden")
+            finally:
+                ing._lock.release()
+            ing._finish_scan({"found": 0})
+            self.assertEqual(ing.max_indexed_files, 10)
+            self.assertEqual(len(ing._state["files"]), 10)
+
+
+class IndexCapThirdRoundTests(unittest.TestCase):
+    """Folgefehler der Fixes selbst — alle drei aus dem Review."""
+
+    def _ingest(self, tmp, cap=None):
+        fc = {"enabled": True, "path": tmp, "settle_seconds": 0, "extensions": [".jpg"]}
+        if cap is not None:
+            fc["max_indexed_files"] = cap
+        return FolderIngest({"folder": fc, "faceid": {}},
+                            Path(tmp), FakeEngine([[FakeFace([1, 0, 0])]]), FakeProcessor())
+
+    def test_cleanup_failure_does_not_replace_the_scans_own_error(self):
+        """Eine Ausnahme aus dem finally wuerde die aus dem Rumpf ersetzen."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp, cap=5)
+            ing.path = Path(tmp) / "verschwunden"
+            ing._save_state = lambda: (_ for _ in ()).throw(OSError("disk full"))
+            with self.assertRaises(FileNotFoundError):     # nicht OSError
+                ing.scan_once(now=time.time())
+
+    def test_an_aborted_scan_is_marked_in_the_published_result(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp)
+            ing.path = Path(tmp) / "verschwunden"
+            with self.assertRaises(FileNotFoundError):
+                ing.scan_once(now=time.time())
+            self.assertTrue(ing._status["last_result"]["aborted"],
+                            "ein abgebrochener Lauf darf nicht wie ein fertiger aussehen")
+            self.assertTrue(ing.status()["last_error"])
+
+    def test_a_completed_scan_is_not_marked_aborted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write_image(Path(tmp) / "a.jpg")
+            ing = self._ingest(tmp)
+            now = time.time()
+            ing.scan_once(now=now)
+            ing.scan_once(now=now + 60)
+            self.assertNotIn("aborted", ing._status["last_result"])
+
+    def test_a_cap_queued_during_cleanup_is_not_lost(self):
+        """Getrenntes Lesen und Loeschen wuerde einen dazwischen eingereihten Wert verwerfen."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp, cap=100)
+            ing._pending_cap = 50
+            # Simuliert den HTTP-Thread, der GENAU zwischen Lesen und Loeschen schreibt.
+            original = ing._enforce_index_cap
+            def racing():
+                ing._pending_cap = 7        # neuer Wunsch, waehrend wir aufraeumen
+                return original()
+            ing._enforce_index_cap = racing
+            ing._finish_scan({"found": 0})
+            self.assertEqual(ing.max_indexed_files, 50, "der gelesene Wert gilt")
+            self.assertEqual(ing._pending_cap, 7,
+                             "der neu eingereihte darf nicht verworfen werden")
+            ing._enforce_index_cap = original
+            ing._finish_scan({"found": 0})
+            self.assertEqual(ing.max_indexed_files, 7, "und wird beim naechsten Ende angewandt")

@@ -18,6 +18,15 @@ update dialog; standalone users can watch GitHub releases.
   files are currently indexed against the limit.
 - **Enrolled faces are not affected.** The gallery lives in `data/persons` and never
   expires — this cap only bounds the "already seen this file" notebook.
+- Eviction happens once when a scan finishes, never in the middle of one: trimming between
+  files would throw away entries the same scan had just written and re-process them.
+  A folder that permanently holds more files than the cap now logs a warning, since every
+  scan re-reads whatever fell out.
+- Entries left in `processing` by a crash or a restart are reset for retry when the index
+  is loaded. They are exempt from eviction, so without that they would accumulate until the
+  cap could never be met again.
+- The settings tab applies the limit through a locked, non-blocking path — it runs on the
+  HTTP thread while the folder worker may be writing the same state.
 - Documented that the folder input reads still images (`.jpg`, `.jpeg`, `.png`, `.webp`),
   not just video. It always could; the default `extensions` list is video-only and nothing
   said so, so a folder of images was skipped in silence.

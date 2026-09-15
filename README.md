@@ -281,7 +281,13 @@ cap). It has to be capped: the whole file is rewritten on every recording, so wi
 limit the per-file cost grows with everything processed before it — about 320 ms per
 recording once 50,000 entries have accumulated. Dropping an old entry costs nothing but
 reading that file once more if it is still there. **Enrolled faces are unaffected** — the
-gallery lives in `data/persons` and never expires. Replacing a file at the same path gives it a new fingerprint and
+gallery lives in `data/persons` and never expires.
+
+⚠️ **Set the cap above the number of files the folder actually holds.** If the folder
+permanently holds more than the index can remember, every scan re-processes whatever fell
+out of it — correct, but wasted work, repeated forever. FaceID logs a warning when it sees
+that, naming both numbers. If you keep recordings around rather than clearing them out,
+either raise the cap or set it to `0`. Replacing a file at the same path gives it a new fingerprint and
 processes it again. The Unknown-tab button becomes **Scan recording folder**, and the
 header shows the number of processed files.
 

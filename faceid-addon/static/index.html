@@ -698,7 +698,7 @@ async function renderSettings(){
     <div class="row" style="margin-top:6px">
       <b style="min-width:230px;font:600 13px var(--sans)">Remember at most</b>
       <input id="set-idxcap" type="number" min="0" max="200000" step="500" value="${cfg.folder_max_indexed_files}" style="width:90px">
-      <span class="stat">processed files; 0 = no limit. FaceID keeps a fingerprint per file so a restart does not re-process the whole folder. That index is rewritten on every file, so its cost grows with everything before it — about 320&nbsp;ms per recording at 50,000 entries. Above the limit the oldest entries are dropped; a dropped file is simply read once more if it is still there. <b>Enrolled faces are not affected</b> — those live in the gallery and never expire. Currently holding ${cfg.folder.indexed} of ${cfg.folder.index_cap||'∞'}.</span>
+      <span class="stat">processed files; 0 = no limit. FaceID keeps a fingerprint per file so a restart does not re-process the whole folder. That index is rewritten on every file, so its cost grows with everything before it — about 320&nbsp;ms per recording at 50,000 entries. Above the limit the oldest entries are dropped; a dropped file is simply read once more if it is still there. <b>Enrolled faces are not affected</b> — those live in the gallery and never expire. Keep this above the number of files the folder actually holds, otherwise every scan re-reads whatever fell out — the log warns when that happens. Currently holding ${cfg.folder.indexed} of ${cfg.folder.index_cap||'∞'}.</span>
     </div>`:''}
     <div style="${cfg.input_mode==='folder'?'display:none':''}">
     <h2 style="margin-top:22px">When a snapshot has no face</h2>
@@ -886,7 +886,8 @@ async function saveThresholds(){
   const lc=document.getElementById('set-livecams'); if(lc)body.live_hires_fallback_cameras=lc.value.split(',').map(s=>s.trim()).filter(Boolean);
   const lm=document.getElementById('set-livemode'); if(lm)body.live_hires_mode=lm.value;
   const r=await j('api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  toast(r.trimmed?`Saved — ${r.trimmed} photo(s) trimmed`:'Settings saved');
+  const extra=(r.deferred&&r.deferred.length)?` — ${r.deferred.join('; ')}`:'';
+  toast((r.trimmed?`Saved — ${r.trimmed} photo(s) trimmed`:'Settings saved')+extra);
   persons=await j('api/persons');
 }
 let _dedupeTimer=null;
