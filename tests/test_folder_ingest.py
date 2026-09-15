@@ -287,7 +287,7 @@ class ImageExtensionTests(unittest.TestCase):
         ``VideoCapture`` null Bilder und die Datei waere still unbrauchbar — genau die
         Regression, die man der Doku-Zusage „dieselbe Kette" nicht ansieht.
         """
-        for name in ("visitor.jpg", "visitor.png", "visitor.webp"):
+        for name in ("visitor.jpg", "visitor.jpeg", "visitor.png", "visitor.webp"):
             with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
                 path = Path(tmp) / name
                 write_image(path)
@@ -295,9 +295,30 @@ class ImageExtensionTests(unittest.TestCase):
                 self.assertEqual(len(frames), 1, "ein Bild muss genau ein Bild liefern")
                 self.assertEqual(frames[0].shape, (120, 120, 3))
 
-    def test_an_unreadable_image_raises_instead_of_counting_as_done(self):
+    def test_the_decoder_rejects_a_file_that_only_looks_like_an_image(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "kaputt.jpg"
             path.write_bytes(b"not an image")
             with self.assertRaises(MediaReadError):
                 list(_sample_frames(path, max_frames=24))
+
+    def test_an_unreadable_image_is_marked_failed_and_retried_not_done(self):
+        """Der Ingest-Weg, nicht nur der Dekoder.
+
+        Eine unlesbare Datei darf nicht als erledigt im Index landen — sonst wird sie
+        nie wieder angefasst, obwohl sie beim naechsten Mal vollstaendig sein koennte
+        (ein Rekorder, der noch schreibt, sieht genauso aus).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "kaputt.jpg"
+            path.write_bytes(b"not an image")
+            ing = self._ingest(tmp, [".jpg"])
+            now = time.time()
+            ing.scan_once(now=now)
+            result = ing.scan_once(now=now + 60)
+            self.assertEqual(result["processed"], 0)
+            self.assertEqual(result["failed"], 1)
+            entry = ing._state["files"][str(path.resolve())]
+            self.assertEqual(entry["status"], "failed")
+            self.assertGreater(entry["next_retry"], now, "muss erneut versucht werden")
+            self.assertEqual(ing.status()["processed"], 0)
