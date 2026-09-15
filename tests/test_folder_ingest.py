@@ -315,10 +315,14 @@ class ImageExtensionTests(unittest.TestCase):
             ing = self._ingest(tmp, [".jpg"])
             now = time.time()
             ing.scan_once(now=now)
-            result = ing.scan_once(now=now + 60)
+            failed_at = now + 60          # DIESE Uhr zaehlt, nicht die des ersten Laufs
+            result = ing.scan_once(now=failed_at)
             self.assertEqual(result["processed"], 0)
             self.assertEqual(result["failed"], 1)
             entry = ing._state["files"][str(path.resolve())]
             self.assertEqual(entry["status"], "failed")
-            self.assertGreater(entry["next_retry"], now, "muss erneut versucht werden")
+            # Gegen den Zeitpunkt des Fehlschlags pruefen: gegen ``now`` waere die
+            # Zusicherung trivial wahr und wuerde auch eine Dauerschleife ohne
+            # Wartezeit durchgehen lassen.
+            self.assertGreaterEqual(entry["next_retry"], failed_at + ing.retry_seconds)
             self.assertEqual(ing.status()["processed"], 0)
