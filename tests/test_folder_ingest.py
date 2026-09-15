@@ -254,7 +254,13 @@ class ImageExtensionTests(unittest.TestCase):
             write_image(Path(tmp) / "visitor.jpg")
             ing = self._ingest(tmp)
             self.assertNotIn(".jpg", ing.extensions)
-            self.assertEqual(ing.scan_once(now=time.time())["found"], 0)
+            # ``found`` zaehlt direkt nach dem Auflisten und damit vor jeder
+            # Settle-Logik — es ist schon im ERSTEN Lauf besetzt (nachgemessen).
+            # Der zweite Lauf steht hier trotzdem, damit die Zusicherung auch dann
+            # noch traegt, wenn die Reihenfolge im Scan einmal umgebaut wird.
+            now = time.time()
+            self.assertEqual(ing.scan_once(now=now)["found"], 0)
+            self.assertEqual(ing.scan_once(now=now + 60)["found"], 0)
 
     def test_image_is_processed_once_its_extension_is_listed(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -27,8 +27,8 @@ folder:
   recursive: true
   process_existing: true                # false starts with files created after first launch
   # Videos by default. Still images work too — the same face pipeline runs on them —
-  # but they are only picked up if you list their extension here. This key REPLACES
-  # the list below rather than adding to it, so repeat the video formats you want:
+  # but only if their extension is in this list. To add them, REPLACE the line below
+  # (do not add a second `extensions:` key — YAML keeps only the last one):
   #   extensions: [.mp4, .mkv, .mov, .avi, .webm, .m4v, .jpg, .jpeg, .png, .webp]
   extensions: [.mp4, .mkv, .mov, .avi, .webm, .m4v]
   poll_interval: 10                     # seconds between directory scans
