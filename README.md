@@ -275,7 +275,13 @@ The default stays video-only on purpose: pointing FaceID at a folder that also h
 thumbnails or wallpapers should not quietly enrol half of them.
 
 Successful files are indexed in `data/folder_ingest.json`, so restarts do not create
-duplicate sightings. Replacing a file at the same path gives it a new fingerprint and
+duplicate sightings. That index is capped at **5,000 files** by default
+(`folder.max_indexed_files`, or *Remember at most* in the settings tab; 0 disables the
+cap). It has to be capped: the whole file is rewritten on every recording, so without a
+limit the per-file cost grows with everything processed before it — about 320 ms per
+recording once 50,000 entries have accumulated. Dropping an old entry costs nothing but
+reading that file once more if it is still there. **Enrolled faces are unaffected** — the
+gallery lives in `data/persons` and never expires. Replacing a file at the same path gives it a new fingerprint and
 processes it again. The Unknown-tab button becomes **Scan recording folder**, and the
 header shows the number of processed files.
 

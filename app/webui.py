@@ -436,7 +436,8 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     BACKUP_SPEC = {"hires_enroll": bool, "clip_fallback": bool, "clip_fallback_cameras": list, "live_hires_fallback": bool, "live_hires_fallback_cameras": list, "live_hires_mode": str, "backup_enabled": bool, "backup_hour": (0, 23), "backup_keep": (1, 90), "backup_dir": str}
     INT_SPEC = {"max_faces_per_person": (5, 100), "trimmed_keep": (0, 100),
                 "match_top_k": (1, 10), "max_ignore_anchors": (0, 200),
-                "min_face_px": (16, 200), "max_attempts": (1, 20)}
+                "min_face_px": (16, 200), "max_attempts": (1, 20),
+                "folder_max_indexed_files": (0, 200_000)}
     settings_file = data_dir / "settings.json"
 
     def _apply_settings(updates: dict):
@@ -462,6 +463,12 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
                 folder_input.min_face_px = int(updates["min_face_px"])
         if "max_attempts" in updates:
             processor.max_attempts = int(updates["max_attempts"])
+        if "folder_max_indexed_files" in updates and folder_input is not None:
+            folder_input.max_indexed_files = int(updates["folder_max_indexed_files"])
+            # Sofort anwenden statt erst beim naechsten Fund: wer die Grenze senkt,
+            # will den Index jetzt kleiner haben, nicht irgendwann.
+            if folder_input._enforce_index_cap():
+                folder_input._save_state()
         if "dedupe_threshold" in updates:
             gallery.dedupe_threshold = float(updates["dedupe_threshold"])
         if "hires_enroll" in updates:
@@ -507,6 +514,8 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             "max_ignore_anchors": int(f.get("max_ignore_anchors", 0)),
             "min_face_px": int(f.get("min_face_px", 48)),
             "max_attempts": int(f.get("max_attempts", 6)),
+            "folder_max_indexed_files": int(f.get("folder_max_indexed_files",
+                                                  getattr(folder_input, "max_indexed_files", 5000))),
             "hires_enroll": bool(f.get("hires_enroll", True)),
             "clip_fallback": bool(f.get("clip_fallback", True)),
             "clip_fallback_cameras": list(f.get("clip_fallback_cameras") or []),
