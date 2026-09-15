@@ -1,12 +1,14 @@
 import json
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-from app.folder_ingest import FolderIngest, MediaReadError, scan_media
+from app.folder_ingest import (FolderIngest, MediaReadError, _sample_frames,
+                                scan_media)
 
 
 class FakeFace:
@@ -230,3 +232,97 @@ class ScanLockTests(unittest.TestCase):
             ing.scan_once(progress=lambda i, total: seen.append((i, total)))
             self.assertEqual(seen[0], (0, 3), "Gesamtzahl muss sofort gemeldet werden")
             self.assertEqual([i for i, _ in seen], [0, 1, 2, 3])
+
+
+class ImageExtensionTests(unittest.TestCase):
+    """Bilder laufen durch dieselbe Kette — aber nur, wenn ihre Endung konfiguriert ist.
+
+    Gemeldet im HA-Forum am 14.09.2026: ein Ordner voller .jpg wurde stillschweigend
+    uebergangen. Kein Fehler im Code, sondern die Vorgabe `extensions` ist video-only.
+    Beide Richtungen sind hier festgehalten, damit die Vorgabe nicht unbemerkt kippt.
+    """
+
+    def _ingest(self, tmp, extensions=None):
+        fc = {"enabled": True, "path": tmp, "settle_seconds": 0, "process_existing": True}
+        if extensions is not None:
+            fc["extensions"] = extensions
+        return FolderIngest({"folder": fc, "faceid": {}},
+                            Path(tmp), FakeEngine([[FakeFace([1, 0, 0])]]), FakeProcessor())
+
+    def test_image_is_skipped_with_the_default_extensions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write_image(Path(tmp) / "visitor.jpg")
+            ing = self._ingest(tmp)
+            self.assertNotIn(".jpg", ing.extensions)
+            # ``found`` zaehlt direkt nach dem Auflisten und damit vor jeder
+            # Settle-Logik — es ist schon im ERSTEN Lauf besetzt (nachgemessen).
+            # Der zweite Lauf steht hier trotzdem, damit die Zusicherung auch dann
+            # noch traegt, wenn die Reihenfolge im Scan einmal umgebaut wird.
+            now = time.time()
+            self.assertEqual(ing.scan_once(now=now)["found"], 0)
+            self.assertEqual(ing.scan_once(now=now + 60)["found"], 0)
+
+    def test_image_is_processed_once_its_extension_is_listed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write_image(Path(tmp) / "visitor.jpg")
+            ing = self._ingest(tmp, [".mp4", ".jpg"])
+            now = time.time()
+            ing.scan_once(now=now)                  # erster Lauf: beobachten
+            result = ing.scan_once(now=now + 60)    # zweiter Lauf: stabil -> verarbeiten
+            self.assertEqual(result["found"], 1)
+            self.assertEqual(result["processed"], 1)
+            self.assertEqual(result["faces"], 1)
+            self.assertEqual(len(ing.processor.calls), 1)
+
+    def test_extensions_are_normalised_with_or_without_a_leading_dot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ing = self._ingest(tmp, ["jpg", ".PNG"])
+            self.assertEqual(ing.extensions, {".jpg", ".png"})
+
+    def test_a_still_image_decodes_to_exactly_one_frame(self):
+        """Der echte Dekodierpfad, ohne Modell: ein Bild ist EIN Bild.
+
+        ``_sample_frames`` entscheidet an der Endung zwischen ``cv2.imread`` und
+        ``cv2.VideoCapture``. Ginge ein Bild versehentlich in den Videozweig, meldete
+        ``VideoCapture`` null Bilder und die Datei waere still unbrauchbar — genau die
+        Regression, die man der Doku-Zusage „dieselbe Kette" nicht ansieht.
+        """
+        for name in ("visitor.jpg", "visitor.jpeg", "visitor.png", "visitor.webp"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / name
+                write_image(path)
+                frames = list(_sample_frames(path, max_frames=24))
+                self.assertEqual(len(frames), 1, "ein Bild muss genau ein Bild liefern")
+                self.assertEqual(frames[0].shape, (120, 120, 3))
+
+    def test_the_decoder_rejects_a_file_that_only_looks_like_an_image(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "kaputt.jpg"
+            path.write_bytes(b"not an image")
+            with self.assertRaises(MediaReadError):
+                list(_sample_frames(path, max_frames=24))
+
+    def test_an_unreadable_image_is_marked_failed_and_retried_not_done(self):
+        """Der Ingest-Weg, nicht nur der Dekoder.
+
+        Eine unlesbare Datei darf nicht als erledigt im Index landen — sonst wird sie
+        nie wieder angefasst, obwohl sie beim naechsten Mal vollstaendig sein koennte
+        (ein Rekorder, der noch schreibt, sieht genauso aus).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "kaputt.jpg"
+            path.write_bytes(b"not an image")
+            ing = self._ingest(tmp, [".jpg"])
+            now = time.time()
+            ing.scan_once(now=now)
+            failed_at = now + 60          # DIESE Uhr zaehlt, nicht die des ersten Laufs
+            result = ing.scan_once(now=failed_at)
+            self.assertEqual(result["processed"], 0)
+            self.assertEqual(result["failed"], 1)
+            entry = ing._state["files"][str(path.resolve())]
+            self.assertEqual(entry["status"], "failed")
+            # Gegen den Zeitpunkt des Fehlschlags pruefen: gegen ``now`` waere die
+            # Zusicherung trivial wahr und wuerde auch eine Dauerschleife ohne
+            # Wartezeit durchgehen lassen.
+            self.assertGreaterEqual(entry["next_retry"], failed_at + ing.retry_seconds)
+            self.assertEqual(ing.status()["processed"], 0)
