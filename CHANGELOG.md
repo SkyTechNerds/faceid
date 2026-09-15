@@ -3,6 +3,25 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.24.0 — 2026-09-15
+
+- **The folder input no longer remembers every file forever.** `data/folder_ingest.json`
+  keeps one fingerprint per processed file so a restart does not re-read the whole folder,
+  but nothing ever pruned it — and the whole file is rewritten on every recording, so the
+  per-file cost grew with everything before it. Measured: 453 bytes per entry, 160 ms per
+  save at 50,000 entries, 660 ms at 200,000. At a thousand recordings a day that is over a
+  second of pure bookkeeping per file after a year. Reported on the HA forum.
+- New `folder.max_indexed_files`, **default 5000**, `0` disables the cap. Oldest entries go
+  first; a file still being processed is never evicted. Dropping an entry costs nothing
+  beyond reading that file once more if it is still there.
+- Settable at runtime as **Remember at most** in the settings tab, which shows how many
+  files are currently indexed against the limit.
+- **Enrolled faces are not affected.** The gallery lives in `data/persons` and never
+  expires — this cap only bounds the "already seen this file" notebook.
+- Documented that the folder input reads still images (`.jpg`, `.jpeg`, `.png`, `.webp`),
+  not just video. It always could; the default `extensions` list is video-only and nothing
+  said so, so a folder of images was skipped in silence.
+
 ## 0.23.0 — 2026-09-14 — completed-recording folder input
 
 Contributed by [@thethereza](https://github.com/thethereza), who brought the idea and
