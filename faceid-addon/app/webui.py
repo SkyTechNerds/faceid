@@ -441,6 +441,7 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     settings_file = data_dir / "settings.json"
 
     def _apply_settings(updates: dict):
+        deferred: list[str] = []
         f = cfg["faceid"]
         f.update(updates)
         # in processor/gallery gecachte Werte live nachziehen
@@ -466,7 +467,10 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         if "folder_max_indexed_files" in updates and folder_input is not None:
             # Ueber die gesperrte Methode statt an den privaten Feldern: dies laeuft im
             # HTTP-Thread, waehrend der Poller denselben Zustand schreiben kann.
-            folder_input.set_index_cap(int(updates["folder_max_indexed_files"]))
+            if not folder_input.set_index_cap(int(updates["folder_max_indexed_files"])):
+                # Nicht verschlucken: bei einem selten laufenden Ordner kann es lange
+                # dauern, bis der naechste Lauf die Grenze nachtraegt.
+                deferred.append("index cap applies when the running folder scan finishes")
         if "dedupe_threshold" in updates:
             gallery.dedupe_threshold = float(updates["dedupe_threshold"])
         if "hires_enroll" in updates:
@@ -490,7 +494,7 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             except (json.JSONDecodeError, OSError): overlay = {}
         overlay.update({k: v for k, v in updates.items() if k in keys})
         settings_file.write_text(json.dumps(overlay, ensure_ascii=False, indent=1))
-        return trimmed
+        return trimmed, deferred
 
     @app.get("/api/settings")
     def get_settings():
@@ -545,8 +549,8 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             if k in body:
                 try: updates[k] = min(max(int(body[k]), lo), hi)
                 except (TypeError, ValueError): raise HTTPException(400, f"{k} not an int")
-        trimmed = _apply_settings(updates)
-        return {"ok": True, "applied": updates, "trimmed": trimmed}
+        trimmed, deferred = _apply_settings(updates)
+        return {"ok": True, "applied": updates, "trimmed": trimmed, "deferred": deferred}
 
     @app.post("/api/backup/now")
     def backup_now():

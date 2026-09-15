@@ -150,6 +150,7 @@ class FolderIngest:
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread = None
+        self._pending_cap = None
         self._state = self._load_state()
         self._status = {"enabled": self.enabled, "path": str(self.path), "camera": self.camera,
                         "running": False, "scanning": False, "last_scan": 0.0,
@@ -184,6 +185,9 @@ class FolderIngest:
     def _finish_scan(self, result: dict):
         """Einmal am Ende eines Laufs aufraeumen — nicht zwischendurch."""
         self._status["last_result"] = result
+        if self._pending_cap is not None:
+            self.max_indexed_files = self._pending_cap
+            self._pending_cap = None
         if self._enforce_index_cap():
             self._save_state()
         # Wenn der Ordner dauerhaft mehr Dateien haelt als der Index merken darf, wird
@@ -326,7 +330,7 @@ class FolderIngest:
                         result["skipped"] += 1
                     self._state["initialized"] = True
                     self._save_state()
-                    self._finish_scan(result)
+                    self._status["last_result"] = result
                     return result
                 for index, path in enumerate(files, 1):
                     if progress:
@@ -377,13 +381,18 @@ class FolderIngest:
                     self._save_state()
                     result["processed"] += 1
                     result["faces"] += details["distinct_faces"]
-                self._finish_scan(result)
+                self._status["last_result"] = result
                 return result
             except Exception as exc:
                 self._status["last_error"] = str(exc)
                 raise
             finally:
                 self._status["scanning"] = False
+                # Auch wenn der Lauf geworfen hat: ein Ordner, der zuverlaessig mitten
+                # im Scan scheitert, wuerde den Index sonst unbegrenzt wachsen lassen —
+                # genau die Kosten, gegen die die Obergrenze da ist. Im finally, damit
+                # kein Rueckgabeweg daran vorbeifuehrt.
+                self._finish_scan(result)
         finally:
             self._lock.release()
 
@@ -415,12 +424,17 @@ class FolderIngest:
         haengt, waere die schlechtere Antwort. Klappt es nicht, traegt der naechste
         Laufabschluss die neue Grenze nach.
         """
-        self.max_indexed_files = max(0, int(value))
+        value = max(0, int(value))          # vor jeder Zustandsaenderung, damit ein
+                                            # ungueltiger Wert nichts halb veraendert
         if not self._lock.acquire(blocking=False):
-            log.info("index cap set to %d; a scan is running, it will apply at its end",
-                     self.max_indexed_files)
+            # Nicht direkt schreiben: ein laufender Scan liest das Feld und wuerde die
+            # neue Grenze mitten im Lauf anwenden, obwohl wir hier gerade aufschieben.
+            self._pending_cap = value
+            log.info("index cap %d queued; a scan is running, it applies at its end", value)
             return False
         try:
+            self.max_indexed_files = value
+            self._pending_cap = None
             if self._enforce_index_cap():
                 self._save_state()
         finally:
