@@ -1,5 +1,6 @@
 """InsightFace-Wrapper: SCRFD-Detection + ArcFace-Embeddings (buffalo_l — dieselben Modelle wie Immich)."""
 import threading
+import os
 
 import cv2
 import numpy as np
@@ -11,6 +12,7 @@ class FaceEngine:
 
         self.app = FaceAnalysis(
             name="buffalo_l",
+            root=os.environ.get("INSIGHTFACE_ROOT", "~/.insightface"),
             providers=providers or ["CPUExecutionProvider"],
             allowed_modules=["detection", "recognition"],
         )

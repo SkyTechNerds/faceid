@@ -105,7 +105,7 @@ def run_backfill(engine, gallery, frigate, frigate_url: str, days: int = 14,
             {"camera": ev["camera"], "event_id": ev["id"], "backfill": True,
              "event_ts": ev.get("start_time"),  # wann es passierte, nicht wann wir es fanden
              "guess": name, "guess_score": round(float(score), 3)},
-            dedupe_sim=dedupe, full_bgr=full,
+              dedupe_sim=dedupe, full_bgr=None,
         )
         stats["dupe" if uid is None else "faces"] += 1
     return stats

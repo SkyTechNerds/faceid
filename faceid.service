@@ -11,6 +11,8 @@ Restart=on-failure
 RestartSec=10
 # InsightFace laedt Modelle nach ~/.insightface
 Environment=HOME=/opt/faceid
+Environment=INSIGHTFACE_ROOT=/opt/faceid/faceid-model/.insightface
+Environment=FACEID_HOST_MOUNT_ATTEST_MAX_AGE=30
 
 [Install]
 WantedBy=multi-user.target

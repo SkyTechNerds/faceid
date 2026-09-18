@@ -1,5 +1,6 @@
 """Review-UI + JSON-API: Personen verwalten, Unknown-Cluster zuordnen, letzte Erkennungen."""
 import base64
+import binascii
 import io
 import json
 import logging
@@ -11,7 +12,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from fastapi import FastAPI, HTTPException, Response, UploadFile
+from fastapi import FastAPI, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -78,6 +79,188 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     def delete_person(slug: str):
         gallery.delete_person(slug)
         return {"ok": True}
+
+    # ---------- Identify (read-only, multi-face) ----------
+    # Pure recogniser: detect every face in the upload, score each one against the
+    # gallery, and return every candidate with its score.  Nothing is written —
+    # no enrollment, no unknowns queue, no history, no MQTT, no HA REST — so the
+    # caller (or operator acceptance test) can hammer it without side effects.
+    #
+    # The caller decides what to do with the candidate list (gate against the
+    # thresholds in ``thresholds.match``, log a probe, etc.).  We only return the
+    # raw signal: every candidate per face, sorted by score desc, capped at
+    # ``top_k`` (default = gallery.match_top_k from config).
+
+    def _identify_aliases() -> dict:
+        return dict(cfg["faceid"].get("ha_display_aliases") or {})
+
+    def _decode_identify_image(raw: bytes):
+        if not raw:
+            return None
+        arr = np.frombuffer(raw, np.uint8)
+        return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+    def _build_identify_payload(faces, top_k: int) -> dict:
+        aliases = _identify_aliases()
+        persons_now = gallery.persons()
+        match_thr = float(cfg["faceid"].get("match_threshold", 0.5))
+        unknown_thr = float(cfg["faceid"].get("unknown_threshold", 0.35))
+        out_faces = []
+        for i, face in enumerate(faces):
+            bbox = [int(round(float(v))) for v in face.bbox]
+            det_score = float(face.det_score)
+            # Per-person mean of top-k similarities.  Same scoring rule the
+            # event processor uses, so a probe's "best" matches the system of
+            # record — only the threshold gating lives in the caller.
+            scored = []
+            emb = face.normed_embedding
+            for slug, info in persons_now.items():
+                ref = gallery.embeddings(slug)
+                if ref is None or not len(ref):
+                    continue
+                sims = ref @ emb
+                k = min(int(top_k), len(sims))
+                if k <= 0:
+                    continue
+                score = float(np.sort(sims)[-k:].mean())
+                scored.append((score, slug, info["name"],
+                               info.get("person_uuid"), len(info["files"])))
+            scored.sort(key=lambda r: r[0], reverse=True)
+            top = scored[:max(1, int(top_k))]
+            candidates = [
+                {
+                    "person": aliases.get(name, name),
+                    "slug": slug,
+                    "person_uuid": uuid,
+                    "score": round(score, 4),
+                    "ref_count": ref_count,
+                }
+                for score, slug, name, uuid, ref_count in top
+            ]
+            if top:
+                best_score, best_slug, best_name, best_uuid, _ = top[0]
+                best = {
+                    "person": aliases.get(best_name, best_name),
+                    "slug": best_slug,
+                    "person_uuid": best_uuid,
+                    "score": round(best_score, 4),
+                }
+                above = best_score >= match_thr
+            else:
+                best = None
+                above = False
+            out_faces.append({
+                "index": i,
+                "bbox": bbox,
+                "det_score": round(det_score, 4),
+                "candidates": candidates,
+                "best": best,
+                "above_match_threshold": above,
+            })
+        return {
+            "success": True,
+            "faces": out_faces,
+            "face_count": len(out_faces),
+            "thresholds": {"match": match_thr, "unknown": unknown_thr},
+        }
+
+    @app.post("/api/identify")
+    async def identify(request: Request,
+                       image: UploadFile | None = None,
+                       top_k: int | None = None,
+                       min_face_px: int | None = None):
+        """Read-only face identification — no enrollment, no events.
+
+        Accepts either multipart/form-data (field ``image``) or
+        application/json (body ``{"image_base64": "..."}``).  Returns every
+        detected face with every gallery candidate scored against it (capped
+        by ``top_k``).  Zero faces is success, not an error.
+        """
+        cfg_top_k = int(cfg["faceid"].get("match_top_k", 3))
+        try:
+            k_eff = int(top_k) if top_k is not None else cfg_top_k
+        except (TypeError, ValueError):
+            raise HTTPException(400, "top_k must be an integer")
+        if k_eff < 1:
+            raise HTTPException(400, "top_k must be >= 1")
+        max_possible = max(1, len(gallery.persons()))
+        k_eff = min(k_eff, max_possible)
+
+        try:
+            cfg_min_px = int(cfg["faceid"].get("min_face_px", 48))
+        except (TypeError, ValueError):
+            cfg_min_px = 48
+        try:
+            min_px = int(min_face_px) if min_face_px is not None else cfg_min_px
+        except (TypeError, ValueError):
+            raise HTTPException(400, "min_face_px must be an integer")
+        if min_px < 1:
+            raise HTTPException(400, "min_face_px must be >= 1")
+
+        raw = b""
+        content_type = ""
+        if image is not None and image.filename:
+            raw = await image.read()
+            content_type = (image.content_type or "").lower()
+        else:
+            body_bytes = await request.body()
+            if body_bytes:
+                ctype = (request.headers.get("content-type") or "").lower()
+                content_type = ctype
+                if "application/json" in ctype:
+                    try:
+                        body = json.loads(body_bytes.decode("utf-8"))
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        raise HTTPException(400, "invalid JSON body")
+                    b64 = body.get("image_base64")
+                    if not isinstance(b64, str) or not b64:
+                        raise HTTPException(
+                            400,
+                            "expected JSON {image_base64: '...'} "
+                            "or multipart field 'image'")
+                    try:
+                        raw = base64.b64decode(b64, validate=True)
+                    except (binascii.Error, ValueError):
+                        raise HTTPException(400, "image_base64 is not valid base64")
+                elif "multipart/" in ctype:
+                    raise HTTPException(
+                        400, "multipart body must include the 'image' file field")
+                else:
+                    # Allow raw image bytes with no explicit content-type.
+                    raw = body_bytes
+
+        if not raw:
+            raise HTTPException(
+                400,
+                "missing image: send multipart field 'image' "
+                "or JSON {image_base64: '...'}")
+
+        bgr = _decode_identify_image(raw)
+        if bgr is None:
+            raise HTTPException(400, "image could not be decoded as JPEG/PNG")
+
+        # Cap extremely large uploads so a 50 MP probe can't pin the model
+        # thread.  Single-face detection normally rescales nothing.
+        if max(bgr.shape[:2]) > 4000:
+            scale = 4000 / max(bgr.shape[:2])
+            bgr = cv2.resize(bgr, None, fx=scale, fy=scale)
+
+        # Detect once, filter by min_face_px here so the response matches what
+        # the live pipeline would have considered.
+        all_faces = engine.faces(bgr)
+        kept = [f for f in all_faces
+                if min((float(f.bbox[2]) - float(f.bbox[0])),
+                       (float(f.bbox[3]) - float(f.bbox[1]))) >= min_px]
+
+        payload = _build_identify_payload(kept, k_eff)
+        payload["request"] = {
+            "content_type": content_type,
+            "bytes": len(raw),
+            "top_k": k_eff,
+            "min_face_px": min_px,
+            "detected_before_filter": len(all_faces),
+        }
+        return payload
 
     class FavBody(BaseModel):
         favorite: bool

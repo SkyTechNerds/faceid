@@ -7,11 +7,15 @@ Required: admin") — wer die Namen zurueck nach Frigate schreiben will, braucht
 Admin-Konto oder muss ``set_sub_label`` abschalten.
 """
 import logging
+import tempfile
 import time
+from pathlib import Path
 
 import cv2
 import numpy as np
 import requests
+
+from .nas_io import atomic_write_bytes_pinned
 
 log = logging.getLogger("faceid.frigate")
 
@@ -130,7 +134,8 @@ class FrigateAPI:
                 time.sleep(0.4)
         return None
 
-    def download_clip(self, event_id: str, dest: str, max_bytes: int = 80_000_000) -> bool:
+    def download_clip(self, event_id: str, dest: str, max_bytes: int = 80_000_000,
+                      storage_guard=None) -> bool:
         """Ereignis-Clip (volle Aufnahme-Auflösung) nach ``dest`` streamen.
 
         Nur fürs Enrollment: ein Download deckt das ganze Ereignis ab, statt einzelne
@@ -142,19 +147,43 @@ class FrigateAPI:
                 if r.status_code != 200:
                     return False
                 written = 0
-                with open(dest, "wb") as fh:
-                    for chunk in r.iter_content(chunk_size=1 << 18):
-                        if not chunk:
-                            continue
-                        written += len(chunk)
-                        if written > max_bytes:
-                            log.debug("clip %s aborted (> %d bytes)", event_id, max_bytes)
-                            return False
-                        fh.write(chunk)
-                return written > 1000
-        except (requests.RequestException, OSError) as e:
+                chunks = bytearray()
+                for chunk in r.iter_content(chunk_size=1 << 18):
+                    if not chunk:
+                        continue
+                    written += len(chunk)
+                    if written > max_bytes:
+                        log.debug("clip %s aborted (> %d bytes)", event_id, max_bytes)
+                        return False
+                    chunks.extend(chunk)
+                if written <= 1000:
+                    return False
+                dest_path = Path(dest)
+                cache_root = Path(tempfile.gettempdir()).resolve()
+                try:
+                    resolved = dest_path.resolve()
+                    bounded_cache = (
+                        dest_path.name.startswith("faceid-clip-")
+                        and resolved.parent == cache_root
+                    )
+                except OSError:
+                    bounded_cache = False
+                if storage_guard is not None and not bounded_cache:
+                    atomic_write_bytes_pinned(dest_path, bytes(chunks), storage_guard)
+                elif bounded_cache:
+                    dest_path.write_bytes(bytes(chunks))
+                else:
+                    raise OSError("clip destination is neither NAS-pinned nor bounded cache")
+                return True
+        except OSError as e:
             log.debug("clip %s failed: %s", event_id, e)
             return False
+        except Exception as e:
+            request_exc = getattr(requests, "RequestException", None)
+            if request_exc is not None and isinstance(e, request_exc):
+                log.debug("clip %s failed: %s", event_id, e)
+                return False
+            raise
 
     def config(self) -> dict | None:
         """Frigates Konfiguration (u. a. die Kameraliste)."""

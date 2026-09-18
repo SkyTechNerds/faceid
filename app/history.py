@@ -23,14 +23,20 @@ import cv2
 import numpy as np
 
 from .analysis import SELF_HIT
+from .nas_io import (
+    atomic_write_bytes_pinned, atomic_write_text_pinned, unlink_pinned, mkdir_pinned,
+)
 
 log = logging.getLogger("faceid.history")
 
 
 class History:
-    def __init__(self, data_dir: Path, keep: int = 200):
+    def __init__(self, data_dir: Path, keep: int = 200, storage_guard=None):
         self.dir = data_dir / "history"
-        self.dir.mkdir(parents=True, exist_ok=True)
+        self.storage_guard = storage_guard
+        if self.storage_guard is not None:
+            self.storage_guard(data=self.dir.parent)
+        mkdir_pinned(self.dir, self.storage_guard)
         self.keep = int(keep)
         # RLock, nicht Lock: delete() nimmt die Sperre selbst, und ein Aufrufer, der sie
         # schon haelt, wuerde sich sonst selbst blockieren.
@@ -70,20 +76,15 @@ class History:
 
     def _write_json(self, js: Path, payload: dict) -> bool:
         """JSON atomar ersetzen — der einzige Moment, in dem eine Zeile umschaltet."""
-        tmpdir = self.dir / ".tmp"
-        tmpdir.mkdir(exist_ok=True)
-        tmp = tmpdir / f"{js.stem}.json"
         try:
-            tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-            os.replace(tmp, js)
+            atomic_write_text_pinned(js, json.dumps(payload, ensure_ascii=False), self.storage_guard)
             return True
         except (OSError, TypeError, ValueError):
             # json.dumps scheitert an nicht serialisierbaren Werten mit TypeError —
             # faengt man nur OSError, reisst es die ganze Erkennung mit.
             log.exception("could not write the history entry %s", js.stem)
             return False
-        finally:
-            tmp.unlink(missing_ok=True)
+
 
     def _write_image(self, name: str, crop_bgr) -> bool:
         """Bild unter seinem endgueltigen Namen schreiben.
@@ -93,8 +94,13 @@ class History:
         sonst beschriebe die JSON danach ein Bild, das es nicht gibt.
         """
         try:
-            return bool(cv2.imwrite(str(self.dir / name), crop_bgr,
-                                    [cv2.IMWRITE_JPEG_QUALITY, 88]))
+            if self.storage_guard is not None:
+                self.storage_guard(data=self.dir)
+            ok, encoded = cv2.imencode(".jpg", crop_bgr, [cv2.IMWRITE_JPEG_QUALITY, 88])
+            if not ok:
+                return False
+            atomic_write_bytes_pinned(self.dir / name, encoded.tobytes(), self.storage_guard)
+            return True
         except cv2.error:
             log.warning("could not encode the history image %s", name)
             return False
@@ -106,6 +112,14 @@ class History:
             return None
         try:
             with self._lock:
+                observation_key = meta.get("observation_key")
+                if observation_key:
+                    for existing in self.dir.glob("*.json"):
+                        try:
+                            if json.loads(existing.read_text(encoding="utf-8")).get("observation_key") == observation_key:
+                                return existing.stem
+                        except (OSError, ValueError):
+                            continue
                 # Suffix gegen Millisekunden-Kollisionen: bei einer Gruppe entstehen
                 # mehrere Meldungen im selben Augenblick, und ohne das ueberschreiben
                 # sie einander stillschweigend.
@@ -123,8 +137,10 @@ class History:
                 if not self._write_image(payload["img"], crop_bgr):
                     return None
                 if not self._write_json(self.dir / f"{hid}.json", payload):
-                    (self.dir / payload["img"]).unlink(missing_ok=True)
+                    unlink_pinned(self.dir / payload["img"], self.storage_guard)
                     return None
+                if self.storage_guard is not None:
+                    self.storage_guard(data=self.dir)
                 self._enforce_cap()
                 return hid
         except Exception:
@@ -203,7 +219,7 @@ class History:
                     if not self._write_image(new_img, crop_bgr):
                         # Ein halb geschriebenes Bild wuerde bis zum naechsten
                         # Aufraeumen als Waise herumliegen.
-                        (self.dir / new_img).unlink(missing_ok=True)
+                        unlink_pinned(self.dir / new_img, self.storage_guard)
                         return False
                     payload["embedding"] = [round(float(v), 6) for v in embedding]
                     payload["best_score"] = round(float(score), 3)
@@ -218,14 +234,15 @@ class History:
                     if attempt is not None:
                         payload["attempt"] = attempt
                 if not self._write_json(jf, payload):
-                    (self.dir / new_img).unlink(missing_ok=True)
+                    if new_img:
+                        unlink_pinned(self.dir / new_img, self.storage_guard)
                     return False
                 if new_img and old_img != new_img:
                     # Nur noch Aufraeumen — die Zeile steht bereits richtig. Ein Fehler
                     # hier darf nicht als Fehlschlag zurueckgemeldet werden; das Bild
                     # holt spaetestens der naechste Durchlauf von _enforce_cap.
                     try:
-                        (self.dir / old_img).unlink(missing_ok=True)
+                        unlink_pinned(self.dir / old_img, self.storage_guard)
                     except OSError:
                         log.warning("could not remove the superseded image %s", old_img)
                 return True
@@ -233,14 +250,17 @@ class History:
             # Ein schon geschriebenes neues Bild wuerde sonst liegen bleiben: der
             # Aufraeumlauf haelt es fuer gueltig, weil seine Zeile ja noch existiert.
             if new_img:
-                (self.dir / new_img).unlink(missing_ok=True)
+                try:
+                    unlink_pinned(self.dir / new_img, self.storage_guard)
+                except OSError:
+                    pass
             log.exception("could not update history entry %s", hid)
             return False
 
     def _enforce_cap(self):
         """Aelteste ueber dem Limit entfernen (Aufrufer haelt das Lock)."""
         for old in sorted(self.dir.glob("*.json"), reverse=True)[self.keep:]:
-            old.unlink(missing_ok=True)
+            unlink_pinned(old, self.storage_guard)
         # Danach EIN Durchlauf ueber die Bilder: das raeumt die eben verdraengten Zeilen
         # mit weg und ebenso Bilder, die auf anderem Weg ihre Zeile verloren haben — die
         # wuerden sonst nie wieder gezaehlt, weil ueber *.json gelistet wird.
@@ -255,7 +275,7 @@ class History:
             # keinen Punkt enthalten — aber das hier ist ein Aufraeumpfad, und der darf
             # sich auf keine Annahme stuetzen, die er selbst nicht prueft.
             if img.stem not in stems and self._row_of(img) not in stems:
-                img.unlink(missing_ok=True)
+                unlink_pinned(img, self.storage_guard)
 
     # ---------- Lesen ----------
 
@@ -374,9 +394,9 @@ class History:
         # Entfernen der Zeile und ihrer Bilder ein laufendes improve() ein neues Bild
         # anlegen, das anschliessend niemandem mehr gehoert.
         with self._lock:
-            (self.dir / f"{hid}.json").unlink(missing_ok=True)
+            unlink_pinned(self.dir / f"{hid}.json", self.storage_guard)
             for img in self._images_of(hid):
-                img.unlink(missing_ok=True)
+                unlink_pinned(img, self.storage_guard)
 
     def clear(self) -> int:
         n = 0

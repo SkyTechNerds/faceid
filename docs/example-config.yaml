@@ -131,10 +131,14 @@ faceid:
   suggest_threshold: 0.40
   set_sub_label: true                  # write recognized names back to Frigate events
   presence_window: 120                 # camera sensor shows everyone seen within this window (s)
+  recent_face_window: 300               # binary face-present sensor window (s)
   # process events only from these cameras (empty = all cameras)
   cameras: []
   # cameras that get a Home Assistant discovery sensor (sensor.faceid_<camera>)
   discovery_cameras: [front_door, garden]
+  # Optional HA-only display aliases for existing UI labels.  This does not
+  # alter UUIDs or the privacy-minimal recognition event payload.
+  ha_display_aliases: {}
   # optional HTTP Basic Auth for the web UI + API (recommended for standalone
   # installs; leave empty to disable — the HA add-on is protected by ingress)
   auth:

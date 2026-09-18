@@ -55,9 +55,11 @@ options:
   backup_hour: 3
   backup_keep: 7
   presence_window: 120
+  recent_face_window: 300
   set_sub_label: true
   cameras: []
   discovery_cameras: []
+  ha_display_aliases: {}
 schema:
   mqtt_prefix: str
   frigate_url: url
@@ -100,3 +102,5 @@ schema:
     - str
   discovery_cameras:
     - str
+  ha_display_aliases:
+    str: str

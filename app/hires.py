@@ -43,7 +43,7 @@ def _pick(engine, frame, ref_embedding, min_px, identity_min, min_det=0.55):
     return best
 
 
-def _clip_frames(frigate, event_id, max_frames):
+def _clip_frames(frigate, event_id, max_frames, storage_guard=None):
     """Gleichmäßig über den Clip verteilte Frames — der Generator raeumt selbst auf.
 
     Wird bewusst immer vollstaendig durchlaufen (kein ``break`` beim Aufrufer), damit
@@ -52,7 +52,7 @@ def _clip_frames(frigate, event_id, max_frames):
     fd, path = tempfile.mkstemp(suffix=".mp4", prefix="faceid-clip-")
     os.close(fd)
     try:
-        if not frigate.download_clip(event_id, path):
+        if not frigate.download_clip(event_id, path, storage_guard=storage_guard):
             return
         cap = cv2.VideoCapture(path)
         try:
@@ -76,9 +76,9 @@ def _clip_frames(frigate, event_id, max_frames):
 
 
 def _scan_clip(engine, frigate, event_id, ref_embedding, max_frames, min_px, identity_min,
-               min_det):
+               min_det, storage_guard=None):
     best = None
-    for frame in _clip_frames(frigate, event_id, max_frames):
+    for frame in _clip_frames(frigate, event_id, max_frames, storage_guard=storage_guard):
         cand = _pick(engine, frame, ref_embedding, min_px, identity_min, min_det)
         if cand is None:
             continue
@@ -88,7 +88,8 @@ def _scan_clip(engine, frigate, event_id, ref_embedding, max_frames, min_px, ide
 
 
 def find_face_in_clip(engine, frigate, event_id: str, max_frames: int = 12,
-                      min_px: int = 48, min_det: float = 0.65, stats: dict | None = None):
+                      min_px: int = 48, min_det: float = 0.65,
+                      stats: dict | None = None, storage_guard=None):
     """Bestes Gesicht im Clip — fuer Ereignisse, deren Snapshot gar keines hergab.
 
     Ausgewaehlt wird nach det_score, ausdruecklich NICHT nach Galerie-Aehnlichkeit:
@@ -106,7 +107,7 @@ def find_face_in_clip(engine, frigate, event_id: str, max_frames: int = 12,
     """
     best = None
     seen = 0
-    for frame in _clip_frames(frigate, event_id, max_frames):
+    for frame in _clip_frames(frigate, event_id, max_frames, storage_guard=storage_guard):
         seen += 1
         for f in engine.faces(frame):
             w = float(f.bbox[2] - f.bbox[0])
@@ -142,7 +143,7 @@ def _scan_recordings(engine, frigate, camera, start_time, end_time, ref_embeddin
 def upgrade_face(engine, frigate, camera: str, start_time: float, end_time: float,
                  ref_embedding, event_id: str | None = None, max_frames: int = 12,
                  attempts: int = 3, min_px: int = 60, identity_min: float = 0.5,
-                 min_det: float = 0.55):
+                 min_det: float = 0.55, storage_guard=None):
     """Sucht in der Aufnahme ein größeres Gesicht DERSELBEN Person.
 
     ``ref_embedding`` ist das Gesicht aus dem Snapshot — jeder Kandidat muss dazu passen
@@ -153,7 +154,7 @@ def upgrade_face(engine, frigate, camera: str, start_time: float, end_time: floa
     """
     if event_id:
         hit = _scan_clip(engine, frigate, event_id, ref_embedding, max_frames, min_px,
-                         identity_min, min_det)
+                         identity_min, min_det, storage_guard=storage_guard)
         if hit is not None:
             return hit
     if not camera or not start_time:
