@@ -304,7 +304,7 @@ async function renderUnknowns(){
   const SUGGEST=suggestThr;
   // Vorschlags-Gruppen (nach vermuteter Person) + Rest-Cluster
   const byName={};
-  const rest=[];
+  let rest=[];
   clusters.forEach(c=>{
     const keep=[];
     c.forEach(it=>{
@@ -314,12 +314,16 @@ async function renderUnknowns(){
     });
     if(keep.length)rest.push(keep);
   });
-  const sugg=Object.keys(byName).sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:'base'}))
-    .map(name=>({name,slug:n2s[name],items:byName[name]}));
+  let sugg=Object.keys(byName)
+    .map(name=>({name,slug:n2s[name],items:sortUnknownItems(byName[name])}));
+  sugg.sort((a,b)=>groupSortKey(b.items)-groupSortKey(a.items)
+    ||a.name.localeCompare(b.name,undefined,{sensitivity:'base'}));
+  rest=rest.map(sortUnknownItems);
+  rest.sort((a,b)=>groupSortKey(b)-groupSortKey(a));
   window._sugg=sugg; window._clusters=rest; window._n2s=n2s;
 
-  let html=backfillRow(bf)+(camSelect('unknowns', unkCams)
-      ? `<div class="row" style="margin-bottom:6px">${camSelect('unknowns', unkCams)}</div>` : '')
+  const camSel=camSelect('unknowns', unkCams);
+  let html=backfillRow(bf)+`<div class="row" style="margin-bottom:6px">${unkSortSelect()}${camSel||''}</div>`
     +`<div class="row">
     <button class="act" title="assign every face whose best gallery match clears the recognition threshold" onclick="autoAssign()">APPLY SUGGESTIONS ≥50%</button>
     <span class="stat">assigns every face whose best gallery match clears the recognition threshold</span>
@@ -368,7 +372,7 @@ async function renderUnknowns(){
       <div class="grid">${c.map(u=>`
         <div class="tile" data-id="${u.id}" title="click to select — actions then apply to the selection only" onclick="this.classList.toggle('sel')">
           <img src="data/unknowns/${u.id}.jpg" loading="lazy">
-          <span class="score">${fmtWhen(u)}</span>
+          <span class="score">${u.guess_score!=null?(u.guess_score*100|0)+'% · ':''}${fmtWhen(u)}</span>
           ${u.full_url?`<button class="z" title="full snapshot" data-url="${esc(u.full_url)}" data-cap="${esc(u.camera||'')} · ${esc(fmtWhen(u))}" data-fb="data/unknowns/${esc(u.id)}.jpg" onclick="event.stopPropagation();showFull(this.dataset.url,this.dataset.cap,this.dataset.fb)">⛶</button>`:''}
         </div>`).join('')}
       </div>
@@ -581,6 +585,29 @@ let logTimer=null, logLevel=null;
 // Kamera-Auswahl fuer die Listen. Erscheint erst ab zwei Kameras — bei einer waere
 // ein Filter nur ein Bedienelement ohne Wirkung. Idee aus einem Nutzerbeitrag (#14).
 let camFilter = {unknowns: '', history: ''};
+// Unknown queue order. Default newest — match % is for clearing near-threshold faces first.
+let unkSort = localStorage.getItem('faceid.unkSort') || 'date';
+function unkWhen(u){return +(u.event_ts||u.ts||0)}
+function unkScore(u){return +(u.guess_score||0)}
+function sortUnknownItems(items){
+  const arr=items.slice();
+  if(unkSort==='match')
+    return arr.sort((a,b)=>unkScore(b)-unkScore(a)||unkWhen(b)-unkWhen(a));
+  return arr.sort((a,b)=>unkWhen(b)-unkWhen(a)||unkScore(b)-unkScore(a));
+}
+function groupSortKey(items){
+  if(!items.length)return 0;
+  if(unkSort==='match')
+    return items.reduce((s,u)=>s+unkScore(u),0)/items.length;
+  return Math.max(...items.map(unkWhen));
+}
+function unkSortSelect(){
+  return `<span class="stat">sort:</span>
+    <select onchange="unkSort=this.value;localStorage.setItem('faceid.unkSort',unkSort);render()" style="margin-right:12px" title="order suggestion groups and clusters">
+      <option value="date"${unkSort==='date'?' selected':''}>newest</option>
+      <option value="match"${unkSort==='match'?' selected':''}>match %</option>
+    </select>`;
+}
 function camSelect(view, cams){
   if(cams.length < 2) return '';
   const cur = camFilter[view];

@@ -3,6 +3,13 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## Unreleased
+
+- **Unknown review can sort by newest or match %.** The UNKNOWN tab has a `sort:` control
+  next to the camera filter (default newest; choice kept in `localStorage`). Suggestion
+  groups and rest clusters reorder together, and rest-cluster tiles show the guess score
+  when one exists. Contributed by @Alien10140.
+
 ## 0.26.0 — 2026-10-07
 
 - **Looks-like cues show the gallery face.** Unknown review now stores `guess_top_slug` +
