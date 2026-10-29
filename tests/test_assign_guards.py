@@ -6,6 +6,7 @@ angelegt. Ueber "Track as new" (PR #32) heisst das: jeder Fehlversuch laesst ein
 leeres Unnamed-xxxxxx in der Galerie zurueck.
 """
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -94,3 +95,7 @@ class AssignGuardTests(unittest.TestCase):
         r = self.assign(self.Body(ids=[uid], person=slug))
         self.assertEqual(r["assigned"], 1)
         self.assertEqual(r["slug"], slug)
+        self.assertTrue(r.get("queued"))
+        deadline = time.time() + 2.0
+        while time.time() < deadline and (self.gallery.unknown_dir / f"{uid}.json").exists():
+            time.sleep(0.03)

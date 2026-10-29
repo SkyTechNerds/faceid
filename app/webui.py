@@ -1,8 +1,10 @@
 """Review-UI + JSON-API: Personen verwalten, Unknown-Cluster zuordnen, letzte Erkennungen."""
+import atexit
 import base64
 import io
 import json
 import logging
+import queue
 import secrets
 import tarfile
 import threading
@@ -61,6 +63,70 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="FaceID"'})
 
     app.mount("/data", StaticFiles(directory=data_dir), name="data")
+
+    sub_label_q: queue.Queue = queue.Queue()
+    sub_label_failures = {"n": 0}
+
+    def _enqueue_sub_label(event_id, name, score):
+        if not event_id:
+            return
+        frigate = getattr(processor, "frigate", None)
+        if not frigate or not getattr(frigate, "enabled", False):
+            return
+        sub_label_q.put((event_id, name, score))
+
+    def _sub_label_loop():
+        while True:
+            item = sub_label_q.get()
+            try:
+                eid, name, score = item
+                processor.frigate.set_sub_label(eid, name, score)
+            except Exception:
+                sub_label_failures["n"] += 1
+                log.exception("background sub_label failed")
+
+    threading.Thread(target=_sub_label_loop, daemon=True, name="faceid-sub-label").start()
+
+    def _warn_undrained_sub_labels():
+        n = sub_label_q.qsize()
+        if n:
+            log.warning("dropping %d queued Frigate sub_label posts on shutdown", n)
+    atexit.register(_warn_undrained_sub_labels)
+
+    def _guess_flags():
+        return {"guesses_epoch": gallery.guesses_epoch,
+                "guesses_refreshing": gallery.guesses_refreshing}
+
+    assign_q: queue.Queue = queue.Queue()
+
+    def _assign_loop():
+        while True:
+            job = assign_q.get()
+            ids, slug, name, created_now = job
+            assigned = 0
+            try:
+                for uid in ids:
+                    jf = gallery.unknown_dir / f"{uid}.json"
+                    meta = {}
+                    if jf.exists():
+                        try:
+                            meta = json.loads(jf.read_text())
+                        except (json.JSONDecodeError, OSError):
+                            pass
+                    if gallery.assign_unknown(uid, slug):
+                        assigned += 1
+                        _enqueue_sub_label(meta.get("event_id"), name, 1.0)
+                if assigned:
+                    gallery.request_refresh_guesses()
+                elif created_now:
+                    gallery.delete_person(slug)
+            except Exception:
+                log.exception("background assign failed")
+            finally:
+                gallery.unhide_unk_ui(ids)
+
+    threading.Thread(target=_assign_loop, daemon=True, name="faceid-assign").start()
+
     if (static_dir / "assets").is_dir():
         # Schriften und Logo der Oberflaeche — lokal, damit die App nichts von aussen nachlaedt.
         app.mount("/assets", StaticFiles(directory=static_dir / "assets"), name="assets")
@@ -199,8 +265,8 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         """Beiseitegelegtes Foto zurueck ins Sortieren (Undo einer Zuordnung bei voller Person)."""
         ok = gallery.unassign_trimmed(slug, fname)
         if ok:
-            gallery.refresh_guesses()
-        return {"ok": ok}
+            gallery.request_refresh_guesses()
+        return {"ok": ok, **_guess_flags()}
 
     @app.delete("/api/persons/{slug}/trimmed/{fname}")
     def delete_trimmed(slug: str, fname: str):
@@ -234,16 +300,16 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     def unassign_face(slug: str, fname: str):
         ok = gallery.unassign_face(slug, fname)
         if ok:
-            gallery.refresh_guesses()
-        return {"ok": ok}
+            gallery.request_refresh_guesses()
+        return {"ok": ok, **_guess_flags()}
 
     @app.post("/api/persons/{slug}/ignore")
     def ignore_person(slug: str):
         """Person komplett auf die Ignore-Liste setzen (alle Bilder werden Negativ-Anker)."""
         n = gallery.ignore_person(slug)
         if n:
-            gallery.refresh_guesses()
-        return {"ignored_faces": n}
+            gallery.request_refresh_guesses()
+        return {"ignored_faces": n, **_guess_flags()}
 
     @app.post("/api/persons/{slug}/photos")
     async def upload_photos(slug: str, files: list[UploadFile]):
@@ -292,17 +358,27 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
             added += 1
         return {"added": added, "skipped": skipped}
 
-    @app.get("/api/unknowns")
-    def unknowns():
-        clusters = gallery.unknown_clusters(eps=float(cfg["faceid"].get("cluster_eps", 0.45)))
+    def _decorate_unknowns(items):
         frigate_url = _frigate_url(cfg)
+        for u in items:
+            if u.pop("has_full", False):
+                u["full_url"] = f"data/unknowns/{u['id']}_full.jpg"
+            elif frigate_url and u.get("event_id"):
+                # Backfill-Bestand: Vollbild live aus Frigate (solange Event-Retention reicht)
+                u["full_url"] = f"{frigate_url}/api/events/{u['event_id']}/snapshot.jpg"
+
+    @app.get("/api/unknowns")
+    def unknowns(flat: bool = False):
+        # The 0.27 Sort board groups by guess in the browser. DBSCAN on a few
+        # thousand embeddings is only for /classic, and it is what made reload sit
+        # on "Loading…" for tens of seconds.
+        if flat:
+            items = gallery.unknowns_for_ui()
+            _decorate_unknowns(items)
+            return JSONResponse([items] if items else [])
+        clusters = gallery.unknown_clusters(eps=float(cfg["faceid"].get("cluster_eps", 0.45)))
         for c in clusters:
-            for u in c:
-                if u.pop("has_full", False):
-                    u["full_url"] = f"data/unknowns/{u['id']}_full.jpg"
-                elif frigate_url and u.get("event_id"):
-                    # Backfill-Bestand: Vollbild live aus Frigate (solange Event-Retention reicht)
-                    u["full_url"] = f"{frigate_url}/api/events/{u['event_id']}/snapshot.jpg"
+            _decorate_unknowns(c)
         return JSONResponse(clusters)
 
     @app.post("/api/unknowns/assign")
@@ -315,21 +391,12 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         # bei null Treffern eine bestehende Person samt ihrer Gesichter.
         created_now = slug not in persons_now
         name = gallery.persons()[slug]["name"]
-        n = 0
+        existing = []
         for uid in body.ids:
-            jf = gallery.unknown_dir / f"{uid}.json"
-            meta = {}
-            if jf.exists():
-                try:
-                    meta = json.loads(jf.read_text())
-                except (json.JSONDecodeError, OSError):
-                    pass
-            if gallery.assign_unknown(uid, slug):
-                n += 1
-                # Zuordnung ans Original-Event zurückspielen (Mensch bestätigt -> Score 1.0)
-                if getattr(processor.frigate, "enabled", True) and meta.get("event_id"):
-                    processor.frigate.set_sub_label(meta["event_id"], name, 1.0)
-        if n == 0:
+            if ((gallery.unknown_dir / f"{uid}.json").exists()
+                    and (gallery.unknown_dir / f"{uid}.jpg").exists()):
+                existing.append(uid)
+        if not existing:
             # Kein Gesicht gelandet heisst: veraltete IDs, leere Auswahl, oder ein
             # zweiter Tab war schneller. Das war bisher ein HTTP 200 mit
             # {"assigned": 0} — die Oberflaeche meldete "0 face(s) → Name" und sah aus
@@ -341,22 +408,30 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
                 gallery.delete_person(slug)
                 raise HTTPException(409, f"no face was assigned — {name} was not created")
             raise HTTPException(409, "no face was assigned — the queue may have changed")
-        gallery.refresh_guesses()
-        return {"assigned": n, "slug": slug}
+        # Enrolment (cv2 + gallery rewrite) stays off the request clock so the
+        # Sort board can keep taking clicks. Files are hidden from the UI cache
+        # until the worker has moved them.
+        gallery.hide_unk_ui(existing)
+        assign_q.put((existing, slug, name, created_now))
+        return {"assigned": len(existing), "slug": slug, "ids": existing,
+                "queued": True, **_guess_flags()}
 
     @app.post("/api/unknowns/auto_assign")
     def auto_assign():
         """Alle Unknowns mit Galerie-Match >= match_threshold der vorgeschlagenen Person zuordnen."""
         thr = float(cfg["faceid"].get("match_threshold", 0.5))
         assigned: dict[str, int] = {}
+        assigned_ids: list[str] = []
         for it in gallery.unknowns():
             slug, name, score, _top = gallery.match(it["embedding"])
             if slug and score >= thr and gallery.assign_unknown(it["id"], slug):
                 assigned[name] = assigned.get(name, 0) + 1
-                if getattr(processor.frigate, "enabled", True) and it.get("event_id"):
-                    processor.frigate.set_sub_label(it["event_id"], name, score)
-        gallery.refresh_guesses()
-        return {"assigned": assigned, "total": sum(assigned.values())}
+                assigned_ids.append(it["id"])
+                _enqueue_sub_label(it.get("event_id"), name, score)
+        if assigned_ids:
+            gallery.request_refresh_guesses()
+        return {"assigned": assigned, "total": sum(assigned.values()),
+                "ids": assigned_ids, **_guess_flags()}
 
     @app.post("/api/unknowns/ignore")
     def ignore(body: AssignBody):
@@ -383,8 +458,8 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         slug = body.person if body.person in persons_now else gallery.create_person(body.person)
         n = gallery.assign_ignored(body.ids, slug)
         if n:
-            gallery.refresh_guesses()
-        return {"assigned": n, "slug": slug}
+            gallery.request_refresh_guesses()
+        return {"assigned": n, "slug": slug, **_guess_flags()}
 
     @app.get("/api/ignored")
     def list_ignored():
@@ -393,8 +468,9 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     @app.post("/api/ignored/restore")
     def restore_ignored(body: AssignBody):
         n = sum(1 for iid in body.ids if gallery.restore_ignored(iid))
-        gallery.refresh_guesses()
-        return {"restored": n}
+        if n:
+            gallery.request_refresh_guesses()
+        return {"restored": n, **_guess_flags()}
 
     @app.post("/api/ignored/delete")
     def delete_ignored(body: AssignBody):
@@ -825,11 +901,16 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
         # Verarbeitungs-Warteschlange steht separat unter "processing".
         folder = getattr(processor, "folder_ingest", None)
         return {"status": "ok", "persons": len(gallery.persons()),
-                "queue": len(list((data_dir / "unknowns").glob("*.json"))),
+                "queue": gallery.review_queue_len(),
+                "assign_queued": gallery.assign_pending_len(),
                 "processing": processor.queue.qsize(),
                 "open_events": len(processor.events),
                 "source": "folder" if folder and folder.enabled else "frigate",
                 "folder": folder.status() if folder and folder.enabled else None,
-                "suggest_threshold": float(cfg["faceid"].get("suggest_threshold", 0.40))}
+                "suggest_threshold": float(cfg["faceid"].get("suggest_threshold", 0.40)),
+                "guesses_epoch": gallery.guesses_epoch,
+                "guesses_refreshing": gallery.guesses_refreshing,
+                "guesses_updated_ts": gallery.guesses_updated_ts,
+                "sub_label_failures": sub_label_failures["n"]}
 
     return app

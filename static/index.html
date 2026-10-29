@@ -126,13 +126,21 @@ main{max-width:1500px;margin:0 auto;padding:22px 24px 120px}
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:14px;align-items:stretch}
 .card{background:var(--raise);border-radius:24px;padding:14px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px;min-width:0}
 .card.wide{grid-column:1/-1}
-.ch{display:grid;grid-template-columns:1fr;gap:4px}
+.ch{display:flex;gap:10px;align-items:flex-start}
+.ch .meta{min-width:0;flex:1;display:grid;gap:4px}
 .ch .who{font:500 19px/1.2 var(--wide);letter-spacing:-.01em;min-width:0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;min-height:2.4em;overflow-wrap:anywhere}
 .ch .who small{display:block;font:500 12px var(--wide);color:var(--ink-2);letter-spacing:.02em;margin-bottom:2px}
 .card.k-s .who{color:var(--hot-text)}
 .ch .pct{font:500 12px var(--wide);background:var(--hot-soft);color:var(--hot-text);border-radius:999px;padding:3px 8px;white-space:nowrap;margin-right:6px}
 .card:not(.k-s) .ch .pct{background:var(--raise-2);color:var(--ink-2)}
 .ch .ct{font-size:14px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who-ref{position:relative;flex:0 0 auto;width:48px;height:48px;padding:0;border:0;background:transparent;cursor:zoom-in;border-radius:12px}
+.who-ref .guess-thumb{width:48px;height:48px;border-radius:12px;object-fit:cover;display:block;box-shadow:0 0 0 2px var(--edge)}
+.card.k-s .who-ref .guess-thumb{box-shadow:0 0 0 2px var(--hot)}
+.who-ref .guess-pop{display:none;position:absolute;left:0;top:calc(100% + 8px);z-index:30;background:var(--raise);border-radius:14px;padding:6px;box-shadow:var(--shadow)}
+.who-ref:hover .guess-pop,.who-ref:focus-visible .guess-pop{display:block}
+.who-ref .guess-pop img{width:120px;height:120px;object-fit:cover;border-radius:10px;display:block}
+.who-ref .guess-pop .cap{font:500 12px var(--wide);color:var(--ink-2);margin-top:4px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cf{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:1fr;gap:6px}
 .card.wide .cf{grid-template-columns:repeat(auto-fill,minmax(92px,1fr))}
 .slot{aspect-ratio:1;border-radius:14px;background:var(--raise-2);opacity:.45}
@@ -239,12 +247,11 @@ main{max-width:1500px;margin:0 auto;padding:22px 24px 120px}
 .pile.armed .key{color:var(--ink)}
 .rail .hint{font-size:14px;color:var(--ink-2);margin:-2px 4px 2px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .rail .hint .sall{min-height:36px;padding:0 10px}
-@media (min-width:861px){body.rail-in-view .sel{display:none}}
 .rail .hint b{color:var(--ink);font-weight:600}
 .pile.sys{box-shadow:none;background:transparent;border:2px dashed var(--edge);grid-template-columns:auto 1fr auto}
 .pile.sys .ico{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:var(--raise-2);font-size:22px}
 .pile.sys.warn .nm{color:var(--warn)}
-.newp{display:flex;gap:8px;padding:10px;border-radius:22px;background:var(--hot-soft)}
+.newp{display:flex;flex-wrap:wrap;gap:8px;padding:10px;border-radius:22px;background:var(--hot-soft)}
 .newp input{flex:1;min-width:0;min-height:44px;border-radius:999px;border:2px solid var(--edge);padding:0 16px;background:var(--raise);font-size:17px}
 
 /* selection bar */
@@ -548,7 +555,7 @@ main a:not(.b):not(.classic-link):hover,dialog a:not(.b):hover{text-decoration-t
   <button class="b" id="themeBtn" aria-label="Switch light or dark" data-tip="Light / dark">◐</button>
   <button class="b" id="helpBtn" aria-label="Keyboard shortcuts" data-tip="Shortcuts" data-tipsub="key ?">?</button>
 </div></header>
-<main id="main"><div class="loading"><span class="spin"></span> Loading…</div></main>
+<main id="main"><div class="loading"><span class="spin"></span> Loading faces…</div></main>
 
 <div class="sel" id="sel" role="region" aria-label="Selected faces"></div>
 <div class="toast" id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button class="b" id="undoBtn">Undo <kbd>Z</kbd></button></div>
@@ -614,7 +621,7 @@ const img=(src,fallback)=>`<span class="face"><img src="${esc(src)}" alt="" load
 /* ================= state ================= */
 let view=store.get('faceid.view','sort');if(view==='tools')view='checks';if(!['sort','people','add','history','settings','log','checks'].includes(view))view='sort';
 let persons={},clusters=[],health=null,SUG=.4,lastSeen={},ignoredGroups=null,maxFaces=0;
-let sel=new Set(),lastClick=null,camF='all',openCards=new Set(),newOpen=false,landed=null,recent={},undoStack=[],busy=false;
+let sel=new Set(),lastClick=null,camF='all',openCards=new Set(),newOpen=false,landed=null,recent={},undoStack=[],busy=false,inflight=new Set();
 let openRow=null,showAll=false,peopleView=store.get('faceid-b-people','list'),peopleTab='people';
 
 const personImg=(slug,f)=>`data/persons/${enc(slug)}/${enc(f)}`;
@@ -635,23 +642,52 @@ const FULL_WHY=()=>`Limit of ${maxFaces} reached. New faces still count: each on
 const countText=s=>{const n=persons[s].count;return `${n} photo${n===1?'':'s'}${full(s)?' · <span class="fullt">full</span>':n<10?' · <span class="warn-t">few</span>':''}`};
 const allFaces=()=>clusters.flat();
 const faceById=id=>allFaces().find(u=>u.id===id);
+function dropIds(ids){
+  const gone=new Set(ids);
+  gone.forEach(id=>inflight.add(id));
+  clusters=clusters.map(c=>c.filter(u=>!gone.has(u.id))).filter(c=>c.length);
+  ids.forEach(id=>sel.delete(id));
+}
+function settleIds(ids){ids.forEach(id=>inflight.delete(id))}
 const slugOfGuess=u=>u.guess_top_slug&&persons[u.guess_top_slug]?u.guess_top_slug:Object.keys(persons).find(s=>persons[s].name===u.guess)||null;
+function guessPhoto(slug, preferred){
+  const p=persons[slug];if(!p||!p.files||!p.files.length)return '';
+  if(preferred&&p.files.includes(preferred))return preferred;
+  return p.files[p.files.length-1];
+}
+function cardRefHtml(c){
+  if(!c.guess)return '';
+  const best=c.faces.reduce((a,b)=>(b.guess_score||0)>(a.guess_score||0)?b:a);
+  const file=guessPhoto(c.guess,best.guess_top_photo||'');
+  if(!file)return '';
+  const src=personImg(c.guess,file),name=esc(pname(c.guess));
+  return `<button type="button" class="who-ref" data-refslug="${esc(c.guess)}" data-reffile="${esc(file)}" aria-label="Gallery photo of ${name}">
+    <img class="guess-thumb" src="${src}" alt="" loading="lazy" onerror="this.closest('.who-ref').hidden=true">
+    <span class="guess-pop"><img src="${src}" alt=""><span class="cap">${name}</span></span></button>`;
+}
 
 /* ================= loading ================= */
+const UNK_URL='api/unknowns?flat=1';
+function noteQueue(){if(health){health.queue=allFaces().length;setHealth(health)}}
 async function loadAll(){
-  const [p,u,h,hist,st]=await Promise.all([api('api/persons'),api('api/unknowns'),api('api/health').catch(()=>null),api('api/history?limit=300').catch(()=>({items:[]})),maxFaces?null:api('api/settings').catch(()=>null)]);
-  persons=p;clusters=u;setHealth(h);if(st)maxFaces=st.max_faces_per_person||0;
+  const h0=await api('api/health').catch(()=>null);
+  setHealth(h0);
+  const boot=document.querySelector('#main .loading');
+  if(boot&&h0) boot.innerHTML=`<span class="spin"></span> Loading ${h0.queue} faces…`;
+  const [p,u,h,hist,st]=await Promise.all([api('api/persons'),api(UNK_URL),api('api/health').catch(()=>null),api('api/history?limit=300').catch(()=>({items:[]})),maxFaces?null:api('api/settings').catch(()=>null)]);
+  persons=p;clusters=u;setHealth(h||h0);if(st)maxFaces=st.max_faces_per_person||0;
+  if(inflight.size) clusters=clusters.map(c=>c.filter(u=>!inflight.has(u.id))).filter(c=>c.length);
   lastSeen={};for(const it of hist.items||[]){if(it.person&&it.person!=='unknown'&&(!lastSeen[it.person]||it.ts>lastSeen[it.person].ts))lastSeen[it.person]={ts:it.ts,cam:it.camera}}
   const ids=new Set(allFaces().map(u=>u.id));sel.forEach(id=>{if(!ids.has(id))sel.delete(id)});
 }
 function setHealth(h){
   health=h;if(h&&typeof h.suggest_threshold==='number')SUG=h.suggest_threshold;
   $('#hdot').classList.toggle('off',!h);
-  $('#htext').textContent=h?`${h.persons} people · ${h.queue} waiting${h.processing?` · ${h.processing} processing`:''}`:'offline';
+  $('#htext').textContent=h?`${h.persons} people · ${h.queue} waiting${h.assign_queued?` · ${h.assign_queued} sorting`:''}${h.processing?` · ${h.processing} processing`:''}`:'offline';
 }
 setInterval(async()=>{ /* keep counts fresh; reload the queue when it changed and nobody is mid-selection */
-  const h=await api('api/health').catch(()=>null),before=health?.queue;setHealth(h);
-  if(h&&view==='sort'&&!sel.size&&!busy&&h.queue!==before){clusters=await api('api/unknowns').catch(()=>clusters);render()}
+  const h=await api('api/health').catch(()=>null),before=health?.queue,epoch=health?.guesses_epoch;setHealth(h);
+  if(h&&view==='sort'&&!sel.size&&!inflight.size&&(h.queue!==before||(epoch!=null&&h.guesses_epoch!==epoch))){clusters=await api(UNK_URL).catch(()=>clusters);render()}
 },12000);
 
 /* ================= render + routing ================= */
@@ -667,7 +703,7 @@ function go(v){view=v;store.set('faceid.view',v);sel.clear();newOpen=false;clear
 let tt;
 function toast(m,undoable=true){$('#toastMsg').textContent=m;$('#undoBtn').hidden=!undoable;$('#toast').classList.add('on');clearTimeout(tt);tt=setTimeout(()=>$('#toast').classList.remove('on'),6500)}
 function pushUndo(fn){undoStack.push(fn);if(undoStack.length>20)undoStack.shift()}
-async function undo(){const fn=undoStack.pop();if(!fn)return toast('Nothing to undo',false);busy=true;try{await fn();await loadAll();render();toast('Undone',false)}finally{busy=false}}
+async function undo(){const fn=undoStack.pop();if(!fn)return toast('Nothing to undo',false);try{await fn();await loadAll();render();toast('Undone',false)}catch(e){toast(e.message,false)}}
 /* Destructive server calls wait until the toast is gone, so Undo can still stop them. */
 let pending=[];
 function deferred(label,commit,revertLocal){
@@ -713,13 +749,15 @@ function renderSort(){
       <span style="flex:1"></span>
       ${sugg.length?`<button class="b hot" id="applyAll">Apply ${sugg.length} suggestion${sugg.length>1?'s':''}</button>`:''}</div>
     <div class="cards">${cs.map(c=>{
-      const name=c.guess?esc(pname(c.guess)):'',open=openCards.has(c.key),many=c.faces.length>8;
-      const shown=open||!many?c.faces:c.faces.slice(0,7),slots=open?0:Math.max(0,8-shown.length-(many?1:0));
+      const PREVIEW=7, OPEN_MAX=24;
+      const name=c.guess?esc(pname(c.guess)):'',open=openCards.has(c.key),many=c.faces.length>PREVIEW;
+      const shown=open?c.faces.slice(0,OPEN_MAX):(many?c.faces.slice(0,PREVIEW):c.faces);
+      const slots=open?0:Math.max(0,8-shown.length-(many?1:0));
       const allSel=c.faces.every(u=>sel.has(u.id)),pct=Math.round(c.score*100);
       return `<article class="card k-${c.kind} ${open?'wide':''}" aria-label="${c.kind==='none'?'No match yet':name}">
-        <header class="ch"><span class="who" title="${c.kind==='none'?'No match yet':name}"><small>${c.kind==='s'?'Suggested':c.kind==='m'?'Maybe':'Unknown'}</small>${c.kind==='none'?'No match yet':(c.kind==='s'?'→ ':'')+name}</span>
-          <span class="ct">${c.kind!=='none'?`<span class="pct">up to ${pct}%</span>`:''}${c.faces.length} face${c.faces.length>1?'s':''} · ${esc(when(c.faces[0].event_ts||c.faces[0].ts))}</span></header>
-        <div class="cf">${shown.map(tile).join('')}${many&&!open?`<button class="more" data-expand="${esc(c.key)}" aria-label="Show all ${c.faces.length} faces">+${c.faces.length-7}</button>`:''}${'<span class="slot" aria-hidden="true"></span>'.repeat(slots)}</div>
+        <header class="ch">${cardRefHtml(c)}<span class="meta"><span class="who" title="${c.kind==='none'?'No match yet':name}"><small>${c.kind==='s'?'Suggested':c.kind==='m'?'Maybe':'Unknown'}</small>${c.kind==='none'?'No match yet':(c.kind==='s'?'→ ':'')+name}</span>
+          <span class="ct">${c.kind!=='none'?`<span class="pct">up to ${pct}%</span>`:''}${c.faces.length} face${c.faces.length>1?'s':''} · ${esc(when(c.faces[0].event_ts||c.faces[0].ts))}</span></span></header>
+        <div class="cf">${shown.map(tile).join('')}${many&&!open?`<button class="more" data-expand="${esc(c.key)}" aria-label="Show more of ${c.faces.length} faces">+${c.faces.length-PREVIEW}</button>`:''}${open&&c.faces.length>OPEN_MAX?`<span class="more" title="Select all still includes every face">+${c.faces.length-OPEN_MAX}</span>`:''}${'<span class="slot" aria-hidden="true"></span>'.repeat(slots)}</div>
         <footer class="cft">${c.kind==='s'?`<button class="b hot" data-applycard="${esc(c.key)}">All to ${name}</button>`:''}
           <button class="sall" data-selcard="${esc(c.key)}" aria-pressed="${allSel}">${allSel?'Unselect':'Select all'}</button>
           ${open?`<button class="sall" data-expand="${esc(c.key)}">Show less</button>`:''}</footer>
@@ -731,7 +769,7 @@ function renderSort(){
     ${piles().map((s,i)=>pileHtml(s,i)).join('')}
     ${Object.keys(persons).length>9?`<button class="b allp" id="allPeople">All ${Object.keys(persons).length} people <kbd>P</kbd></button>`:''}
     <h2 style="margin-top:8px"><span>Other</span></h2>
-    ${newOpen?`<form class="newp" id="newForm"><label class="vh" for="newName">Name</label><input id="newName" placeholder="Name the new person" autocomplete="off"><button class="b hot">Add</button></form>`
+    ${newOpen?`<form class="newp" id="newForm"><label class="vh" for="newName">Name</label><input id="newName" placeholder="Name, or a role like Neighbor" autocomplete="off"><button class="b hot">Add</button><button class="b" type="button" id="newTrack">Track as new</button></form>`
       :`<button class="pile sys" id="newPile"><span class="ico">＋</span><span><span class="nm">New person</span><span class="mt">${sel.size?`Name ${sel.size} selected`:'Select faces first'}</span></span><span class="key">N</span></button>`}
     <button class="pile sys" id="unnamedPile"><span class="ico">#</span><span><span class="nm">Track unnamed</span><span class="mt">Someone you don't know yet</span></span><span class="key"></span></button>
     <button class="pile sys" id="ignPile"><span class="ico">⦸</span><span><span class="nm">Ignore</span><span class="mt">Never notify about them</span></span><span class="key">I</span></button>
@@ -763,6 +801,29 @@ function renderSel(){
     <button class="b" id="selDisc">Discard</button>
     <button class="b" id="selClr" aria-label="Clear selection">✕</button>`;
 }
+function syncSelUI(){
+  const cs=cards();
+  document.querySelectorAll('.f[data-f]').forEach(f=>f.setAttribute('aria-pressed', sel.has(f.dataset.f)?'true':'false'));
+  document.querySelectorAll('[data-selcard]').forEach(b=>{
+    const c=cs.find(x=>x.key===b.dataset.selcard); if(!c)return;
+    const all=c.faces.every(u=>sel.has(u.id));
+    b.setAttribute('aria-pressed', all);
+    b.textContent=all?'Unselect':'Select all';
+  });
+  const rh=document.querySelector('.rhead');
+  if(rh){
+    rh.classList.toggle('on', !!sel.size);
+    rh.innerHTML=sel.size?`<span><b>${sel.size} selected</b> · tap a person</span><button class="clr" id="railClr">Clear</button>`:'<span>People</span><span>key</span>';
+  }
+  document.querySelectorAll('.pile').forEach(p=>{
+    if(p.id==='newPile'||p.id==='unnamedPile'||p.id==='ignPile'||p.id==='discPile')return;
+    p.classList.toggle('armed', !!sel.size);
+  });
+  const np=document.querySelector('#newPile .mt');
+  if(np) np.textContent=sel.size?`Name ${sel.size} selected`:'Select faces first';
+  $('#navN').textContent=allFaces().length;
+  renderSel();
+}
 async function pollScan(){if(view!=='sort')return;bf=await api('api/backfill').catch(()=>bf);if(!bf?.running){await loadAll()}render()}
 function mintName(label){ /* "Unnamed-3fa2c1" — unique against existing names */
   const base=(label||'').trim().replace(/\s+/g,' ')||'Unnamed',taken=new Set(Object.values(persons).map(p=>p.name.normalize('NFKC').trim().toLowerCase()));
@@ -790,26 +851,31 @@ function diffPerson(slug,b){
   return {added,pushedOut,parked,shown,undo};
 }
 async function assign(person,ids=sel){
-  ids=[...ids];if(!ids.length)return toast('Select faces first — tap them',false);if(busy)return;busy=true;
+  ids=[...ids];if(!ids.length)return toast('Select faces first — tap them',false);
   const before=snapAll();
-  document.querySelectorAll('.f').forEach(f=>{if(ids.includes(f.dataset.f))f.classList.add('gone')});
+  dropIds(ids);noteQueue();render();
+  toast(`Sorting ${ids.length} face${ids.length>1?'s':''}…`,false);
   try{
     const r=await api('api/unknowns/assign',{json:{ids,person}});
-    sel.clear();await loadAll();const slug=r.slug,d=diffPerson(slug,before[slug]||EMPTY);
-    recent[slug]=[...d.shown.reverse(),...(recent[slug]||[])].slice(0,3);landed=slug;render();landed=null;
+    persons=await api('api/persons');
+    const slug=r.slug,d=diffPerson(slug,before[slug]||EMPTY);
+    recent[slug]=[...d.shown.reverse(),...(recent[slug]||[])].slice(0,3);
     pushUndo(d.undo);
     const swapped=d.pushedOut.length+d.parked.length;
     toast(`${r.assigned} face${r.assigned>1?'s':''} → ${pname(slug)}`+(swapped&&full(slug)?` · still ${persons[slug].count}: ${swapped} similar photo${swapped>1?'s':''} set aside to keep angles varied`:swapped?` · ${swapped} set aside`:''));
-  }catch(e){toast(e.message,false);await loadAll();render()}finally{busy=false}
+  }catch(e){toast(e.message,false);await loadAll();render()}
+  finally{settleIds(ids)}
 }
 async function ignoreSel(ids=sel){
-  ids=[...ids];if(!ids.length)return toast('Select faces first — tap them',false);if(busy)return;busy=true;
+  ids=[...ids];if(!ids.length)return toast('Select faces first — tap them',false);
+  dropIds(ids);noteQueue();render();
   try{const prev=new Set((await api('api/ignored')).flat().map(x=>x.id));
-    const r=await api('api/unknowns/ignore',{json:{ids,person:'-'}});sel.clear();
+    const r=await api('api/unknowns/ignore',{json:{ids,person:'-'}});
     const now=(await api('api/ignored')).flat().map(x=>x.id).filter(id=>!prev.has(id));ignoredGroups=null;
     pushUndo(async()=>{if(now.length)await api('api/ignored/restore',{json:{ids:now,person:'-'}})});
-    await loadAll();render();toast(`${r.ignored} face${r.ignored>1?'s':''} ignored — no more alerts for this person`);
-  }finally{busy=false}
+    toast(`${r.ignored} face${r.ignored>1?'s':''} ignored — no more alerts for this person`);
+  }catch(e){toast(e.message,false);await loadAll();render()}
+  finally{settleIds(ids)}
 }
 function discardSel(ids=sel){
   ids=[...ids];if(!ids.length)return toast('Select faces first — tap them',false);
@@ -819,13 +885,17 @@ function discardSel(ids=sel){
     await api('api/unknowns/discard',{json:{ids,person:'-'}});await loadAll();render()},()=>{clusters=keep;render()});
 }
 async function applyCards(list){
-  if(busy)return;busy=true;let n=0;const undos=[];
+  const ids=list.flatMap(c=>c.faces.map(u=>u.id));
+  dropIds(ids);noteQueue();render();
+  toast(`Sorting ${ids.length} face${ids.length>1?'s':''}…`,false);
+  let n=0;const undos=[];
   try{for(const c of list){const b=snapPerson(c.guess);const r=await api('api/unknowns/assign',{json:{ids:c.faces.map(u=>u.id),person:c.guess}});n+=r.assigned;
       persons=await api('api/persons');const d=diffPerson(c.guess,b);undos.push(d.undo);
       recent[c.guess]=[...d.shown.reverse(),...(recent[c.guess]||[])].slice(0,3)}
     pushUndo(async()=>{for(const u of undos.reverse())await u()});
-    sel.clear();await loadAll();render();toast(`${n} faces sorted into ${list.length} pile${list.length>1?'s':''}`);
-  }catch(e){toast(e.message,false);await loadAll();render()}finally{busy=false}
+    toast(`${n} faces sorted into ${list.length} pile${list.length>1?'s':''}`);
+  }catch(e){toast(e.message,false);await loadAll();render()}
+  finally{settleIds(ids)}
 }
 
 /* picker for everyone */
@@ -843,6 +913,15 @@ function renderPick(){
 }
 
 /* snapshot */
+function openRef(slug,file){
+  if(!slug||!file)return;
+  const src=personImg(slug,file);
+  $('#lbShot').innerHTML=`<img src="${esc(src)}" alt="" style="width:100%;height:100%;object-fit:contain;display:block">`;
+  $('#lbCrop').innerHTML=img(src);
+  $('#lbCap').textContent=`${pname(slug)} · gallery reference`;
+  $('#lbMove').innerHTML='';
+  $('#lbDlg').showModal();
+}
 function openSnap(id){
   id=id||(sel.size===1?[...sel][0]:null);if(!id)return toast('Pick a face first — or use ⛶ on it',false);
   const u=faceById(id);if(!u)return;window._snap=id;
@@ -1096,10 +1175,11 @@ function paintTool(id,st){const el=$('#tb-'+id);if(!el||!st)return;const b=docum
 document.addEventListener('click',async e=>{
   const t=e.target.closest('button,[data-view],a[data-x]');if(!t)return;
   if(t.dataset.view){if(t.dataset.for){enr={name:pname(t.dataset.for),files:[],busy:false,result:null}}go(t.dataset.view);return}
+  if(t.dataset.refslug){return openRef(t.dataset.refslug,t.dataset.reffile)}
   if(t.dataset.f){const id=t.dataset.f;
     if(e.shiftKey&&lastClick){const ids=cards().flatMap(c=>c.faces).map(u=>u.id),a=ids.indexOf(lastClick),b=ids.indexOf(id);ids.slice(Math.min(a,b),Math.max(a,b)+1).forEach(x=>sel.add(x))}
-    else sel.has(id)?sel.delete(id):sel.add(id);lastClick=id;renderSort();document.querySelector(`[data-f="${CSS.escape(id)}"]`)?.focus();return}
-  if(t.dataset.selcard){const c=cards().find(x=>x.key===t.dataset.selcard),all=c.faces.every(u=>sel.has(u.id));c.faces.forEach(u=>all?sel.delete(u.id):sel.add(u.id));renderSort();document.querySelector(`[data-selcard="${CSS.escape(c.key)}"]`)?.focus();return}
+    else sel.has(id)?sel.delete(id):sel.add(id);lastClick=id;syncSelUI();document.querySelector(`[data-f="${CSS.escape(id)}"]`)?.focus();return}
+  if(t.dataset.selcard){const c=cards().find(x=>x.key===t.dataset.selcard),all=c.faces.every(u=>sel.has(u.id));c.faces.forEach(u=>all?sel.delete(u.id):sel.add(u.id));syncSelUI();document.querySelector(`[data-selcard="${CSS.escape(c.key)}"]`)?.focus();return}
   if(t.dataset.expand){const k=t.dataset.expand;openCards.has(k)?openCards.delete(k):openCards.add(k);renderSort();return}
   if(t.dataset.applycard){const c=cards().find(x=>x.key===t.dataset.applycard);return applyCards([c])}
   if(t.dataset.pile){return assign(t.dataset.pile)}
@@ -1137,12 +1217,13 @@ document.addEventListener('click',async e=>{
     case 'applyAll':return applyCards(cards().filter(c=>c.kind==='s'));
     case 'scanBtn':try{await api('api/backfill',{json:{days:+($('#bfdays')?.value||14)}});toast('Scan started',false)}catch(err){toast(err.message,false)}bf=await api('api/backfill');renderSort();return;
     case 'newPile':if(!sel.size)return toast('Select faces first — tap them',false);newOpen=true;renderSort();$('#newName').focus();return;
+    case 'newTrack':{const v=$('#newName').value.trim();if(!sel.size)return toast('Select faces first — tap them',false);newOpen=false;return assign(mintName(v))}
     case 'selNew':newOpen=true;renderSort();if($('#newName')&&document.body.classList.contains('rail-in-view'))$('#newName').focus();else openPicker(sel);return;
     case 'unnamedPile':return assign(mintName(''));
     case 'ignPile':case 'selIgn':return ignoreSel();
     case 'discPile':case 'selDisc':return discardSel();
     case 'selSnap':return openSnap();
-    case 'selClr':case 'railClr':sel.clear();renderSort();return;
+    case 'selClr':case 'railClr':sel.clear();syncSelUI();return;
     case 'allPeople':case 'selMore':return openPicker(sel);
     case 'lbMore':{const id=window._snap;$('#lbDlg').close();return openPicker(new Set([id]))}
     case 'pkNew':{const ids=pickIds,q=$('#pkQ').value.trim();if(!q){$('#pkQ').focus();return toast('Type the new name in the search field',false)}$('#pickDlg').close();
