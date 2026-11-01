@@ -165,10 +165,13 @@ class EventProcessor:
                 log.info("go2rtc reachable (%dx%d) — 'live_hires_fallback' would work here", w, h)
         elif self.live_hires:
             status = getattr(self.frigate, "go2rtc_status", None)
-            if status in (401, 403):
-                # Eigene Zeile: ein 401 heisst falsche/fehlende Anmeldung, nicht "nicht da".
-                log.warning("Live hi-res fallback is on, but go2rtc at %s answered HTTP %s — "
-                            "check go2rtc_user/go2rtc_password", self.frigate.go2rtc, status)
+            if status is not None:
+                # Eigene Zeile: go2rtc ist da, sagt aber nein. Ein 401/403 heisst falsche oder
+                # fehlende Anmeldung, ein 404 meist ein Kameraname, den go2rtc nicht kennt.
+                hint = ("check go2rtc_user/go2rtc_password" if status in (401, 403)
+                        else "recognition falls back to the recording at the end of an event")
+                log.warning("Live hi-res fallback is on, but go2rtc at %s answered HTTP %s — %s",
+                            self.frigate.go2rtc, status, hint)
             else:
                 log.warning("Live hi-res fallback is on, but go2rtc at %s did not answer — "
                             "recognition falls back to the recording at the end of an event",

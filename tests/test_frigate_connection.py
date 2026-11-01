@@ -75,6 +75,32 @@ class Go2rtcTests(unittest.TestCase):
             self.assertIsNone(api.live_frame("cam", timeout=0.5))
         self.assertIsNone(api.go2rtc_status)
 
+    def test_timeout_on_retry_keeps_the_401(self):
+        import requests
+        api = FrigateAPI("http://f:5000", go2rtc_user="go2rtc", go2rtc_password="pw")
+        with mock.patch.object(api.session, "get") as get, \
+                mock.patch("app.frigate_api.time.sleep"):
+            get.side_effect = [mock.Mock(status_code=401, content=b""),
+                               requests.Timeout("slow")]
+            self.assertIsNone(api.live_frame("cam", timeout=1))
+        self.assertEqual(api.go2rtc_status, 401)
+
+    def test_status_does_not_leak_into_the_next_call(self):
+        import requests
+        api = FrigateAPI("http://f:5000")
+        api.go2rtc_status = 401
+        with mock.patch.object(api.session, "get", side_effect=requests.Timeout("x")), \
+                mock.patch("app.frigate_api.time.sleep"):
+            api.live_frame("cam", timeout=1)
+        self.assertIsNone(api.go2rtc_status)
+
+    def test_disabled_client_has_the_current_attributes(self):
+        api = frigate_client({"frigate": {"url": ""}})
+        self.assertFalse(api.enabled)
+        self.assertIsNone(api.go2rtc_headers)
+        self.assertIsNone(api.go2rtc_status)
+        self.assertIsNone(api.live_frame("cam"))
+
     def test_password_without_user_warns(self):
         with self.assertLogs("faceid.frigate", "WARNING") as logs:
             api = FrigateAPI("http://f:5000", go2rtc_password="pw")
@@ -96,6 +122,11 @@ class Go2rtcStartupCheckTests(unittest.TestCase):
 
     def test_401_is_named(self):
         self.assertIn("answered HTTP 401", self._check(401))
+
+    def test_other_status_is_named_too(self):
+        line = self._check(404)
+        self.assertIn("answered HTTP 404", line)
+        self.assertNotIn("go2rtc_user", line)
 
     def test_no_answer_stays_no_answer(self):
         self.assertIn("did not answer", self._check(None))
