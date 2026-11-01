@@ -16,12 +16,29 @@ import requests
 log = logging.getLogger("faceid.frigate")
 
 
+class _Session(requests.Session):
+    """requests.Session, bei der ``verify = False`` auch gegen die Umgebung gilt.
+
+    Ohne ``verify`` im einzelnen Aufruf nimmt requests CURL_CA_BUNDLE oder
+    REQUESTS_CA_BUNDLE aus der Umgebung, und das schlaegt ``session.verify``. Das
+    HA-Basis-Image setzt CURL_CA_BUNDLE — die App pruefte deshalb trotz verify_tls: false
+    jedes Zertifikat, und Frigates selbstsigniertes auf 8971 scheiterte immer.
+    """
+
+    def merge_environment_settings(self, url, proxies, stream, verify, cert):
+        settings = super().merge_environment_settings(url, proxies, stream, verify, cert)
+        if verify is None and self.verify is False:
+            settings["verify"] = False
+        return settings
+
+
 class FrigateAPI:
     enabled = True
 
     def __init__(self, base_url: str, timeout: float = 6.0, user: str | None = None,
                  password: str | None = None, verify_tls: bool = False,
-                 go2rtc_url: str | None = None):
+                 go2rtc_url: str | None = None, go2rtc_user: str | None = None,
+                 go2rtc_password: str | None = None):
         self.base = base_url.rstrip("/")
         # go2rtc laeuft neben Frigate auf einem eigenen Port und ist nicht hinter dessen
         # API erreichbar (/api/go2rtc/... antwortet 404) — daher gleicher Host, Port 1984,
@@ -32,8 +49,10 @@ class FrigateAPI:
             from urllib.parse import urlparse
             u = urlparse(self.base)
             self.go2rtc = f"http://{u.hostname}:1984"
+        # go2rtc mit api.username/password antwortet ohne Anmeldung 401. Leer = ohne.
+        self.go2rtc_auth = (go2rtc_user, go2rtc_password or "") if go2rtc_user else None
         self.timeout = timeout
-        self.session = requests.Session()
+        self.session = _Session()
         self.user = user or None
         self.password = password or ""
         # Frigate liefert im Standard ein selbstsigniertes Zertifikat; eine Pruefung
@@ -120,7 +139,8 @@ class FrigateAPI:
         for attempt in (1, 2):
             try:
                 r = self.session.get(f"{self.go2rtc}/api/frame.jpeg",
-                                     params={"src": camera}, timeout=timeout)
+                                     params={"src": camera}, timeout=timeout,
+                                     auth=self.go2rtc_auth)
                 if r.status_code == 200 and r.content:
                     return cv2.imdecode(np.frombuffer(r.content, np.uint8), cv2.IMREAD_COLOR)
                 log.debug("go2rtc frame %s: HTTP %s (attempt %d)", camera, r.status_code, attempt)
@@ -205,7 +225,8 @@ def frigate_client(cfg: dict, timeout: float = 6.0) -> FrigateAPI:
                          "or switch Frigate off with frigate.enabled: false")
     return FrigateAPI(url, timeout=timeout, user=f.get("user"),
                       password=f.get("password"), verify_tls=bool(f.get("verify_tls", False)),
-                      go2rtc_url=f.get("go2rtc_url"))
+                      go2rtc_url=f.get("go2rtc_url"), go2rtc_user=f.get("go2rtc_user"),
+                      go2rtc_password=f.get("go2rtc_password"))
 
 
 class _NoNetwork:
@@ -235,6 +256,7 @@ class DisabledFrigateAPI(FrigateAPI):
     def __init__(self):
         self.base = ""
         self.go2rtc = ""
+        self.go2rtc_auth = None
         self.timeout = 0.0
         self.session = _NoNetwork()
         self.user = None
