@@ -6,6 +6,7 @@ dafuer ``user`` und ``password`` setzen. Achtung, gemessen an Frigate 0.17: ein
 Required: admin") — wer die Namen zurueck nach Frigate schreiben will, braucht ein
 Admin-Konto oder muss ``set_sub_label`` abschalten.
 """
+import base64
 import logging
 import time
 
@@ -50,7 +51,19 @@ class FrigateAPI:
             u = urlparse(self.base)
             self.go2rtc = f"http://{u.hostname}:1984"
         # go2rtc mit api.username/password antwortet ohne Anmeldung 401. Leer = ohne.
-        self.go2rtc_auth = (go2rtc_user, go2rtc_password or "") if go2rtc_user else None
+        # Den Header selbst bauen statt auth=(user, pw): requests kodiert Basic-Auth als
+        # latin-1, ein Passwort mit z. B. "€" warf UnicodeEncodeError — beim Start, ausserhalb
+        # jedes except, die App brach ab. UTF-8 nach RFC 7617; go2rtc (Go) liest das.
+        self.go2rtc_headers = None
+        if go2rtc_user:
+            token = base64.b64encode(f"{go2rtc_user}:{go2rtc_password or ''}".encode()).decode()
+            self.go2rtc_headers = {"Authorization": f"Basic {token}"}
+        elif go2rtc_password:
+            log.warning("go2rtc_password is set but go2rtc_user is empty — "
+                        "go2rtc is asked without a login")
+        # Letzter HTTP-Status von go2rtc (None = keine Antwort), damit die Startpruefung
+        # einen 401 beim Namen nennen kann statt "did not answer".
+        self.go2rtc_status = None
         self.timeout = timeout
         self.session = _Session()
         self.user = user or None
@@ -140,11 +153,13 @@ class FrigateAPI:
             try:
                 r = self.session.get(f"{self.go2rtc}/api/frame.jpeg",
                                      params={"src": camera}, timeout=timeout,
-                                     auth=self.go2rtc_auth)
+                                     headers=self.go2rtc_headers)
+                self.go2rtc_status = r.status_code
                 if r.status_code == 200 and r.content:
                     return cv2.imdecode(np.frombuffer(r.content, np.uint8), cv2.IMREAD_COLOR)
                 log.debug("go2rtc frame %s: HTTP %s (attempt %d)", camera, r.status_code, attempt)
             except requests.RequestException as e:
+                self.go2rtc_status = None
                 log.debug("go2rtc frame %s failed: %s (attempt %d)", camera, e, attempt)
             if attempt == 1:
                 time.sleep(0.4)

@@ -108,7 +108,7 @@ schema:
   mqtt_port: port
   frigate_user: str?
   frigate_password: password?
-  go2rtc_url: str?
+  go2rtc_url: url?
   go2rtc_user: str?
   go2rtc_password: password?
   mqtt_user: str?

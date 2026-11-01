@@ -62,7 +62,12 @@ frigate:
 
 Set `go2rtc_url` when FaceID reaches Frigate through a reverse proxy: the default takes the
 host from `url`, and the proxy usually does not serve port 1984. Without the credentials a
-go2rtc with a login answers `401`, and the log says go2rtc *did not answer*.
+go2rtc with a login answers `401`, and the startup log names that status.
+
+Put the login in `go2rtc_user`/`go2rtc_password`, not in the URL: the URL appears in the
+log. go2rtc's API on 1984 is plain HTTP, so the login crosses the network in the clear —
+the default address keeps `http` even when Frigate's `url` is `https`. For TLS, enable
+go2rtc's `api.tls_listen` and point `go2rtc_url` at that port.
 
 ## The catch: a viewer account cannot write
 

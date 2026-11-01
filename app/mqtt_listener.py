@@ -164,9 +164,15 @@ class EventProcessor:
             else:
                 log.info("go2rtc reachable (%dx%d) — 'live_hires_fallback' would work here", w, h)
         elif self.live_hires:
-            log.warning("Live hi-res fallback is on, but go2rtc at %s did not answer — "
-                        "recognition falls back to the recording at the end of an event",
-                        self.frigate.go2rtc)
+            status = getattr(self.frigate, "go2rtc_status", None)
+            if status in (401, 403):
+                # Eigene Zeile: ein 401 heisst falsche/fehlende Anmeldung, nicht "nicht da".
+                log.warning("Live hi-res fallback is on, but go2rtc at %s answered HTTP %s — "
+                            "check go2rtc_user/go2rtc_password", self.frigate.go2rtc, status)
+            else:
+                log.warning("Live hi-res fallback is on, but go2rtc at %s did not answer — "
+                            "recognition falls back to the recording at the end of an event",
+                            self.frigate.go2rtc)
         if self.poll_interval > 0:
             threading.Thread(target=self._poller, daemon=True, name="faceid-poller").start()
 
