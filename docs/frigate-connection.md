@@ -48,6 +48,22 @@ keeps the session, and renews it automatically when a call comes back `401`. If 
 fails, it logs a warning and continues unauthenticated rather than stopping — a wrong
 password degrades the connection, it does not break recognition.
 
+### go2rtc for the live frame
+
+The live hi-res fallback asks go2rtc for a frame, not Frigate, so it needs its own address
+and, if go2rtc has a login, its own credentials:
+
+```yaml
+frigate:
+  go2rtc_url: http://192.168.1.10:1984   # default: Frigate's host, port 1984
+  go2rtc_user: go2rtc                    # only if go2rtc has api.username/password
+  go2rtc_password: secret
+```
+
+Set `go2rtc_url` when FaceID reaches Frigate through a reverse proxy: the default takes the
+host from `url`, and the proxy usually does not serve port 1984. Without the credentials a
+go2rtc with a login answers `401`, and the log says go2rtc *did not answer*.
+
 ## The catch: a viewer account cannot write
 
 This is the part worth knowing before you set it up. A Frigate `viewer` account reads
@@ -84,6 +100,10 @@ Frigate ships a self-signed certificate. With `verify_tls: true` every request f
 unless you have imported Frigate's CA, which is why the default is `false` — the
 connection is still encrypted, it is just not verified against a trusted authority. If you
 run Frigate behind a reverse proxy with a real certificate, turn verification on.
+
+`verify_tls: false` also holds when `CURL_CA_BUNDLE` or `REQUESTS_CA_BUNDLE` is set. The
+Home Assistant base image sets `CURL_CA_BUNDLE`, and requests would otherwise use that
+bundle instead of the session setting, so the app checked every certificate anyway.
 
 Be sceptical of advice that recommends the authenticated port *and* certificate
 verification in the same breath without mentioning this: on a stock Frigate the

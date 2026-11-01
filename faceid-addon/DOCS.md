@@ -24,6 +24,8 @@ Full documentation: https://github.com/SkyTechNerds/faceid
 | Option | Description |
 |---|---|
 | `frigate_url` | Base URL of your Frigate instance |
+| `go2rtc_url` | go2rtc for the live hi-res frame; empty = Frigate's host, port 1984. Set it when Frigate sits behind a reverse proxy |
+| `go2rtc_user` / `go2rtc_password` | only when go2rtc has `api.username`/`password`; without them it answers `401` |
 | `mqtt_*` | Leave empty to use the internal Mosquitto app automatically |
 | `match_threshold` | ≥ this cosine similarity = recognized (raise if strangers get misassigned) |
 | `unknown_threshold` | < this = definitely unknown |
