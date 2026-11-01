@@ -3,6 +3,20 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## Unreleased
+
+- **The app can use Frigate's port 8971.** `verify_tls: false` did not hold in the Home
+  Assistant app: its base image sets `CURL_CA_BUNDLE`, and requests takes that bundle over
+  `session.verify`, so Frigate's self-signed certificate failed every time (`certificate
+  verify failed: self-signed certificate`) and FaceID ran without Frigate. The setting now
+  holds whatever the environment says; `verify_tls: true` still uses the bundle.
+- **go2rtc with a login.** New options `go2rtc_url`, `go2rtc_user` and `go2rtc_password` for
+  the live hi-res frame. A go2rtc with `api.username`/`password` answered `401`, and behind a
+  reverse proxy the default address (Frigate's host, port 1984) pointed at the proxy. Empty
+  options keep the old behaviour. The login is sent as UTF-8, so a password with `€` or
+  similar works, and the startup log names the HTTP status go2rtc answered with (a `401`/`403` with a
+  login hint) instead of saying go2rtc did not answer.
+
 ## 0.27.1 — 2026-10-27
 
 - **People grid:** the key number (1–9) sits on the photo again instead of as loose text under

@@ -47,6 +47,9 @@ options:
   frigate_user: ""
   frigate_password: ""
   frigate_url: http://192.168.1.10:5000
+  go2rtc_url: ""
+  go2rtc_user: ""
+  go2rtc_password: ""
   mqtt_host: ""
   mqtt_port: 1883
   mqtt_user: ""
@@ -105,6 +108,9 @@ schema:
   mqtt_port: port
   frigate_user: str?
   frigate_password: password?
+  go2rtc_url: url?
+  go2rtc_user: str?
+  go2rtc_password: password?
   mqtt_user: str?
   mqtt_password: password?
   match_threshold: float(0.2,0.9)

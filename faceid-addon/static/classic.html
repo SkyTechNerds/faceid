@@ -826,7 +826,7 @@ async function renderSettings(){
     <div class="row" style="margin-top:6px">
       <b style="min-width:230px;font:600 13px var(--sans)">Live hi-res retry</b>
       <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="set-livehires" ${cfg.live_hires_fallback?'checked':''}> ask go2rtc for a full-resolution frame</label>
-      <span class="stat">For automations that must react <em>while</em> someone is at the door. Searching the recording only works once an event has ended, and a recorded moment is not retrievable for about 45s — too late to greet anyone. go2rtc serves the main stream instead, in roughly a second. Requires go2rtc reachable on port 1984 (it ships with Frigate, but is not always exposed) — the startup log says whether it answers here. Runs once per event, only when the snapshot found nothing.</span>
+      <span class="stat">For automations that must react <em>while</em> someone is at the door. Searching the recording only works once an event has ended, and a recorded moment is not retrievable for about 45s — too late to greet anyone. go2rtc serves the main stream instead, in roughly a second. Requires go2rtc reachable — by default on Frigate's host, port 1984; set <code>go2rtc_url</code> otherwise (it ships with Frigate, but is not always exposed) — the startup log says whether it answers here. Runs once per event, only when the snapshot found nothing.</span>
     </div>
     <div class="row" style="margin-top:6px">
       <b style="min-width:230px;font:600 13px var(--sans)">…when</b>

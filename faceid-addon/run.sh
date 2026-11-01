@@ -152,6 +152,12 @@ frigate:
   # FrigateAPI macht aus dem leeren Wert None, genau wie im Standalone-Betrieb.
   user: $(yml '.frigate_user')
   password: $(yml '.frigate_password')
+  # go2rtc fuer den Live-Frame. Leere URL heisst: Host aus frigate_url, Port 1984 — falsch,
+  # wenn Frigate hinter einem Reverse Proxy steht. Zugangsdaten nur, wenn go2rtc
+  # api.username/password gesetzt hat; sonst antwortet es 401.
+  go2rtc_url: $(yml '.go2rtc_url')
+  go2rtc_user: $(yml '.go2rtc_user')
+  go2rtc_password: $(yml '.go2rtc_password')
 mqtt:
   host: $(jstr "${MQTT_HOST}")
   port: ${MQTT_PORT:-1883}
