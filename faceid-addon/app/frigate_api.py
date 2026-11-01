@@ -61,8 +61,9 @@ class FrigateAPI:
         elif go2rtc_password:
             log.warning("go2rtc_password is set but go2rtc_user is empty — "
                         "go2rtc is asked without a login")
-        # Letzter HTTP-Status von go2rtc (None = keine Antwort), damit die Startpruefung
-        # einen 401 beim Namen nennen kann statt "did not answer".
+        # Letzter HTTP-Status, mit dem go2rtc im letzten live_frame()-Aufruf geantwortet hat
+        # (None = keine Antwort), damit die Startpruefung einen 401 beim Namen nennen kann
+        # statt "did not answer".
         self.go2rtc_status = None
         self.timeout = timeout
         self.session = _Session()
@@ -149,6 +150,9 @@ class FrigateAPI:
         # go2rtc muss den Frame aus einem laufenden Stream greifen — kommt die Anfrage
         # zwischen zwei Keyframes, geht sie leer aus. Ein Ereignis deswegen zu verwerfen
         # waere schade, der zweite Anlauf kostet einen Sekundenbruchteil.
+        # Ein Timeout im zweiten Anlauf loescht die Antwort des ersten nicht: ein 401 und
+        # danach ein Timeout ist ein Anmeldefehler, kein "nicht erreichbar".
+        self.go2rtc_status = None
         for attempt in (1, 2):
             try:
                 r = self.session.get(f"{self.go2rtc}/api/frame.jpeg",
@@ -159,7 +163,6 @@ class FrigateAPI:
                     return cv2.imdecode(np.frombuffer(r.content, np.uint8), cv2.IMREAD_COLOR)
                 log.debug("go2rtc frame %s: HTTP %s (attempt %d)", camera, r.status_code, attempt)
             except requests.RequestException as e:
-                self.go2rtc_status = None
                 log.debug("go2rtc frame %s failed: %s (attempt %d)", camera, e, attempt)
             if attempt == 1:
                 time.sleep(0.4)
@@ -271,7 +274,8 @@ class DisabledFrigateAPI(FrigateAPI):
     def __init__(self):
         self.base = ""
         self.go2rtc = ""
-        self.go2rtc_auth = None
+        self.go2rtc_headers = None
+        self.go2rtc_status = None
         self.timeout = 0.0
         self.session = _NoNetwork()
         self.user = None

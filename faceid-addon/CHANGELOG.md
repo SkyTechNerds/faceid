@@ -14,7 +14,8 @@ update dialog; standalone users can watch GitHub releases.
   the live hi-res frame. A go2rtc with `api.username`/`password` answered `401`, and behind a
   reverse proxy the default address (Frigate's host, port 1984) pointed at the proxy. Empty
   options keep the old behaviour. The login is sent as UTF-8, so a password with `€` or
-  similar works, and the startup log names a `401` instead of saying go2rtc did not answer.
+  similar works, and the startup log names the HTTP status go2rtc answered with (a `401`/`403` with a
+  login hint) instead of saying go2rtc did not answer.
 
 ## 0.27.1 — 2026-10-27
 
