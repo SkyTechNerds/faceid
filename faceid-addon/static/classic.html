@@ -148,7 +148,33 @@ td.p{color:var(--acc)} td.u{color:var(--warn)}
   .lv-ERROR,.lv-CRITICAL{color:#e05555}
   .logwrap{background:var(--panel);border:1px solid var(--line);padding:10px;
            max-height:70vh;overflow:auto}
+
+/* Russian localization: responsive classic settings — no sideways overflow on phones. */
+@media (max-width: 720px) {
+  html, body {max-width:100%;overflow-x:hidden}
+  main {padding:12px;min-width:0}
+  main > nav {max-width:100%;overflow-x:auto;scrollbar-width:thin}
+  main [data-s] {min-width:0;max-width:100%}
+  main [data-s] .row {align-items:flex-start;min-width:0;max-width:100%;flex-wrap:wrap}
+  main [data-s] .row > b {min-width:0!important;width:100%;white-space:normal}
+  main [data-s] .row > .stat {min-width:0!important;max-width:100%;width:100%;overflow-wrap:anywhere;line-height:1.5}
+  main [data-s] .row > input[type="range"] {min-width:0!important;width:calc(100% - 58px);flex:1 1 calc(100% - 58px)!important}
+  main [data-s] .row input, main [data-s] .row select {max-width:100%}
+  main [data-s] .row > label {max-width:100%;flex-wrap:wrap}
+  main [data-s] div[style*="margin:10px 0"] > label:has(input[type="range"]) {
+    display:grid!important;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center!important;
+  }
+  main [data-s] div[style*="margin:10px 0"] > label > b {grid-column:1/-1;min-width:0!important;width:100%;overflow-wrap:anywhere}
+  main [data-s] div[style*="margin:10px 0"] > label > input[type="range"] {grid-column:1;min-width:0;width:100%}
+  main [data-s] div[style*="margin:10px 0"] > label > span {grid-column:2;max-width:65px}
+  main [data-s] div[style*="margin:10px 0"] > .stat {margin-left:0!important;max-width:100%;overflow-wrap:anywhere}
+  main [data-s] code {overflow-wrap:anywhere}
+  main [data-s] input[type="text"] {max-width:100%!important;width:100%!important}
+  main [data-s] .row > button {max-width:100%;white-space:normal;overflow-wrap:anywhere}
+  header, body > nav {max-width:100%;overflow-x:auto}
+}
 </style>
+<script defer src="assets/i18n-ru.js?v=ru10"></script>
 </head>
 <body>
 <header>
@@ -626,7 +652,7 @@ async function renderHistory(){
             ? `<div class="nowis" title="You assigned this face to ${esc(h.now.person)}, so it is one of their reference photos now. It matches itself — that says nothing about how well ${esc(h.now.person)} is recognised.">now assigned: ${esc(h.now.person)}</div>`
             : `<div class="nowis" title="This face would be matched to ${esc(h.now.person)} today — the gallery has changed since this was reported.">now: ${esc(h.now.person)} ${h.now.score}</div>`):''}
         </div>
-        <button class="ghost" onclick="markWrong('${h.id}')">was wrong</button>
+        ${h.person&&h.person!=='unknown'?`<button class="ghost" onclick="markWrong('${h.id}')">was wrong</button>`:''}
       </div>`).join('')}</div>
     ${it.length?`<div class="row" style="margin-top:10px"><button class="ghost" onclick="clearHistory()">clear the history</button></div>`:''}
   </div>`;
@@ -935,8 +961,15 @@ function groupSettings(){
   const kids=[...main.children], groups=[];
   let cur=null;
   for(const n of kids){
-    if(n.tagName==='H2'){cur={title:n.textContent.trim(),nodes:[n]};groups.push(cur)}
-    else if(cur)cur.nodes.push(n);
+    // The Frigate fallback section is wrapped in a <div> to hide it in folder
+    // mode. Its heading is not a direct child of <main>; group it separately.
+    const nested=(n.tagName==='DIV' && n.querySelector(':scope > h2'));
+    if(nested){
+      groups.push({title:nested.textContent.trim(),nodes:[n]});
+      cur=null;
+    }else if(n.tagName==='H2'){
+      cur={title:n.textContent.trim(),nodes:[n]};groups.push(cur);
+    }else if(cur)cur.nodes.push(n);
   }
   if(groups.length<2)return;
   const save=document.getElementById('savebar');

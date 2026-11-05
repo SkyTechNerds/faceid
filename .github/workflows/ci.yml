@@ -32,6 +32,13 @@ jobs:
       - name: Unit tests
         run: python -m unittest discover -s tests -v
 
+      - name: Russian UI localization
+        run: |
+          node --check static/assets/i18n-ru.js
+          node tests/test_ui_translation.cjs
+          node tests/test_ui_translation_dom.cjs
+          node tests/test_ui_translation_settings.cjs
+
       - name: Import-consistency check (local imports must exist in their module)
         run: |
           python - << 'EOF'
@@ -137,3 +144,4 @@ jobs:
                   print(f"script block {i} does not parse:\n{r.stderr}"); sys.exit(1)
           print(f"{len(blocks)} script block(s) parse")
           EOF
+
