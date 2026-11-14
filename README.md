@@ -99,6 +99,14 @@ Frigate --MQTT frigate/events--> FaceID
 MQTT -> Home Assistant:  sensor.faceid_<camera>  +  faceid/event (JSON)
 ```
 
+## Interface language
+
+The current and classic web interfaces support English and Russian. The first
+visit uses Russian for a Russian browser locale and English otherwise; the header
+selector overrides that choice. The choice is local to your browser and does not
+change recognition settings. See [Russian UI](docs/russian-ui.md) for details and
+localization checks.
+
 ## Local-only, and what gets downloaded
 
 FaceID performs **all recognition locally on your hardware** — no cloud APIs, no
@@ -673,3 +681,4 @@ that matter most:
 ## License
 
 MIT
+

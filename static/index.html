@@ -470,7 +470,7 @@ main a:not(.b):not(.classic-link):hover,dialog a:not(.b):hover{text-decoration-t
 /* settings */
 .settings{display:grid;grid-template-columns:220px minmax(0,1fr);gap:24px;align-items:start}
 .snav{display:flex;flex-direction:column;gap:4px;position:sticky;top:16px}
-.snav button{min-height:44px;text-align:left;padding:0 16px;border-radius:14px;border:0;background:transparent;font-weight:600;font-size:16px;color:var(--ink-2);cursor:pointer}
+.snav button{min-height:44px;text-align:left;padding:9px 16px;line-height:1.35;white-space:normal;overflow-wrap:anywhere;border-radius:14px;border:0;background:transparent;font-weight:600;font-size:16px;color:var(--ink-2);cursor:pointer}
 .snav button[aria-current="true"]{background:var(--raise);color:var(--ink);box-shadow:var(--shadow)}
 .snav button:active{background:var(--press)}
 .classic-link{display:flex;align-items:center;min-height:44px;padding:0 16px;margin-top:12px;border-top:1px solid var(--line);padding-top:12px;color:var(--ink-2);font-size:15px;font-weight:600;text-decoration:none}
@@ -481,8 +481,8 @@ main a:not(.b):not(.classic-link):hover,dialog a:not(.b):hover{text-decoration-t
 .sett{display:flex;flex-direction:column;gap:14px}
 .sett h2{font:500 26px var(--wide);margin:0;letter-spacing:-.02em}
 .sett .intro{color:var(--ink-2);margin:-4px 0 4px;max-width:78ch}
-.srow{background:var(--raise);border-radius:20px;padding:16px 18px;box-shadow:var(--shadow);display:grid;grid-template-columns:minmax(200px,280px) minmax(0,1fr);gap:8px 20px;align-items:center}
-.srow > label,.srow > .lbl{font-weight:600}
+.srow{background:var(--raise);border-radius:20px;padding:16px 18px;box-shadow:var(--shadow);display:grid;grid-template-columns:minmax(210px,300px) minmax(0,1fr);gap:8px 20px;align-items:center}
+.srow > label,.srow > .lbl{font-weight:600;min-width:0;overflow-wrap:anywhere;line-height:1.4}
 .srow .ctl{display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-width:0}
 .srow .help{grid-column:2;font-size:14px;color:var(--ink-2);max-width:78ch}
 .srow .help code{font-size:13px}
@@ -530,6 +530,7 @@ main a:not(.b):not(.classic-link):hover,dialog a:not(.b):hover{text-decoration-t
   .dirty{border-radius:22px}
 }
 </style>
+<script defer src="assets/i18n-ru.js?v=ru10"></script>
 </head>
 <body>
 <header><div class="hd">
@@ -960,7 +961,7 @@ async function renderHistory(){
       <div class="bd"><span class="who">${h.person==='unknown'?'Not recognised':esc(h.person)}<small>${esc(h.score)}${h.best_score?` · best view ${esc(h.best_score)}`:''}</small></span>
         <span class="mt">${esc(when(h.ts))} · ${esc(h.camera||'')}${h.reported===false?' · not reported':''}</span>
         ${h.now?`<span class="now">${h.now.self?`now assigned: ${esc(h.now.person)}`:`now: ${esc(h.now.person)} ${esc(h.now.score)}`}</span>`:''}
-        <button class="b" data-wrong="${esc(h.id)}">Was wrong</button></div></article>`).join('')}</div>`:'<div class="empty"><h2>Nothing yet.</h2><p>Recognitions appear here as they happen.</p></div>'}`;
+        ${h.person&&h.person!=='unknown'?`<button class="b" data-wrong="${esc(h.id)}">Was wrong</button>`:''}</div></article>`).join('')}</div>`:'<div class="empty"><h2>Nothing yet.</h2><p>Recognitions appear here as they happen.</p></div>'}`;
 }
 async function markWrong(hid){
   const r=await api(`api/history/${enc(hid)}/wrong`,{method:'POST'});
@@ -1012,7 +1013,7 @@ async function renderSettings(){
     (folder?`<h2 style="margin-top:10px">Recording folder</h2><p class="intro">Watching <code>${esc(cfg.folder.path)}</code> as <b>${esc(cfg.folder.camera)}</b> · ${cfg.folder.processed} files processed${cfg.folder.scanning?' · scanning':''}${cfg.folder.last_error?' · '+esc(cfg.folder.last_error):''}.</p>`+
       num('folder_max_indexed_files','Remember at most',val('folder_max_indexed_files'),0,200000,`Processed files FaceID remembers so a restart does not re-read everything; 0 = no limit. Keep it above the number of files in the folder. Currently ${cfg.folder.indexed} of ${cfg.folder.index_cap||'∞'}.`,500):'');
   }else if(setTab==='fallback'){
-    body=folder?`<h2>When there is no face</h2><p class="intro">These options apply to Frigate only. FaceID is reading a recording folder.</p>`:`<h2>When there is no face</h2><p class="intro">Frigate picks its snapshot by the highest <em>person</em> score, not by “face visible” — on most setups only about a fifth of snapshots hold a usable face. These are the ways back in. <a href="https://github.com/SkyTechNerds/faceid/blob/main/docs/recognition-pipeline.md" target="_blank" rel="noopener">How it works ↗</a></p>`+
+    body=folder?`<h2>When there is no face</h2><p class="intro">These options apply to Frigate only. FaceID is reading a recording folder.</p>`:`<h2>When there is no face</h2><p class="intro">Frigate picks its snapshot by the highest person score, not by “face visible” — on most setups only about a fifth of snapshots hold a usable face. These are the ways back in. <a href="https://github.com/SkyTechNerds/faceid/blob/main/docs/recognition-pipeline.md" target="_blank" rel="noopener">How it works ↗</a></p>`+
     check('hires_enroll','Sharper reference photos',val('hires_enroll'),'Use the recordings','Frigate detects on a downscaled stream but records in full resolution. New faces in sorting are re-fetched from the recording — typically twice the size, so much better references.')+
     check('clip_fallback','Search the recording',val('clip_fallback'),'When the snapshot has no face','Runs once at the end of an event and only when the snapshot found nothing. Measured over 7 days: the recording had a face in 9 of 12 events whose snapshot had none.')+
     camsList('clip_fallback_cameras','…only these cameras',val('clip_fallback_cameras'),'The gain depends on the viewing angle: a front door at head height rescues most events, a high-mounted camera rescues none.')+
