@@ -78,6 +78,13 @@ def build_app(cfg, engine, gallery, processor, data_dir: Path, static_dir: Path)
     def persons():
         return gallery.persons()
 
+    @app.get("/api/export/embeddings")
+    def export_embeddings():
+        # WAYFARE holt die Fingerabdruecke im Heimnetz (14.11.2026); die wirksamen Schwellen,
+        # nicht nur die aus config.yaml (settings.json liegt darueber, siehe processor)
+        return gallery.export_embeddings(threshold=getattr(processor, "match_thr", 0.5),
+                                         unknown=getattr(processor, "unknown_thr", 0.35))
+
     @app.post("/api/persons")
     def create_person(body: NameBody):
         return {"slug": gallery.create_person(body.name)}

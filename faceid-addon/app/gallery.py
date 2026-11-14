@@ -523,6 +523,30 @@ class Gallery:
                 return None
             return e["emb"].copy()
 
+    def export_embeddings(self, threshold: float = 0.50, unknown: float = 0.35) -> dict:
+        """Fingerabdruecke aller Personen fuer WAYFARE (14.11.2026): nur die Zahlen.
+
+        Keine Bilder, keine Dateinamen, keine Quellen (Kamera, Zeit), keine Ignore-Anker.
+        Je Person `count` x 512 als float16 little-endian, base64. Personen ohne Foto fehlen.
+        """
+        import base64
+        from datetime import datetime, timezone
+        out = []
+        with self._lock:
+            for slug, e in self._cache.items():
+                if not len(e["files"]):
+                    continue
+                emb_f = self.persons_dir / slug / "embeddings.npy"
+                mtime = emb_f.stat().st_mtime if emb_f.exists() else 0
+                out.append({
+                    "slug": slug, "name": e["name"], "favorite": bool(e.get("favorite", False)),
+                    "count": int(len(e["files"])),
+                    "updated": datetime.fromtimestamp(mtime, timezone.utc).isoformat(),
+                    "embeddings": base64.b64encode(np.asarray(e["emb"], dtype="<f2").tobytes()).decode("ascii"),
+                })
+        return {"model": "buffalo_l/w600k_r50", "dim": 512, "threshold": float(threshold), "unknown": float(unknown),
+                "exported": datetime.now(timezone.utc).isoformat(), "persons": out}
+
     def set_favorite(self, slug: str, fav: bool) -> bool:
         with self._lock:
             entry = self._cache.get(slug)
