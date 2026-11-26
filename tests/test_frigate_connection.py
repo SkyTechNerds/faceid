@@ -51,6 +51,16 @@ class Go2rtcTests(unittest.TestCase):
         self.assertEqual(api.go2rtc, "http://f:1984")
         self.assertIsNone(api.go2rtc_headers)
 
+    def test_go2rtc_url_without_scheme_gets_http(self):
+        # The schema no longer enforces a url, so a bare host:port can arrive; requests
+        # needs a scheme, so FrigateAPI adds http:// when none is present.
+        api = FrigateAPI("http://f:5000", go2rtc_url="192.168.1.10:1984")
+        self.assertEqual(api.go2rtc, "http://192.168.1.10:1984")
+
+    def test_go2rtc_url_with_scheme_is_kept(self):
+        api = FrigateAPI("http://f:5000", go2rtc_url="https://proxy.example/go2rtc/")
+        self.assertEqual(api.go2rtc, "https://proxy.example/go2rtc")
+
     def test_app_options_reach_the_client(self):
         api = frigate_client({"frigate": {"url": "https://proxy.example",
                                           "go2rtc_url": "http://10.0.0.5:1984/",

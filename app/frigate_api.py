@@ -45,7 +45,11 @@ class FrigateAPI:
         # API erreichbar (/api/go2rtc/... antwortet 404) — daher gleicher Host, Port 1984,
         # ueberschreibbar fuer Setups, die es woanders betreiben.
         if go2rtc_url:
-            self.go2rtc = go2rtc_url.rstrip("/")
+            # The option is typed str (not url) so an empty default does not stop the
+            # add-on from starting; make up for the lost URL validation here by adding
+            # a scheme when the user gave a bare host:port, which requests needs.
+            u = go2rtc_url.rstrip("/")
+            self.go2rtc = u if "://" in u else f"http://{u}"
         else:
             from urllib.parse import urlparse
             u = urlparse(self.base)
