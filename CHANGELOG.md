@@ -3,8 +3,14 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
-## Unreleased
+## 0.29.0 — 2026-11-26
 
+- **Bigger touch targets on the sort board.** The review-queue buttons were 24–31 px tall;
+  the nav tabs, `ASSIGN`/`APPLY` and the ghost buttons are now at least 44 px, so they are
+  harder to mis-tap on a phone. The nav tabs also light up on tap (touch has no hover).
+- **Faster hi-res clip scanning.** `_clip_frames` walked the clip with a seek per sampled
+  frame; it now makes a single forward pass and decodes only the frames it keeps — the same
+  frames, about 3.5× faster on short clips.
 - **The app can use Frigate's port 8971.** `verify_tls: false` did not hold in the Home
   Assistant app: its base image sets `CURL_CA_BUNDLE`, and requests takes that bundle over
   `session.verify`, so Frigate's self-signed certificate failed every time (`certificate
