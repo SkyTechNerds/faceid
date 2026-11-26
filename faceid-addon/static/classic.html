@@ -169,13 +169,13 @@ td.p{color:var(--acc)} td.u{color:var(--warn)}
   main [data-s] .row > input[type="range"] {min-width:0!important;width:calc(100% - 58px);flex:1 1 calc(100% - 58px)!important}
   main [data-s] .row input, main [data-s] .row select {max-width:100%}
   main [data-s] .row > label {max-width:100%;flex-wrap:wrap}
-  main [data-s] div[style*="margin:10px 0"] > label:has(input[type="range"]) {
+  main [data-s] .thr-row > label:has(input[type="range"]) {
     display:grid!important;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center!important;
   }
-  main [data-s] div[style*="margin:10px 0"] > label > b {grid-column:1/-1;min-width:0!important;width:100%;overflow-wrap:anywhere}
-  main [data-s] div[style*="margin:10px 0"] > label > input[type="range"] {grid-column:1;min-width:0;width:100%}
-  main [data-s] div[style*="margin:10px 0"] > label > span {grid-column:2;max-width:65px}
-  main [data-s] div[style*="margin:10px 0"] > .stat {margin-left:0!important;max-width:100%;overflow-wrap:anywhere}
+  main [data-s] .thr-row > label > b {grid-column:1/-1;min-width:0!important;width:100%;overflow-wrap:anywhere}
+  main [data-s] .thr-row > label > input[type="range"] {grid-column:1;min-width:0;width:100%}
+  main [data-s] .thr-row > label > span {grid-column:2;max-width:65px}
+  main [data-s] .thr-row > .stat {margin-left:0!important;max-width:100%;overflow-wrap:anywhere}
   main [data-s] code {overflow-wrap:anywhere}
   main [data-s] input[type="text"] {max-width:100%!important;width:100%!important}
   main [data-s] .row > button {max-width:100%;white-space:normal;overflow-wrap:anywhere}
@@ -792,7 +792,7 @@ async function renderSettings(){
     ignore_threshold:'similarity to an ignore anchor needed to stay silent'};
   const rows=Object.entries(cfg.thresholds).map(([k,v])=>{
     const [lo,hi]=cfg.ranges[k];
-    return `<div style="margin:10px 0">
+    return `<div class="thr-row" style="margin:10px 0">
       <label style="display:flex;gap:10px;align-items:center">
         <b style="min-width:230px;font:600 13px var(--sans)">${labels[k]||k}</b>
         <input type="range" id="set-${k}" min="${lo}" max="${hi}" step="0.01" value="${v}"
