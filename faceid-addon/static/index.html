@@ -961,7 +961,7 @@ async function renderHistory(){
       <div class="bd"><span class="who">${h.person==='unknown'?'Not recognised':esc(h.person)}<small>${esc(h.score)}${h.best_score?` · best view ${esc(h.best_score)}`:''}</small></span>
         <span class="mt">${esc(when(h.ts))} · ${esc(h.camera||'')}${h.reported===false?' · not reported':''}</span>
         ${h.now?`<span class="now">${h.now.self?`now assigned: ${esc(h.now.person)}`:`now: ${esc(h.now.person)} ${esc(h.now.score)}`}</span>`:''}
-        ${h.person&&h.person!=='unknown'?`<button class="b" data-wrong="${esc(h.id)}">Was wrong</button>`:''}</div></article>`).join('')}</div>`:'<div class="empty"><h2>Nothing yet.</h2><p>Recognitions appear here as they happen.</p></div>'}`;
+        <button class="b" data-wrong="${esc(h.id)}">Was wrong</button></div></article>`).join('')}</div>`:'<div class="empty"><h2>Nothing yet.</h2><p>Recognitions appear here as they happen.</p></div>'}`;
 }
 async function markWrong(hid){
   const r=await api(`api/history/${enc(hid)}/wrong`,{method:'POST'});

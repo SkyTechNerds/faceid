@@ -35,6 +35,7 @@ jobs:
       - name: Russian UI localization
         run: |
           node --check static/assets/i18n-ru.js
+          node --check faceid-addon/static/assets/i18n-ru.js
           node tests/test_ui_translation.cjs
           node tests/test_ui_translation_dom.cjs
           node tests/test_ui_translation_settings.cjs
