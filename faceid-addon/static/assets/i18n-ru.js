@@ -950,7 +950,25 @@
   // Do not touch logs, code, editable fields, URLs, camera IDs, MQTT payloads, or person data attributes.
   const IGNORE = 'script,style,textarea,code,pre,[contenteditable="true"],.logline';
   let busy = false;
+  // Dates from when() come out English ("Nov 5 10:13", "Monday 10:13", "today 10:13").
+  // Localise the month / weekday / today-yesterday so composite strings that carry a
+  // date (camera · date, "Face from CAM, date", history meta) read fully Russian.
+  const DF = '(?:today|yesterday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \\d{1,2}) \\d{1,2}:\\d{2}';
+  function localizeDate(s) {
+    const MON = {Jan:'янв.',Feb:'февр.',Mar:'мар.',Apr:'апр.',May:'мая',Jun:'июн.',
+                 Jul:'июл.',Aug:'авг.',Sep:'сент.',Oct:'окт.',Nov:'нояб.',Dec:'дек.'};
+    const WD = {Monday:'понедельник',Tuesday:'вторник',Wednesday:'среда',Thursday:'четверг',
+                Friday:'пятница',Saturday:'суббота',Sunday:'воскресенье'};
+    return s
+      .replace(/^today (\d{1,2}:\d{2})$/i, 'сегодня $1')
+      .replace(/^yesterday (\d{1,2}:\d{2})$/i, 'вчера $1')
+      .replace(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday) (\d{1,2}:\d{2})$/,
+               (_,w,t) => `${WD[w]} ${t}`)
+      .replace(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{1,2}) (\d{1,2}:\d{2})$/,
+               (_,mo,d,t) => `${d} ${MON[mo]} ${t}`);
+  }
   const RULES = [
+    [new RegExp('^'+DF+'$','i'), m => localizeDate(m)],
     [/^scanning (folder|history)… ([\d?]+)\/([\d?]+)(?: events| files)?$/i,(_,what,n,total)=>`Сканирование ${what==='folder'?'папки':'истории'}… ${n}/${total}`],
     [/^last scan: (\d+) new faces, (\d+) (?:already )?known, (\d+) without a face$/i,(_,n,k,no)=>`Последнее сканирование: новых лиц ${n}, известных ${k}, без лица ${no}`],
     [/^last scan: (\d+) files(?: processed)?, (\d+) faces(?:, (\d+) unchanged)?$/i,(_,n,f,s)=>`Последнее сканирование: файлов ${n}, лиц ${f}${s?`, без изменений ${s}`:''}`],
@@ -1017,8 +1035,8 @@
     [/^shown as (.+)'s picture everywhere$/i,(_,name)=>`Использовать как главное фото: ${name}`],
     [/^(\d+) photos? ·$/i,(_,n)=>`${n} фото ·`],
     [/^(\d+) learned automatically · was “(.+)”$/i,(_,n,name)=>`автоматически добавлено: ${n} · ранее: «${name}»`],
-    [/^(.+) · (today|yesterday) (\d\d:\d\d)$/i,(_,cam,day,t)=>`${translate(cam)??cam} · ${day==='today'?'сегодня':'вчера'} ${t}`],
-    [/^(today|yesterday) (\d\d:\d\d) · (.+?)( · not reported)?$/i,(_,day,t,cam,no)=>`${day==='today'?'сегодня':'вчера'} ${t} · ${cam}${no?' · не отправлено':''}`],
+    [new RegExp('^(.+) · ('+DF+')$','i'),(_,cam,date)=>`${translate(cam)??cam} · ${localizeDate(date)}`],
+    [new RegExp('^('+DF+') · (.+?)( · not reported)?$','i'),(_,date,cam,no)=>`${localizeDate(date)} · ${cam}${no?' · не отправлено':''}`],
     [/^leave-one-out \((\d+) reference photos\)$/i,(_,n)=>`Проверка с исключением эталона (${n} фото)`],
     [/^([\d.,]+) · averaged over (\d+) photo\(s\)$/i,(_,v,n)=>`${v} · усреднение по фото: ${n}`],
     [/^real events, last (\d+)d$/i,(_,n)=>`Реальные события за ${n} дн.`],
