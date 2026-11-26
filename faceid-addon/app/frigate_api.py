@@ -160,8 +160,13 @@ class FrigateAPI:
                                      headers=self.go2rtc_headers)
                 self.go2rtc_status = r.status_code
                 if r.status_code == 200 and r.content:
-                    return cv2.imdecode(np.frombuffer(r.content, np.uint8), cv2.IMREAD_COLOR)
-                log.debug("go2rtc frame %s: HTTP %s (attempt %d)", camera, r.status_code, attempt)
+                    img = cv2.imdecode(np.frombuffer(r.content, np.uint8), cv2.IMREAD_COLOR)
+                    if img is not None:
+                        return img
+                    # Reachable and authenticated, but no decodable frame right now
+                    # (request landed between keyframes). Transient — let the loop retry.
+                log.debug("go2rtc frame %s: HTTP %s, no usable frame (attempt %d)",
+                          camera, r.status_code, attempt)
             except requests.RequestException as e:
                 log.debug("go2rtc frame %s failed: %s (attempt %d)", camera, e, attempt)
             if attempt == 1:

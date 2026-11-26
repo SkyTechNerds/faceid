@@ -85,6 +85,19 @@ class Go2rtcTests(unittest.TestCase):
             self.assertIsNone(api.live_frame("cam", timeout=1))
         self.assertEqual(api.go2rtc_status, 401)
 
+    def test_200_without_a_decodable_frame_retries(self):
+        # go2rtc antwortet 200, liefert aber keinen dekodierbaren Frame (zwischen zwei
+        # Keyframes). Das ist voruebergehend: der zweite Anlauf muss trotzdem laufen,
+        # und es darf nicht sofort None mit "Frame da" verwechselt werden.
+        api = FrigateAPI("http://f:5000")
+        with mock.patch.object(api.session, "get") as get, \
+                mock.patch("app.frigate_api.time.sleep"), \
+                mock.patch("app.frigate_api.cv2.imdecode", return_value=None):
+            get.return_value = mock.Mock(status_code=200, content=b"not-a-jpeg")
+            self.assertIsNone(api.live_frame("cam", timeout=1))
+        self.assertEqual(get.call_count, 2)
+        self.assertEqual(api.go2rtc_status, 200)
+
     def test_status_does_not_leak_into_the_next_call(self):
         import requests
         api = FrigateAPI("http://f:5000")
@@ -130,6 +143,21 @@ class Go2rtcStartupCheckTests(unittest.TestCase):
 
     def test_no_answer_stays_no_answer(self):
         self.assertIn("did not answer", self._check(None))
+
+    def test_200_is_transient_not_blamed(self):
+        # HTTP 200 heisst erreichbar und authentifiziert — nur gerade kein Frame.
+        # Das gehoert nicht als Warnung gemeldet, die go2rtc anlastet.
+        from app.mqtt_listener import EventProcessor
+        frigate = types.SimpleNamespace(go2rtc="http://f:1984", go2rtc_status=200,
+                                        live_frame=lambda cam, timeout: None)
+        proc = types.SimpleNamespace(live_hires_cameras={"cam"}, live_hires=True,
+                                     frigate=frigate, poll_interval=0,
+                                     _frigate_cameras=lambda: [])
+        with self.assertLogs("faceid", "INFO") as logs:
+            EventProcessor._check_go2rtc(proc)
+        self.assertIn("HTTP 200", logs.output[0])
+        self.assertIn("transient", logs.output[0])
+        self.assertTrue(all(":WARNING:" not in o for o in logs.output))
 
 
 if __name__ == "__main__":

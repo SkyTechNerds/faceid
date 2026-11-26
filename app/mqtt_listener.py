@@ -165,7 +165,14 @@ class EventProcessor:
                 log.info("go2rtc reachable (%dx%d) — 'live_hires_fallback' would work here", w, h)
         elif self.live_hires:
             status = getattr(self.frigate, "go2rtc_status", None)
-            if status is not None:
+            if status == 200:
+                # go2rtc ist erreichbar und authentifiziert, lieferte in diesem Moment nur
+                # keinen dekodierbaren Frame (Anfrage zwischen zwei Keyframes). Das ist
+                # voruebergehend und kein Einrichtungsfehler — nicht go2rtc anlasten.
+                log.info("go2rtc at %s is reachable (HTTP 200) but had no frame just now — "
+                         "transient, the live hi-res fallback should work on the next event",
+                         self.frigate.go2rtc)
+            elif status is not None:
                 # Eigene Zeile: go2rtc ist da, sagt aber nein. Ein 401/403 heisst falsche oder
                 # fehlende Anmeldung, ein 404 meist ein Kameraname, den go2rtc nicht kennt.
                 hint = ("check go2rtc_user/go2rtc_password" if status in (401, 403)
