@@ -1,5 +1,5 @@
 name: FaceID
-version: "0.30.0"
+version: "0.30.1"
 slug: faceid
 description: Face recognition for Frigate — trainable gallery, clustered unknown review, HA sensors
 url: https://github.com/SkyTechNerds/faceid
@@ -108,7 +108,7 @@ schema:
   mqtt_port: port
   frigate_user: str?
   frigate_password: password?
-  go2rtc_url: url?
+  go2rtc_url: str?
   go2rtc_user: str?
   go2rtc_password: password?
   mqtt_user: str?

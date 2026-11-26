@@ -3,6 +3,15 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.30.1 — 2026-11-26
+
+- **Fix: the app would not start after 0.29.0 (`expected a url`).** The new
+  `go2rtc_url` option ships with an empty default, but its schema type was `url`,
+  and Home Assistant validates the empty default against that type and refuses to
+  start the add-on. The option is now typed `str` (the app already treats an empty
+  value as "not set"), so a fresh install starts again without touching it.
+  Reported on the forum against 0.29.0 and 0.30.0.
+
 ## 0.30.0 — 2026-11-26
 
 - **Russian interface.** The whole UI can switch to Russian (ru-RU): a language toggle,
