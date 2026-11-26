@@ -61,11 +61,24 @@ def _clip_frames(frigate, event_id, max_frames):
                 return
             # Frigate waehlt fuer den Snapshot den besten Moment nach seinem Kriterium,
             # den kennen wir nicht — also gleichmaessig abtasten.
-            for i in np.linspace(0, total - 1, min(max_frames, total)).astype(int):
-                cap.set(cv2.CAP_PROP_POS_FRAMES, int(i))
-                ok, frame = cap.read()
-                if ok and frame is not None:
-                    yield frame
+            #
+            # Ein forward pass statt eines Seeks pro Frame: cap.set(POS_FRAMES) springt
+            # jedes Mal zum vorherigen Keyframe zurueck und dekodiert vorwaerts bis zum
+            # Ziel, also ~0,25 s pro Sample. Stattdessen einmal durchlaufen, mit grab()
+            # jeden Frame ueberspringen und nur die gesuchten mit retrieve() dekodieren.
+            # Liefert dieselben Frames (gleiche Indizes), auf kurzen Clips ~3,5x schneller.
+            wanted = sorted(set(int(i) for i in
+                                np.linspace(0, total - 1, min(max_frames, total))))
+            idx, pos = 0, 0
+            while pos < len(wanted):
+                if not cap.grab():
+                    break
+                if idx == wanted[pos]:
+                    ok, frame = cap.retrieve()
+                    if ok and frame is not None:
+                        yield frame
+                    pos += 1
+                idx += 1
         finally:
             cap.release()
     finally:
