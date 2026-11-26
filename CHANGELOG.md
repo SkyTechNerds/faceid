@@ -3,7 +3,7 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
-## Unreleased
+## 0.30.0 — 2026-11-26
 
 - **Russian interface.** The whole UI can switch to Russian (ru-RU): a language toggle,
   translated static text, and runtime strings — counts, dates and dialogs — localized with
