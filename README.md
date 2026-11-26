@@ -241,6 +241,10 @@ read everything FaceID needs, but **cannot write `sub_label`** back into Frigate
 (`Role viewer not authorized. Required: admin`). So authenticating costs you either the
 names in Frigate's Explore view, or requires admin credentials in a config file.
 
+The live hi-res fallback talks to go2rtc, not Frigate. If go2rtc is not on Frigate's host at
+port 1984, or has a login, set `go2rtc_url`, `go2rtc_user` and `go2rtc_password` under
+`frigate:`.
+
 Trade-offs, TLS, what FaceID actually requests, and which setup fits which network:
 **[docs/frigate-connection.md](docs/frigate-connection.md)**.
 
@@ -427,7 +431,8 @@ FaceID therefore falls back, in order, and only when the step before found nothi
 
 On the setup measured here this lifts usable events from a fifth to about four in five —
 but the gain depends almost entirely on the **camera angle**, both fallbacks can be
-limited per camera, and the live one needs go2rtc reachable on port 1984.
+limited per camera, and the live one needs go2rtc reachable (by default on Frigate's host,
+port 1984; `go2rtc_url` changes that).
 
 **→ [docs/recognition-pipeline.md](docs/recognition-pipeline.md)** covers the whole thing:
 the measurements behind each stage, why cropping to the person box makes things *worse*,
@@ -662,7 +667,7 @@ that matter most:
 | `hires_enroll` (true) | fetch new review-queue faces from the recording (sharper references) |
 | `clip_fallback` (true) | when a snapshot yields no face at all, scan the recording — on most setups the single biggest gain, see [the pipeline doc](docs/recognition-pipeline.md) |
 | `clip_fallback_cameras` (all) | restrict the fallback to cameras where it actually pays off — the gain depends on the camera angle |
-| `live_hires_fallback` (false) | when the snapshot fails — no face in it, or Frigate not producing one at all — ask go2rtc for a full-resolution frame right away instead of waiting for the event to end. Reports every face in that frame, not just the largest ([details](docs/recognition-pipeline.md)) |
+| `live_hires_fallback` (false) | when the snapshot fails — no face in it, or Frigate not producing one at all — ask go2rtc for a full-resolution frame right away instead of waiting for the event to end. Reports every face in that frame, not just the largest ([details](docs/recognition-pipeline.md)). go2rtc's address and login: `frigate.go2rtc_url`/`go2rtc_user`/`go2rtc_password` |
 | `live_hires_fallback_cameras` (all) | restrict that to specific cameras |
 | `live_hires_mode` (fallback) | `always` scans the full frame on every event instead of only after a failed snapshot — measure first, it found nothing extra here |
 | `clip_fallback_frames` (12) | how many frames to sample from the clip |
