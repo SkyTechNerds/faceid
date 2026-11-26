@@ -159,7 +159,7 @@ td.p{color:var(--acc)} td.u{color:var(--warn)}
 
 /* Russian localization: responsive classic settings — no sideways overflow on phones. */
 @media (max-width: 720px) {
-  html, body {max-width:100%;overflow-x:hidden}
+  html, body {max-width:100%;overflow-x:clip}
   main {padding:12px;min-width:0}
   main > nav {max-width:100%;overflow-x:auto;scrollbar-width:thin}
   main [data-s] {min-width:0;max-width:100%}
