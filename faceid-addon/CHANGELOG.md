@@ -17,6 +17,13 @@ update dialog; standalone users can watch GitHub releases.
   similar works, and the startup log names the HTTP status go2rtc answered with (a `401`/`403` with a
   login hint) instead of saying go2rtc did not answer.
 
+## 0.28.0 — 2026-11-14
+
+- **Export of the gallery fingerprints:** `GET /api/export/embeddings` returns every person's ArcFace
+  fingerprints (`count` × 512, float16, base64) with name, slug, favourite flag and the active match and
+  unknown thresholds. Only numbers: no photos, file names, camera sources or ignore anchors. Used by the
+  WAYFARE video app to name people in 360 clips on the phone. Behind the same Basic Auth as the rest.
+
 ## 0.27.1 — 2026-10-27
 
 - **People grid:** the key number (1–9) sits on the photo again instead of as loose text under
