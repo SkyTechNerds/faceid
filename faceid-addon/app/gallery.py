@@ -75,6 +75,12 @@ class Gallery:
         # Eigenes Lock, nicht self._lock: refresh_guesses ruft match(), und match()
         # nimmt self._lock — unter demselben Lock waere das ein Deadlock.
         self._refresh_run_lock = threading.Lock()
+        self._guesses_epoch = 0
+        self._guesses_refreshing = False
+        self._guesses_updated_ts = 0.0
+        self._unk_ui = None
+        self._unk_ui_lock = threading.Lock()
+        self._unk_pending = {}  # id -> monotonic hide time (see _reconcile_pending_locked)
         self._cache = {}  # slug -> {"name":..., "emb": np.ndarray, "files": [...]}
         self._ign_emb = np.zeros((0, 512), dtype=np.float32)
         self._ign_ids: list[str] = []
@@ -921,6 +927,7 @@ class Gallery:
             self._ign_emb = np.vstack([self._ign_emb, np.array(meta["embedding"], dtype=np.float32)[None, :]])
             self._ign_ids.append(iid)
             self._ign_groups.append(grp)
+            self.invalidate_unk_ui()
             return True
 
     def ignore_person(self, slug: str) -> int:
@@ -1078,7 +1085,93 @@ class Gallery:
                 cv2.imwrite(str(self.unknown_dir / f"{uid}_full.jpg"), full_bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
             meta = dict(meta, ts=now, embedding=[round(float(v), 6) for v in embedding])
             (self.unknown_dir / f"{uid}.json").write_text(json.dumps(meta, ensure_ascii=False))
+            self.invalidate_unk_ui()
             return uid
+
+
+    _UNK_UI_KEYS = ("camera", "event_id", "event_ts", "guess", "guess_score",
+                    "guess_top_photo", "guess_top_slug", "ts", "extra_face")
+    # A pending id whose worker crashed before moving its json (so the file is still
+    # on disk) is forgotten after this long, so the face returns to the queue.
+    _UNK_PENDING_TTL_S = 300
+
+    def invalidate_unk_ui(self):
+        with self._unk_ui_lock:
+            self._unk_ui = None
+
+    def hide_unk_ui(self, ids):
+        """Drop ids from the Sort-board cache before the worker has moved the files."""
+        now = time.monotonic()
+        pending = {str(i) for i in ids}
+        with self._unk_ui_lock:
+            for i in pending:
+                self._unk_pending.setdefault(i, now)  # keep the first hide time
+            if self._unk_ui is not None:
+                self._unk_ui = [row for row in self._unk_ui if row["id"] not in self._unk_pending]
+
+    def unhide_unk_ui(self, ids):
+        pending = {str(i) for i in ids}
+        with self._unk_ui_lock:
+            for i in pending:
+                self._unk_pending.pop(i, None)
+            self._unk_ui = None
+
+    def _reconcile_pending_locked(self):
+        """Forget pending ids the worker has finished or abandoned.
+
+        hide_unk_ui() stamps each id with a hide time; only unhide_unk_ui() (rollback)
+        removes them explicitly. An id is dropped here when its json is gone from disk
+        (the worker assigned/discarded the face) or when it has been pending longer than
+        _UNK_PENDING_TTL_S — the case where the worker crashed or was killed before moving
+        the file, so the json is still on disk and the on-disk check alone would never
+        prune it. Without this, review_queue_len() would subtract a finished id a second
+        time (count drifting low, clamped to 0 while faces still wait), assign_pending_len()
+        would grow without bound, and a crashed-worker id would stay hidden from
+        unknowns_for_ui() until restart. Caller must hold self._unk_ui_lock.
+        """
+        if not self._unk_pending:
+            return
+        now = time.monotonic()
+        stale = [i for i, ts in self._unk_pending.items()
+                 if not (self.unknown_dir / f"{i}.json").exists()
+                 or now - ts > self._UNK_PENDING_TTL_S]
+        for i in stale:
+            del self._unk_pending[i]
+
+    def unknowns_for_ui(self):
+        """Review list without embeddings or DBSCAN — what the Sort board actually paints."""
+        with self._unk_ui_lock:
+            self._reconcile_pending_locked()
+            if self._unk_ui is None:
+                self._unk_ui = [row for row in self._read_unk_ui()
+                                if row["id"] not in self._unk_pending]
+            return [dict(row) for row in self._unk_ui]
+
+    def review_queue_len(self):
+        n = sum(1 for _ in self.unknown_dir.glob("*.json"))
+        with self._unk_ui_lock:
+            self._reconcile_pending_locked()
+            return max(0, n - len(self._unk_pending))
+
+    def assign_pending_len(self):
+        with self._unk_ui_lock:
+            self._reconcile_pending_locked()
+            return len(self._unk_pending)
+
+    def _read_unk_ui(self):
+        out = []
+        for jf in sorted(self.unknown_dir.glob("*.json"), reverse=True):
+            try:
+                m = json.loads(jf.read_text())
+            except (json.JSONDecodeError, OSError):
+                continue
+            row = {"id": jf.stem,
+                   "has_full": (self.unknown_dir / f"{jf.stem}_full.jpg").exists()}
+            for k in self._UNK_UI_KEYS:
+                if k in m:
+                    row[k] = m[k]
+            out.append(row)
+        return out
 
     def unknowns(self):
         out = []
@@ -1120,6 +1213,7 @@ class Gallery:
         jf.unlink()
         img_f.unlink()
         (self.unknown_dir / f"{uid}_full.jpg").unlink(missing_ok=True)
+        self.invalidate_unk_ui()
         return True
 
     def refresh_guesses(self):
@@ -1135,65 +1229,88 @@ class Gallery:
 
     def _refresh_guesses_once(self):
         changed = False
-        for jf in self.unknown_dir.glob("*.json"):
-            try:
-                m = json.loads(jf.read_text())
-            except (json.JSONDecodeError, OSError):
-                continue
-            slug, name, score, top_photo = self.match(np.array(m["embedding"], dtype=np.float32))
-            m["guess"], m["guess_score"] = name, round(float(score), 3)
-            # Persist slug+file together so the UI does not re-derive the person
-            # folder from the display name (rename / duplicate / slugify drift).
-            if slug and top_photo:
-                m["guess_top_photo"] = top_photo
-                m["guess_top_slug"] = slug
-            else:
-                m.pop("guess_top_photo", None)
-                m.pop("guess_top_slug", None)
-            # Atomic replace — a crashed mid-write would otherwise truncate the
-            # JSON (and the embedding inside it) for a silent loss on next load.
-            raw = json.dumps(m, ensure_ascii=False)
-            # Eindeutiger Name je Schreibvorgang: ein fester "<uid>.json.tmp" waere
-            # fuer alle Schreiber derselbe Pfad. Der Rest des Programms sieht ihn
-            # nie, weil hier nur "*.json" gelesen wird.
-            fd, tmp_name = tempfile.mkstemp(dir=self.unknown_dir,
-                                            prefix=f".{jf.stem}-", suffix=".tmp")
-            tmp = Path(tmp_name)
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                    fh.write(raw)
-                    # Ohne flush+fsync darf das Dateisystem den Namenstausch vor die
-                    # Daten ziehen: nach einem Stromausfall steht dann eine leere Datei
-                    # da, wo vorher ein vollstaendiges Embedding war. Genau der stille
-                    # Verlust, gegen den das Ersetzen hier antritt.
-                    fh.flush()
-                    os.fsync(fh.fileno())
-                # Ist das Ziel inzwischen weg, wurde dieses Unknown waehrend des
-                # Durchlaufs zugeordnet oder verworfen. os.replace() wuerde es
-                # wieder anlegen — ohne Bild, mit veralteten Daten, und es staende
-                # erneut in der Review-Queue. Der Hintergrundlauf macht dieses
-                # Fenster erst gross, weil er neben den Handlern laeuft.
+        try:
+            for jf in self.unknown_dir.glob("*.json"):
                 try:
-                    mode = stat_module.S_IMODE(os.stat(jf).st_mode)
-                except FileNotFoundError:
-                    tmp.unlink(missing_ok=True)
+                    m = json.loads(jf.read_text())
+                except (json.JSONDecodeError, OSError):
                     continue
-                # mkstemp legt mit 0600 an, und os.replace nimmt den Modus mit — die
-                # Datei waere danach nur noch fuer den Dienstnutzer lesbar.
-                os.chmod(tmp, mode)
-                # Kurz vor dem Tausch noch einmal nachsehen: das Fenster bleibt,
-                # aber es schrumpft von "ganzer Schreibvorgang" auf zwei Aufrufe.
-                if not jf.exists():
-                    tmp.unlink(missing_ok=True)
+                slug, name, score, top_photo = self.match(np.array(m["embedding"], dtype=np.float32))
+                new_score = round(float(score), 3)
+                new_photo = top_photo if slug and top_photo else None
+                new_slug = slug if slug and top_photo else None
+                # Cosine is cheap; rewriting thousands of JSON files with fsync is not.
+                # Skip the replace when the four cue fields the UI actually reads
+                # are already what this pass would persist.
+                if (m.get("guess") == name
+                        and m.get("guess_score") == new_score
+                        and m.get("guess_top_photo") == new_photo
+                        and m.get("guess_top_slug") == new_slug):
                     continue
-                os.replace(tmp, jf)
-                changed = True
-            except OSError:
-                # Nichts halb Geschriebenes zuruecklassen, auch nicht als Muell.
-                tmp.unlink(missing_ok=True)
-                raise
-        if changed:
-            self._fsync_unknown_dir()
+                m["guess"], m["guess_score"] = name, new_score
+                # Persist slug+file together so the UI does not re-derive the person
+                # folder from the display name (rename / duplicate / slugify drift).
+                if new_slug and new_photo:
+                    m["guess_top_photo"] = new_photo
+                    m["guess_top_slug"] = new_slug
+                else:
+                    m.pop("guess_top_photo", None)
+                    m.pop("guess_top_slug", None)
+                # Atomic replace — a crashed mid-write would otherwise truncate the
+                # JSON (and the embedding inside it) for a silent loss on next load.
+                raw = json.dumps(m, ensure_ascii=False)
+                # Eindeutiger Name je Schreibvorgang: ein fester "<uid>.json.tmp" waere
+                # fuer alle Schreiber derselbe Pfad. Der Rest des Programms sieht ihn
+                # nie, weil hier nur "*.json" gelesen wird.
+                fd, tmp_name = tempfile.mkstemp(dir=self.unknown_dir,
+                                                prefix=f".{jf.stem}-", suffix=".tmp")
+                tmp = Path(tmp_name)
+                try:
+                    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                        fh.write(raw)
+                        # Ohne flush+fsync darf das Dateisystem den Namenstausch vor die
+                        # Daten ziehen: nach einem Stromausfall steht dann eine leere Datei
+                        # da, wo vorher ein vollstaendiges Embedding war. Genau der stille
+                        # Verlust, gegen den das Ersetzen hier antritt.
+                        fh.flush()
+                        os.fsync(fh.fileno())
+                    # Ist das Ziel inzwischen weg, wurde dieses Unknown waehrend des
+                    # Durchlaufs zugeordnet oder verworfen. os.replace() wuerde es
+                    # wieder anlegen — ohne Bild, mit veralteten Daten, und es staende
+                    # erneut in der Review-Queue. Der Hintergrundlauf macht dieses
+                    # Fenster erst gross, weil er neben den Handlern laeuft.
+                    try:
+                        mode = stat_module.S_IMODE(os.stat(jf).st_mode)
+                    except FileNotFoundError:
+                        tmp.unlink(missing_ok=True)
+                        continue
+                    # mkstemp legt mit 0600 an, und os.replace nimmt den Modus mit — die
+                    # Datei waere danach nur noch fuer den Dienstnutzer lesbar.
+                    os.chmod(tmp, mode)
+                    # Kurz vor dem Tausch noch einmal nachsehen: das Fenster bleibt,
+                    # aber es schrumpft von "ganzer Schreibvorgang" auf zwei Aufrufe.
+                    if not jf.exists():
+                        tmp.unlink(missing_ok=True)
+                        continue
+                    os.replace(tmp, jf)
+                    changed = True
+                except OSError:
+                    # Nichts halb Geschriebenes zuruecklassen, auch nicht als Muell.
+                    tmp.unlink(missing_ok=True)
+                    raise
+        finally:
+            # Auch wenn eine Datei mitten im Durchlauf mit OSError abbricht: schon
+            # ersetzte Cues muessen dauerhaft und sichtbar werden. Ohne das finally
+            # liefe das Bookkeeping nur beim sauberen Return, und die UI zeigte bis
+            # zur naechsten Mutation veraltete Guesses auf bereits neu geschriebenen
+            # Unknowns.
+            if changed:
+                self._fsync_unknown_dir()
+                self.invalidate_unk_ui()
+            with self._refresh_sched_lock:
+                if changed:
+                    self._guesses_epoch += 1
+                self._guesses_updated_ts = time.time()
 
     def _fsync_unknown_dir(self):
         """Einmal je Durchlauf, nicht je Datei: erst damit ist der Namenstausch
@@ -1219,6 +1336,7 @@ class Gallery:
         """
         with self._refresh_sched_lock:
             now = time.time()
+            self._guesses_refreshing = True
             if self._refresh_first_request is None:
                 self._refresh_first_request = now
             # Obergrenze gegen den Dauerstrom: rein nachlaufend wuerde ein Burst
@@ -1232,33 +1350,84 @@ class Gallery:
             t = threading.Thread(target=self._refresh_guesses_worker, name="refresh-guesses",
                                  daemon=True)
             self._refresh_thread = t
-            t.start()
-
-    def _refresh_guesses_worker(self):
-        while True:
-            with self._refresh_sched_lock:
-                deadline = self._refresh_deadline
-            if deadline is None:
-                return
-            wait = deadline - time.time()
-            if wait > 0:
-                time.sleep(wait)
-                continue
-            with self._refresh_sched_lock:
-                if self._refresh_deadline is not None and time.time() < self._refresh_deadline:
-                    continue
+            try:
+                t.start()
+            except Exception:
+                self._refresh_thread = None
                 self._refresh_deadline = None
                 self._refresh_first_request = None
-            try:
-                self.refresh_guesses()
-            except Exception:
-                log.exception("background refresh_guesses failed")
-            with self._refresh_sched_lock:
-                if self._refresh_deadline is None:
-                    self._refresh_thread = None
+                self._guesses_refreshing = False
+                log.exception("failed to start refresh-guesses worker")
+
+    def _refresh_guesses_worker(self):
+        crashed = False
+        try:
+            while True:
+                with self._refresh_sched_lock:
+                    deadline = self._refresh_deadline
+                if deadline is None:
                     return
+                wait = deadline - time.time()
+                if wait > 0:
+                    time.sleep(wait)
+                    continue
+                with self._refresh_sched_lock:
+                    if self._refresh_deadline is not None and time.time() < self._refresh_deadline:
+                        continue
+                    self._refresh_deadline = None
+                    self._refresh_first_request = None
+                try:
+                    self.refresh_guesses()
+                except Exception:
+                    log.exception("background refresh_guesses failed")
+                with self._refresh_sched_lock:
+                    if self._refresh_deadline is None:
+                        return
+        except Exception:
+            crashed = True
+            log.exception("refresh-guesses worker crashed")
+        finally:
+            with self._refresh_sched_lock:
+                if self._refresh_thread is not threading.current_thread():
+                    return
+                self._refresh_thread = None
+                if crashed:
+                    self._refresh_deadline = None
+                    self._refresh_first_request = None
+                    self._guesses_refreshing = False
+                    return
+                if self._refresh_deadline is None:
+                    self._guesses_refreshing = False
+                    return
+                t = threading.Thread(target=self._refresh_guesses_worker,
+                                     name="refresh-guesses", daemon=True)
+                self._refresh_thread = t
+                try:
+                    t.start()
+                except Exception:
+                    self._refresh_thread = None
+                    self._refresh_deadline = None
+                    self._refresh_first_request = None
+                    self._guesses_refreshing = False
+                    log.exception("failed to restart refresh-guesses worker")
+
+    @property
+    def guesses_epoch(self) -> int:
+        with self._refresh_sched_lock:
+            return self._guesses_epoch
+
+    @property
+    def guesses_refreshing(self) -> bool:
+        with self._refresh_sched_lock:
+            return self._guesses_refreshing
+
+    @property
+    def guesses_updated_ts(self) -> float:
+        with self._refresh_sched_lock:
+            return self._guesses_updated_ts
 
     def discard_unknown(self, uid: str):
         (self.unknown_dir / f"{uid}.json").unlink(missing_ok=True)
         (self.unknown_dir / f"{uid}.jpg").unlink(missing_ok=True)
         (self.unknown_dir / f"{uid}_full.jpg").unlink(missing_ok=True)
+        self.invalidate_unk_ui()
