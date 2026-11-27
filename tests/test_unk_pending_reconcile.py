@@ -17,7 +17,7 @@ class UnkPendingReconcileTests(unittest.TestCase):
     def _gallery(self, tmp):
         g = Gallery.__new__(Gallery)  # skip model load; exercise the bookkeeping only
         g.unknown_dir = Path(tmp)
-        g._unk_pending = set()
+        g._unk_pending = {}
         g._unk_ui = None
         g._unk_ui_lock = threading.Lock()
         return g
@@ -47,6 +47,18 @@ class UnkPendingReconcileTests(unittest.TestCase):
             g.hide_unk_ui(["x"])
             self.assertEqual(g.assign_pending_len(), 1)  # kept, not pruned
             self.assertEqual(g.review_queue_len(), 0)    # hidden from the queue
+
+    def test_crashed_worker_id_is_released_by_the_ttl(self):
+        # Worker died before moving the file: json stays on disk, so the on-disk check
+        # never prunes it. The TTL must still release it back to the queue.
+        with tempfile.TemporaryDirectory() as tmp:
+            g = self._gallery(tmp)
+            g._UNK_PENDING_TTL_S = -1                     # anything hidden is already stale
+            (Path(tmp) / "y.json").write_text("{}")
+            g.hide_unk_ui(["y"])
+            self.assertEqual(g.assign_pending_len(), 0)  # released by TTL despite json present
+            self.assertEqual(g.review_queue_len(), 1)    # "y" is visible again
+            self.assertIn("y", [r["id"] for r in g.unknowns_for_ui()])
 
 
 if __name__ == "__main__":

@@ -99,3 +99,5 @@ class AssignGuardTests(unittest.TestCase):
         deadline = time.time() + 2.0
         while time.time() < deadline and (self.gallery.unknown_dir / f"{uid}.json").exists():
             time.sleep(0.03)
+        self.assertFalse((self.gallery.unknown_dir / f"{uid}.json").exists(),
+                         "deferred assign must remove the unknown json")

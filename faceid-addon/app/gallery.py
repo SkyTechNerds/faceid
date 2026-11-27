@@ -80,7 +80,7 @@ class Gallery:
         self._guesses_updated_ts = 0.0
         self._unk_ui = None
         self._unk_ui_lock = threading.Lock()
-        self._unk_pending = set()
+        self._unk_pending = {}  # id -> monotonic hide time (see _reconcile_pending_locked)
         self._cache = {}  # slug -> {"name":..., "emb": np.ndarray, "files": [...]}
         self._ign_emb = np.zeros((0, 512), dtype=np.float32)
         self._ign_ids: list[str] = []
@@ -1091,6 +1091,9 @@ class Gallery:
 
     _UNK_UI_KEYS = ("camera", "event_id", "event_ts", "guess", "guess_score",
                     "guess_top_photo", "guess_top_slug", "ts", "extra_face")
+    # A pending id whose worker crashed before moving its json (so the file is still
+    # on disk) is forgotten after this long, so the face returns to the queue.
+    _UNK_PENDING_TTL_S = 300
 
     def invalidate_unk_ui(self):
         with self._unk_ui_lock:
@@ -1098,34 +1101,42 @@ class Gallery:
 
     def hide_unk_ui(self, ids):
         """Drop ids from the Sort-board cache before the worker has moved the files."""
+        now = time.monotonic()
         pending = {str(i) for i in ids}
         with self._unk_ui_lock:
-            self._unk_pending.update(pending)
+            for i in pending:
+                self._unk_pending.setdefault(i, now)  # keep the first hide time
             if self._unk_ui is not None:
                 self._unk_ui = [row for row in self._unk_ui if row["id"] not in self._unk_pending]
 
     def unhide_unk_ui(self, ids):
         pending = {str(i) for i in ids}
         with self._unk_ui_lock:
-            self._unk_pending.difference_update(pending)
+            for i in pending:
+                self._unk_pending.pop(i, None)
             self._unk_ui = None
 
     def _reconcile_pending_locked(self):
-        """Drop pending ids the worker has finished (json gone from disk).
+        """Forget pending ids the worker has finished or abandoned.
 
-        hide_unk_ui() adds ids; only unhide_unk_ui() (rollback) removes them. Once a
-        worker actually assigns/discards a face its json is gone, but the id would stay
-        pending forever — review_queue_len() would then subtract it a second time
-        (drifting the count low, clamping to 0 while faces still wait), assign_pending_len()
-        would grow without bound, and an id whose worker died without unhide stays hidden
-        from unknowns_for_ui() until restart. Pruning against disk closes all three.
-        Caller must hold self._unk_ui_lock.
+        hide_unk_ui() stamps each id with a hide time; only unhide_unk_ui() (rollback)
+        removes them explicitly. An id is dropped here when its json is gone from disk
+        (the worker assigned/discarded the face) or when it has been pending longer than
+        _UNK_PENDING_TTL_S — the case where the worker crashed or was killed before moving
+        the file, so the json is still on disk and the on-disk check alone would never
+        prune it. Without this, review_queue_len() would subtract a finished id a second
+        time (count drifting low, clamped to 0 while faces still wait), assign_pending_len()
+        would grow without bound, and a crashed-worker id would stay hidden from
+        unknowns_for_ui() until restart. Caller must hold self._unk_ui_lock.
         """
-        if self._unk_pending:
-            gone = {i for i in self._unk_pending
-                    if not (self.unknown_dir / f"{i}.json").exists()}
-            if gone:
-                self._unk_pending -= gone
+        if not self._unk_pending:
+            return
+        now = time.monotonic()
+        stale = [i for i, ts in self._unk_pending.items()
+                 if not (self.unknown_dir / f"{i}.json").exists()
+                 or now - ts > self._UNK_PENDING_TTL_S]
+        for i in stale:
+            del self._unk_pending[i]
 
     def unknowns_for_ui(self):
         """Review list without embeddings or DBSCAN — what the Sort board actually paints."""
