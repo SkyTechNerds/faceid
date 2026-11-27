@@ -45,7 +45,7 @@
     'Russian':'Русский','Light':'Светлая','Dark':'Тёмная','Theme':'Тема',
     'Enable':'Включить','Disable':'Выключить','Enabled':'Включено','Disabled':'Выключено',
     'Yes':'Да','No':'Нет','On':'Вкл.','Off':'Выкл.',
-    'OK':'ОК','Error':'Ошибка','Success':'Успешно','Loading…':'Загрузка…',
+    'OK':'ОК','Error':'Ошибка','Success':'Успешно','Loading…':'Загрузка…','Loading faces…':'Загрузка лиц…',
     'offline':'не в сети','Online':'В сети','Offline':'Не в сети',
     'History scan':'Сканирование истории','Reference photos':'Эталонные фотографии',
     'Ignored faces':'Игнорируемые лица','Quality check':'Проверка качества',
@@ -1167,6 +1167,7 @@
   );
   RULES.push([/^Delete (.+)\?$/i,(_,name)=>`Удалить: ${name}?`]);
   RULES.push([/^(\d+) (?:faces?\(s\)|faces?) → (.+)$/i,(_,n,name)=>`Назначено лиц: ${n} → ${name}`]);
+  RULES.push([/^Gallery photo of (.+)$/i,(_,name)=>`Фото из галереи: ${name}`]);
   const COMPLEX_PREFIXES=Object.entries(RU).filter(([k])=>k.length>45).sort((a,b)=>b[0].length-a[0].length);
   function plural(value,one,few,many) {
     const n=Math.abs(Number(value)), last=n%10, hundred=n%100;
