@@ -3,6 +3,19 @@
 All notable changes to FaceID. The Home Assistant app shows this file in the
 update dialog; standalone users can watch GitHub releases.
 
+## 0.30.2 — 2026-11-27
+
+- **Fix: the add-on kept resetting `frigate_url` to the `192.168.1.10` default.** On a
+  fresh install, saving any other option (for example correcting the MQTT password) made
+  Home Assistant revert the entered Frigate URL to the hardcoded default, so FaceID then
+  tried to reach a host that was not there. Same root cause as the 0.30.1 `go2rtc_url`
+  fix: the option was typed `url` with a non-empty default, and Home Assistant re-applies
+  that default against the `url` type on every save. `frigate_url` is now typed `str` with
+  an empty default, like every other connection field. An empty value means "no Frigate":
+  the add-on already refuses to start with a clear message (`No input configured: set
+  frigate_url`) instead of silently pointing at `192.168.1.10`, and folder-only setups run
+  on the folder input alone. Reported on the forum against a fresh 0.30.1 install.
+
 ## 0.30.1 — 2026-11-26
 
 - **Fix: the app would not start after 0.29.0 (`expected a url`).** The new
