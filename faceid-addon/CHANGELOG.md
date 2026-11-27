@@ -18,6 +18,47 @@ update dialog; standalone users can watch GitHub releases.
   cards show the gallery reference face. **Track as new** on the New person form mints
   `Label-xxxxxx`. The bottom selection bar stays visible with the people rail on
   screen, so Discard does not require scrolling. Contributed by @Alien10140.
+## 0.30.1 — 2026-11-26
+
+- **Fix: the app would not start after 0.29.0 (`expected a url`).** The new
+  `go2rtc_url` option ships with an empty default, but its schema type was `url`,
+  and Home Assistant validates the empty default against that type and refuses to
+  start the add-on. The option is now typed `str` (the app already treats an empty
+  value as "not set"), so a fresh install starts again without touching it.
+  Reported on the forum against 0.29.0 and 0.30.0.
+
+## 0.30.0 — 2026-11-26
+
+- **Russian interface.** The whole UI can switch to Russian (ru-RU): a language toggle,
+  translated static text, and runtime strings — counts, dates and dialogs — localized with
+  proper Russian plural and date forms. Reported in #48.
+
+## 0.29.0 — 2026-11-26
+
+- **Bigger touch targets on the sort board.** The review-queue buttons were 24–31 px tall;
+  the nav tabs, `ASSIGN`/`APPLY` and the ghost buttons are now at least 44 px, so they are
+  harder to mis-tap on a phone. The nav tabs also light up on tap (touch has no hover).
+- **Faster hi-res clip scanning.** `_clip_frames` walked the clip with a seek per sampled
+  frame; it now makes a single forward pass and decodes only the frames it keeps — the same
+  frames, about 3.5× faster on short clips.
+- **The app can use Frigate's port 8971.** `verify_tls: false` did not hold in the Home
+  Assistant app: its base image sets `CURL_CA_BUNDLE`, and requests takes that bundle over
+  `session.verify`, so Frigate's self-signed certificate failed every time (`certificate
+  verify failed: self-signed certificate`) and FaceID ran without Frigate. The setting now
+  holds whatever the environment says; `verify_tls: true` still uses the bundle.
+- **go2rtc with a login.** New options `go2rtc_url`, `go2rtc_user` and `go2rtc_password` for
+  the live hi-res frame. A go2rtc with `api.username`/`password` answered `401`, and behind a
+  reverse proxy the default address (Frigate's host, port 1984) pointed at the proxy. Empty
+  options keep the old behaviour. The login is sent as UTF-8, so a password with `€` or
+  similar works, and the startup log names the HTTP status go2rtc answered with (a `401`/`403` with a
+  login hint) instead of saying go2rtc did not answer.
+
+## 0.28.0 — 2026-11-14
+
+- **Export of the gallery fingerprints:** `GET /api/export/embeddings` returns every person's ArcFace
+  fingerprints (`count` × 512, float16, base64) with name, slug, favourite flag and the active match and
+  unknown thresholds. Only numbers: no photos, file names, camera sources or ignore anchors. Used by the
+  WAYFARE video app to name people in 360 clips on the phone. Behind the same Basic Auth as the rest.
 
 ## 0.27.1 — 2026-10-27
 

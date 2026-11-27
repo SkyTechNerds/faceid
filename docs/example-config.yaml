@@ -9,6 +9,9 @@ frigate:
   # user: faceid            # optional — only for the authenticated port 8971
   # password: secret        # a viewer account can read; sub_label write-back needs admin
   # verify_tls: false       # Frigate ships a self-signed certificate by default
+  # go2rtc_url: http://192.168.1.10:1984   # live frame; default: Frigate's host, port 1984
+  # go2rtc_user: go2rtc     # only if go2rtc has api.username/password
+  # go2rtc_password: secret
 
 mqtt:
   enabled: true                         # false keeps the UI working without an MQTT broker

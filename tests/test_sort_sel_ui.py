@@ -11,8 +11,10 @@ class SortSelUiTests(unittest.TestCase):
         addon = (ROOT / "faceid-addon" / "static" / "index.html").read_text()
         self.assertEqual(html, addon)
         self.assertIn("function syncSelUI()", html)
-        # Select all / click / clear must not innerHTML the board.
-        self.assertIn("t.dataset.selcard", html)
+        # Select all / click / clear must not innerHTML the board. Assert the exact
+        # slice keys first, so a reworded handler fails readably instead of IndexError.
+        self.assertIn("if(t.dataset.selcard)", html)
+        self.assertIn("if(t.dataset.expand)", html)
         block = html.split("if(t.dataset.selcard)")[1].split("if(t.dataset.expand)")[0]
         self.assertIn("syncSelUI()", block)
         self.assertNotIn("renderSort()", block)

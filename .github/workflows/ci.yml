@@ -32,6 +32,14 @@ jobs:
       - name: Unit tests
         run: python -m unittest discover -s tests -v
 
+      - name: Russian UI localization
+        run: |
+          node --check static/assets/i18n-ru.js
+          node --check faceid-addon/static/assets/i18n-ru.js
+          node tests/test_ui_translation.cjs
+          node tests/test_ui_translation_dom.cjs
+          node tests/test_ui_translation_settings.cjs
+
       - name: Import-consistency check (local imports must exist in their module)
         run: |
           python - << 'EOF'
@@ -76,6 +84,34 @@ jobs:
           if Path("requirements.txt").read_text() != Path("faceid-addon/requirements.txt").read_text():
               print("faceid-addon/requirements.txt out of sync"); sys.exit(1)
           print("app build context in sync")
+          EOF
+
+      - name: Add-on option defaults validate against their schema type
+        run: |
+          python - << 'EOF'
+          # Home Assistant validates each option default against its schema type and
+          # refuses to start the add-on if one fails. A url-typed option with an empty
+          # default broke startup in 0.29.0/0.30.0 — guard the whole class here.
+          import sys, re, yaml
+          cfg = yaml.safe_load(open("faceid-addon/config.yaml"))
+          options, schema = cfg.get("options", {}), cfg.get("schema", {})
+          errors = []
+          for key, typ in schema.items():
+              if not isinstance(typ, str):
+                  continue
+              base, optional = typ.rstrip("?"), typ.endswith("?")
+              if key not in options:
+                  continue
+              val = options[key]
+              if base in ("url", "email") and val == "":
+                  errors.append(f"{key}: default '' is not a valid {base} — HA rejects it at startup; use str? or a real default")
+              if base == "url" and isinstance(val, str) and val and not re.match(r"^https?://", val):
+                  errors.append(f"{key}: default {val!r} is not a url")
+          if errors:
+              print("ADD-ON SCHEMA CHECK FAILED:")
+              [print(" ", e) for e in errors]
+              sys.exit(1)
+          print("add-on option defaults OK")
           EOF
 
       - name: Version consistency (manifest version has a changelog entry)
@@ -137,3 +173,4 @@ jobs:
                   print(f"script block {i} does not parse:\n{r.stderr}"); sys.exit(1)
           print(f"{len(blocks)} script block(s) parse")
           EOF
+

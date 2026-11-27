@@ -26,8 +26,11 @@ table.t td{text-align:right;padding:3px 10px 3px 0;border-bottom:1px solid var(-
 table.t tr:last-child td{border-bottom:0}
 nav{display:flex;gap:0;border-bottom:1px solid var(--line)}
 nav button{background:none;border:0;border-right:1px solid var(--line);color:var(--dim);
-  font:13px var(--mono);padding:8px 18px;cursor:pointer}
+  font:13px var(--mono);padding:8px 18px;cursor:pointer;min-height:44px;
+  display:inline-flex;align-items:center}
 nav button.on{color:var(--acc);background:var(--panel)}
+/* Touch hat kein Hover: ein Tab braucht beim Antippen eine sofort sichtbare Rueckmeldung. */
+nav button:active{background:color-mix(in oklab,var(--fg) 12%,transparent)}
 /* Volle Breite: die Ansicht besteht ueberwiegend aus Kachelrastern, und ein Deckel bei
    1200px liess auf breiten Schirmen rechts eine Luecke — es sah aus, als fehle etwas.
    Nur die Erklaerabsaetze bleiben begrenzt, denn ueber die ganze Breite laufender
@@ -86,10 +89,15 @@ h2{font:600 12px var(--mono);color:var(--dim);text-transform:uppercase;letter-sp
 .person .head .n{font:12px var(--mono);color:var(--dim)}
 .person .head button.fav{background:none;border:0;color:var(--dim);font-size:16px;cursor:pointer;padding:0 4px;line-height:1}
 .person .head button.fav.on{color:var(--acc)}
+/* 44px Mindest-Trefferflaeche (HIG): die Knoepfe waren 24-26px hoch, auf dem Telefon in der
+   dicht gepackten Pruefwarteschlange leicht vertippt. min-height statt mehr Padding, damit
+   die Optik kompakt bleibt; inline-flex zentriert das Label in der hoeheren Flaeche. */
 .act,button.act{background:var(--acc);border:0;color:oklch(20% .02 130);font:600 12px var(--mono);
-  padding:5px 12px;cursor:pointer;display:inline-block;line-height:1.35;text-decoration:none;vertical-align:middle}
+  padding:5px 12px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
+  min-height:44px;line-height:1.35;text-decoration:none;vertical-align:middle}
 .ghost,button.ghost{background:none;border:1px solid var(--line);color:var(--dim);font:12px var(--mono);
-  padding:4px 10px;cursor:pointer;display:inline-block;line-height:1.35;text-decoration:none;vertical-align:middle}
+  padding:4px 10px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
+  min-height:44px;line-height:1.35;text-decoration:none;vertical-align:middle}
 .ghost:hover,button.ghost:hover{color:var(--fg);border-color:var(--fg)}
 /* Zustaende der Handlungsknoepfe. Vorher hatte .act keinen einzigen: Zeigen,
    Druecken und Tastaturfokus sahen identisch aus, obwohl ASSIGN und "Track as new"
@@ -148,7 +156,33 @@ td.p{color:var(--acc)} td.u{color:var(--warn)}
   .lv-ERROR,.lv-CRITICAL{color:#e05555}
   .logwrap{background:var(--panel);border:1px solid var(--line);padding:10px;
            max-height:70vh;overflow:auto}
+
+/* Russian localization: responsive classic settings — no sideways overflow on phones. */
+@media (max-width: 720px) {
+  html, body {max-width:100%;overflow-x:clip}
+  main {padding:12px;min-width:0}
+  main > nav {max-width:100%;overflow-x:auto;scrollbar-width:thin}
+  main [data-s] {min-width:0;max-width:100%}
+  main [data-s] .row {align-items:flex-start;min-width:0;max-width:100%;flex-wrap:wrap}
+  main [data-s] .row > b {min-width:0!important;width:100%;white-space:normal}
+  main [data-s] .row > .stat {min-width:0!important;max-width:100%;width:100%;overflow-wrap:anywhere;line-height:1.5}
+  main [data-s] .row > input[type="range"] {min-width:0!important;width:calc(100% - 58px);flex:1 1 calc(100% - 58px)!important}
+  main [data-s] .row input, main [data-s] .row select {max-width:100%}
+  main [data-s] .row > label {max-width:100%;flex-wrap:wrap}
+  main [data-s] .thr-row > label:has(input[type="range"]) {
+    display:grid!important;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center!important;
+  }
+  main [data-s] .thr-row > label > b {grid-column:1/-1;min-width:0!important;width:100%;overflow-wrap:anywhere}
+  main [data-s] .thr-row > label > input[type="range"] {grid-column:1;min-width:0;width:100%}
+  main [data-s] .thr-row > label > span {grid-column:2;max-width:65px}
+  main [data-s] .thr-row > .stat {margin-left:0!important;max-width:100%;overflow-wrap:anywhere}
+  main [data-s] code {overflow-wrap:anywhere}
+  main [data-s] input[type="text"] {max-width:100%!important;width:100%!important}
+  main [data-s] .row > button {max-width:100%;white-space:normal;overflow-wrap:anywhere}
+  header, body > nav {max-width:100%;overflow-x:auto}
+}
 </style>
+<script defer src="assets/i18n-ru.js?v=ru11"></script>
 </head>
 <body>
 <header>
@@ -626,7 +660,7 @@ async function renderHistory(){
             ? `<div class="nowis" title="You assigned this face to ${esc(h.now.person)}, so it is one of their reference photos now. It matches itself — that says nothing about how well ${esc(h.now.person)} is recognised.">now assigned: ${esc(h.now.person)}</div>`
             : `<div class="nowis" title="This face would be matched to ${esc(h.now.person)} today — the gallery has changed since this was reported.">now: ${esc(h.now.person)} ${h.now.score}</div>`):''}
         </div>
-        <button class="ghost" onclick="markWrong('${h.id}')">was wrong</button>
+        <button class="ghost" data-wrong="${esc(h.id)}" onclick="markWrong(this.dataset.wrong)">was wrong</button>
       </div>`).join('')}</div>
     ${it.length?`<div class="row" style="margin-top:10px"><button class="ghost" onclick="clearHistory()">clear the history</button></div>`:''}
   </div>`;
@@ -758,7 +792,7 @@ async function renderSettings(){
     ignore_threshold:'similarity to an ignore anchor needed to stay silent'};
   const rows=Object.entries(cfg.thresholds).map(([k,v])=>{
     const [lo,hi]=cfg.ranges[k];
-    return `<div style="margin:10px 0">
+    return `<div class="thr-row" style="margin:10px 0">
       <label style="display:flex;gap:10px;align-items:center">
         <b style="min-width:230px;font:600 13px var(--sans)">${labels[k]||k}</b>
         <input type="range" id="set-${k}" min="${lo}" max="${hi}" step="0.01" value="${v}"
@@ -826,7 +860,7 @@ async function renderSettings(){
     <div class="row" style="margin-top:6px">
       <b style="min-width:230px;font:600 13px var(--sans)">Live hi-res retry</b>
       <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="set-livehires" ${cfg.live_hires_fallback?'checked':''}> ask go2rtc for a full-resolution frame</label>
-      <span class="stat">For automations that must react <em>while</em> someone is at the door. Searching the recording only works once an event has ended, and a recorded moment is not retrievable for about 45s — too late to greet anyone. go2rtc serves the main stream instead, in roughly a second. Requires go2rtc reachable on port 1984 (it ships with Frigate, but is not always exposed) — the startup log says whether it answers here. Runs once per event, only when the snapshot found nothing.</span>
+      <span class="stat">For automations that must react <em>while</em> someone is at the door. Searching the recording only works once an event has ended, and a recorded moment is not retrievable for about 45s — too late to greet anyone. go2rtc serves the main stream instead, in roughly a second. Requires go2rtc reachable — by default on Frigate's host, port 1984; set <code>go2rtc_url</code> otherwise (it ships with Frigate, but is not always exposed) — the startup log says whether it answers here. Runs once per event, only when the snapshot found nothing.</span>
     </div>
     <div class="row" style="margin-top:6px">
       <b style="min-width:230px;font:600 13px var(--sans)">…when</b>
@@ -935,8 +969,21 @@ function groupSettings(){
   const kids=[...main.children], groups=[];
   let cur=null;
   for(const n of kids){
-    if(n.tagName==='H2'){cur={title:n.textContent.trim(),nodes:[n]};groups.push(cur)}
-    else if(cur)cur.nodes.push(n);
+    // The Frigate fallback section is wrapped in a <div> to hide it in folder
+    // mode. Its heading is not a direct child of <main>; group it separately.
+    const nested=(n.tagName==='DIV' && n.querySelector(':scope > h2'));
+    if(nested){
+      // In folder mode this wrapper is display:none; grouping it would add a tab
+      // for a section the user cannot see. Skip it then, and keep cur null so
+      // nothing trails into a hidden tab.
+      if(n.style.display==='none'){cur=null;continue}
+      groups.push({title:nested.textContent.trim(),nodes:[n]});
+      // Keep collecting trailing siblings into the wrapped group instead of
+      // dropping them into no group at all (they would never attach to a tab).
+      cur=groups[groups.length-1];
+    }else if(n.tagName==='H2'){
+      cur={title:n.textContent.trim(),nodes:[n]};groups.push(cur);
+    }else if(cur)cur.nodes.push(n);
   }
   if(groups.length<2)return;
   const save=document.getElementById('savebar');

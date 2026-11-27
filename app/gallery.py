@@ -529,6 +529,30 @@ class Gallery:
                 return None
             return e["emb"].copy()
 
+    def export_embeddings(self, threshold: float = 0.50, unknown: float = 0.35) -> dict:
+        """Fingerabdruecke aller Personen fuer WAYFARE (14.11.2026): nur die Zahlen.
+
+        Keine Bilder, keine Dateinamen, keine Quellen (Kamera, Zeit), keine Ignore-Anker.
+        Je Person `count` x 512 als float16 little-endian, base64. Personen ohne Foto fehlen.
+        """
+        import base64
+        from datetime import datetime, timezone
+        out = []
+        with self._lock:
+            for slug, e in self._cache.items():
+                if not len(e["files"]):
+                    continue
+                emb_f = self.persons_dir / slug / "embeddings.npy"
+                mtime = emb_f.stat().st_mtime if emb_f.exists() else 0
+                out.append({
+                    "slug": slug, "name": e["name"], "favorite": bool(e.get("favorite", False)),
+                    "count": int(len(e["files"])),
+                    "updated": datetime.fromtimestamp(mtime, timezone.utc).isoformat(),
+                    "embeddings": base64.b64encode(np.asarray(e["emb"], dtype="<f2").tobytes()).decode("ascii"),
+                })
+        return {"model": "buffalo_l/w600k_r50", "dim": 512, "threshold": float(threshold), "unknown": float(unknown),
+                "exported": datetime.now(timezone.utc).isoformat(), "persons": out}
+
     def set_favorite(self, slug: str, fav: bool) -> bool:
         with self._lock:
             entry = self._cache.get(slug)
@@ -1086,9 +1110,27 @@ class Gallery:
             self._unk_pending.difference_update(pending)
             self._unk_ui = None
 
+    def _reconcile_pending_locked(self):
+        """Drop pending ids the worker has finished (json gone from disk).
+
+        hide_unk_ui() adds ids; only unhide_unk_ui() (rollback) removes them. Once a
+        worker actually assigns/discards a face its json is gone, but the id would stay
+        pending forever — review_queue_len() would then subtract it a second time
+        (drifting the count low, clamping to 0 while faces still wait), assign_pending_len()
+        would grow without bound, and an id whose worker died without unhide stays hidden
+        from unknowns_for_ui() until restart. Pruning against disk closes all three.
+        Caller must hold self._unk_ui_lock.
+        """
+        if self._unk_pending:
+            gone = {i for i in self._unk_pending
+                    if not (self.unknown_dir / f"{i}.json").exists()}
+            if gone:
+                self._unk_pending -= gone
+
     def unknowns_for_ui(self):
         """Review list without embeddings or DBSCAN — what the Sort board actually paints."""
         with self._unk_ui_lock:
+            self._reconcile_pending_locked()
             if self._unk_ui is None:
                 self._unk_ui = [row for row in self._read_unk_ui()
                                 if row["id"] not in self._unk_pending]
@@ -1097,10 +1139,12 @@ class Gallery:
     def review_queue_len(self):
         n = sum(1 for _ in self.unknown_dir.glob("*.json"))
         with self._unk_ui_lock:
+            self._reconcile_pending_locked()
             return max(0, n - len(self._unk_pending))
 
     def assign_pending_len(self):
         with self._unk_ui_lock:
+            self._reconcile_pending_locked()
             return len(self._unk_pending)
 
     def _read_unk_ui(self):

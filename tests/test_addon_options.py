@@ -67,6 +67,12 @@ class FolderModeTests(unittest.TestCase):
         # Pflichtfeld hiesse: ohne Frigate laesst sich die App gar nicht speichern.
         self.assertEqual(CONFIG["schema"]["frigate_url"], "url?")
 
+    def test_go2rtc_url_is_str_not_url(self):
+        # url? rejected the empty default and stopped the add-on from starting at all
+        # ("expected a url", broke 0.29.0/0.30.0). str? lets the empty default through;
+        # a bare host:port gets a scheme added in FrigateAPI (see test_frigate_connection).
+        self.assertEqual(CONFIG["schema"]["go2rtc_url"], "str?")
+
     def test_folder_options_are_complete(self):
         expected = {
             "folder_enabled", "folder_path", "folder_camera", "folder_recursive",
