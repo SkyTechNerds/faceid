@@ -63,9 +63,14 @@ class FolderModeTests(unittest.TestCase):
     def test_the_generated_config_has_a_folder_block(self):
         self.assertRegex(TEMPLATE, r"(?m)^folder:$")
 
-    def test_frigate_url_is_optional(self):
+    def test_frigate_url_is_optional_str_with_empty_default(self):
         # Pflichtfeld hiesse: ohne Frigate laesst sich die App gar nicht speichern.
-        self.assertEqual(CONFIG["schema"]["frigate_url"], "url?")
+        # str? statt url?, und leerer Default statt einer festen IP: url? mit einem
+        # nicht-leeren Default liess Home Assistant die eingetragene URL bei jedem
+        # Speichern auf den Default zurueckfallen (Forum, frische 0.30.1). Gleiche
+        # Klasse wie go2rtc_url. run.sh behandelt leer als "kein Frigate".
+        self.assertEqual(CONFIG["schema"]["frigate_url"], "str?")
+        self.assertEqual(CONFIG["options"]["frigate_url"], "")
 
     def test_go2rtc_url_is_str_not_url(self):
         # url? rejected the empty default and stopped the add-on from starting at all
