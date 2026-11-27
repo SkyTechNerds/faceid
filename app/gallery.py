@@ -1229,81 +1229,88 @@ class Gallery:
 
     def _refresh_guesses_once(self):
         changed = False
-        for jf in self.unknown_dir.glob("*.json"):
-            try:
-                m = json.loads(jf.read_text())
-            except (json.JSONDecodeError, OSError):
-                continue
-            slug, name, score, top_photo = self.match(np.array(m["embedding"], dtype=np.float32))
-            new_score = round(float(score), 3)
-            new_photo = top_photo if slug and top_photo else None
-            new_slug = slug if slug and top_photo else None
-            # Cosine is cheap; rewriting thousands of JSON files with fsync is not.
-            # Skip the replace when the four cue fields the UI actually reads
-            # are already what this pass would persist.
-            if (m.get("guess") == name
-                    and m.get("guess_score") == new_score
-                    and m.get("guess_top_photo") == new_photo
-                    and m.get("guess_top_slug") == new_slug):
-                continue
-            m["guess"], m["guess_score"] = name, new_score
-            # Persist slug+file together so the UI does not re-derive the person
-            # folder from the display name (rename / duplicate / slugify drift).
-            if new_slug and new_photo:
-                m["guess_top_photo"] = new_photo
-                m["guess_top_slug"] = new_slug
-            else:
-                m.pop("guess_top_photo", None)
-                m.pop("guess_top_slug", None)
-            # Atomic replace — a crashed mid-write would otherwise truncate the
-            # JSON (and the embedding inside it) for a silent loss on next load.
-            raw = json.dumps(m, ensure_ascii=False)
-            # Eindeutiger Name je Schreibvorgang: ein fester "<uid>.json.tmp" waere
-            # fuer alle Schreiber derselbe Pfad. Der Rest des Programms sieht ihn
-            # nie, weil hier nur "*.json" gelesen wird.
-            fd, tmp_name = tempfile.mkstemp(dir=self.unknown_dir,
-                                            prefix=f".{jf.stem}-", suffix=".tmp")
-            tmp = Path(tmp_name)
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                    fh.write(raw)
-                    # Ohne flush+fsync darf das Dateisystem den Namenstausch vor die
-                    # Daten ziehen: nach einem Stromausfall steht dann eine leere Datei
-                    # da, wo vorher ein vollstaendiges Embedding war. Genau der stille
-                    # Verlust, gegen den das Ersetzen hier antritt.
-                    fh.flush()
-                    os.fsync(fh.fileno())
-                # Ist das Ziel inzwischen weg, wurde dieses Unknown waehrend des
-                # Durchlaufs zugeordnet oder verworfen. os.replace() wuerde es
-                # wieder anlegen — ohne Bild, mit veralteten Daten, und es staende
-                # erneut in der Review-Queue. Der Hintergrundlauf macht dieses
-                # Fenster erst gross, weil er neben den Handlern laeuft.
+        try:
+            for jf in self.unknown_dir.glob("*.json"):
                 try:
-                    mode = stat_module.S_IMODE(os.stat(jf).st_mode)
-                except FileNotFoundError:
-                    tmp.unlink(missing_ok=True)
+                    m = json.loads(jf.read_text())
+                except (json.JSONDecodeError, OSError):
                     continue
-                # mkstemp legt mit 0600 an, und os.replace nimmt den Modus mit — die
-                # Datei waere danach nur noch fuer den Dienstnutzer lesbar.
-                os.chmod(tmp, mode)
-                # Kurz vor dem Tausch noch einmal nachsehen: das Fenster bleibt,
-                # aber es schrumpft von "ganzer Schreibvorgang" auf zwei Aufrufe.
-                if not jf.exists():
-                    tmp.unlink(missing_ok=True)
+                slug, name, score, top_photo = self.match(np.array(m["embedding"], dtype=np.float32))
+                new_score = round(float(score), 3)
+                new_photo = top_photo if slug and top_photo else None
+                new_slug = slug if slug and top_photo else None
+                # Cosine is cheap; rewriting thousands of JSON files with fsync is not.
+                # Skip the replace when the four cue fields the UI actually reads
+                # are already what this pass would persist.
+                if (m.get("guess") == name
+                        and m.get("guess_score") == new_score
+                        and m.get("guess_top_photo") == new_photo
+                        and m.get("guess_top_slug") == new_slug):
                     continue
-                os.replace(tmp, jf)
-                changed = True
-            except OSError:
-                # Nichts halb Geschriebenes zuruecklassen, auch nicht als Muell.
-                tmp.unlink(missing_ok=True)
-                raise
-        if changed:
-            self._fsync_unknown_dir()
-            self.invalidate_unk_ui()
-        with self._refresh_sched_lock:
+                m["guess"], m["guess_score"] = name, new_score
+                # Persist slug+file together so the UI does not re-derive the person
+                # folder from the display name (rename / duplicate / slugify drift).
+                if new_slug and new_photo:
+                    m["guess_top_photo"] = new_photo
+                    m["guess_top_slug"] = new_slug
+                else:
+                    m.pop("guess_top_photo", None)
+                    m.pop("guess_top_slug", None)
+                # Atomic replace — a crashed mid-write would otherwise truncate the
+                # JSON (and the embedding inside it) for a silent loss on next load.
+                raw = json.dumps(m, ensure_ascii=False)
+                # Eindeutiger Name je Schreibvorgang: ein fester "<uid>.json.tmp" waere
+                # fuer alle Schreiber derselbe Pfad. Der Rest des Programms sieht ihn
+                # nie, weil hier nur "*.json" gelesen wird.
+                fd, tmp_name = tempfile.mkstemp(dir=self.unknown_dir,
+                                                prefix=f".{jf.stem}-", suffix=".tmp")
+                tmp = Path(tmp_name)
+                try:
+                    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                        fh.write(raw)
+                        # Ohne flush+fsync darf das Dateisystem den Namenstausch vor die
+                        # Daten ziehen: nach einem Stromausfall steht dann eine leere Datei
+                        # da, wo vorher ein vollstaendiges Embedding war. Genau der stille
+                        # Verlust, gegen den das Ersetzen hier antritt.
+                        fh.flush()
+                        os.fsync(fh.fileno())
+                    # Ist das Ziel inzwischen weg, wurde dieses Unknown waehrend des
+                    # Durchlaufs zugeordnet oder verworfen. os.replace() wuerde es
+                    # wieder anlegen — ohne Bild, mit veralteten Daten, und es staende
+                    # erneut in der Review-Queue. Der Hintergrundlauf macht dieses
+                    # Fenster erst gross, weil er neben den Handlern laeuft.
+                    try:
+                        mode = stat_module.S_IMODE(os.stat(jf).st_mode)
+                    except FileNotFoundError:
+                        tmp.unlink(missing_ok=True)
+                        continue
+                    # mkstemp legt mit 0600 an, und os.replace nimmt den Modus mit — die
+                    # Datei waere danach nur noch fuer den Dienstnutzer lesbar.
+                    os.chmod(tmp, mode)
+                    # Kurz vor dem Tausch noch einmal nachsehen: das Fenster bleibt,
+                    # aber es schrumpft von "ganzer Schreibvorgang" auf zwei Aufrufe.
+                    if not jf.exists():
+                        tmp.unlink(missing_ok=True)
+                        continue
+                    os.replace(tmp, jf)
+                    changed = True
+                except OSError:
+                    # Nichts halb Geschriebenes zuruecklassen, auch nicht als Muell.
+                    tmp.unlink(missing_ok=True)
+                    raise
+        finally:
+            # Auch wenn eine Datei mitten im Durchlauf mit OSError abbricht: schon
+            # ersetzte Cues muessen dauerhaft und sichtbar werden. Ohne das finally
+            # liefe das Bookkeeping nur beim sauberen Return, und die UI zeigte bis
+            # zur naechsten Mutation veraltete Guesses auf bereits neu geschriebenen
+            # Unknowns.
             if changed:
-                self._guesses_epoch += 1
-            self._guesses_updated_ts = time.time()
+                self._fsync_unknown_dir()
+                self.invalidate_unk_ui()
+            with self._refresh_sched_lock:
+                if changed:
+                    self._guesses_epoch += 1
+                self._guesses_updated_ts = time.time()
 
     def _fsync_unknown_dir(self):
         """Einmal je Durchlauf, nicht je Datei: erst damit ist der Namenstausch
